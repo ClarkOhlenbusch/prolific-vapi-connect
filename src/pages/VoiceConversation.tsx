@@ -90,12 +90,12 @@ const VoiceConversation = () => {
 
     // Set up event listeners
     vapi.on('call-start', () => {
-      console.log('Call started');
+      console.log('Call started event');
       handleCallStart();
     });
 
     vapi.on('call-end', () => {
-      console.log('Call ended');
+      console.log('Call ended event');
       handleCallEnd();
     });
 
@@ -110,12 +110,16 @@ const VoiceConversation = () => {
     });
 
     vapi.on('error', (error) => {
-      console.error('Vapi error:', error);
+      console.error('Vapi error details:', error);
       toast({
-        title: "Error",
-        description: "An error occurred during the call.",
+        title: "Call Error",
+        description: error?.message || "An error occurred during the call.",
         variant: "destructive"
       });
+    });
+
+    vapi.on('message', (message) => {
+      console.log('Vapi message:', message);
     });
 
     return () => {
@@ -123,9 +127,26 @@ const VoiceConversation = () => {
     };
   }, [prolificId, handleCallStart, handleCallEnd, toast]);
 
-  const startCall = () => {
-    if (vapiRef.current) {
-      vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID);
+  const startCall = async () => {
+    if (!vapiRef.current) return;
+    
+    try {
+      console.log('Attempting to start call with assistant:', import.meta.env.VITE_VAPI_ASSISTANT_ID);
+      
+      // Request microphone permission explicitly
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('Microphone permission granted:', stream);
+      
+      // Start the call
+      await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID);
+      console.log('Call start initiated successfully');
+    } catch (error) {
+      console.error('Error starting call:', error);
+      toast({
+        title: "Failed to Start Call",
+        description: error instanceof Error ? error.message : "Please check microphone permissions.",
+        variant: "destructive"
+      });
     }
   };
 
