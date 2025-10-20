@@ -14,7 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      participant_calls: {
+        Row: {
+          call_id: string
+          created_at: string
+          id: string
+          prolific_id: string
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          id?: string
+          prolific_id: string
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          id?: string
+          prolific_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
