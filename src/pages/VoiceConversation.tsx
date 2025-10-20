@@ -1,25 +1,18 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { VapiWidget } from '@vapi-ai/client-sdk-react';
+import Vapi from '@vapi-ai/web';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-
-// Extended window interface for VAPI events
-declare global {
-  interface Window {
-    vapiEventBus?: {
-      on: (event: string, callback: (data: any) => void) => void;
-      off: (event: string, callback: (data: any) => void) => void;
-    };
-  }
-}
+import { Mic, MicOff, Phone } from 'lucide-react';
 
 const VoiceConversation = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [isCallActive, setIsCallActive] = useState(false);
   const [callTracked, setCallTracked] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const vapiRef = useRef<Vapi | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -88,45 +81,59 @@ const VoiceConversation = () => {
     });
   }, [toast]);
 
-  // Set up event listeners for VAPI widget
+  // Initialize Vapi SDK
   useEffect(() => {
-    // Poll for the VAPI widget to be loaded
-    const checkForVapi = setInterval(() => {
-      // Check if VAPI widget has been initialized
-      const vapiWidget = document.querySelector('vapi-widget');
-      if (vapiWidget) {
-        console.log('VAPI widget detected');
-        clearInterval(checkForVapi);
-        
-        // Listen for widget state changes
-        const observer = new MutationObserver((mutations) => {
-          mutations.forEach((mutation) => {
-            if (mutation.type === 'attributes' && mutation.attributeName === 'call-status') {
-              const status = (mutation.target as Element).getAttribute('call-status');
-              console.log('Call status changed:', status);
-              
-              if (status === 'active' && !callTracked) {
-                handleCallStart();
-              } else if (status === 'ended' || status === 'inactive') {
-                if (isCallActive) {
-                  handleCallEnd();
-                }
-              }
-            }
-          });
-        });
+    if (!prolificId) return;
 
-        observer.observe(vapiWidget, {
-          attributes: true,
-          attributeFilter: ['call-status']
-        });
+    const vapi = new Vapi(import.meta.env.VITE_VAPI_PUBLIC_KEY);
+    vapiRef.current = vapi;
 
-        return () => observer.disconnect();
-      }
-    }, 500);
+    // Set up event listeners
+    vapi.on('call-start', () => {
+      console.log('Call started');
+      handleCallStart();
+    });
 
-    return () => clearInterval(checkForVapi);
-  }, [handleCallStart, handleCallEnd, callTracked, isCallActive]);
+    vapi.on('call-end', () => {
+      console.log('Call ended');
+      handleCallEnd();
+    });
+
+    vapi.on('speech-start', () => {
+      console.log('Assistant started speaking');
+      setIsSpeaking(true);
+    });
+
+    vapi.on('speech-end', () => {
+      console.log('Assistant stopped speaking');
+      setIsSpeaking(false);
+    });
+
+    vapi.on('error', (error) => {
+      console.error('Vapi error:', error);
+      toast({
+        title: "Error",
+        description: "An error occurred during the call.",
+        variant: "destructive"
+      });
+    });
+
+    return () => {
+      vapi.stop();
+    };
+  }, [prolificId, handleCallStart, handleCallEnd, toast]);
+
+  const startCall = () => {
+    if (vapiRef.current) {
+      vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID);
+    }
+  };
+
+  const endCall = () => {
+    if (vapiRef.current) {
+      vapiRef.current.stop();
+    }
+  };
 
   const handleGoBack = () => {
     sessionStorage.removeItem('prolificId');
@@ -180,20 +187,35 @@ const VoiceConversation = () => {
             </ul>
           </div>
 
-          {isCallActive && (
-            <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-center">
-              <p className="text-sm font-medium text-primary">
-                🎙️ Conversation in progress...
-              </p>
-            </div>
-          )}
-
-          <div className="flex justify-center py-4">
-            <VapiWidget
-              publicKey={import.meta.env.VITE_VAPI_PUBLIC_KEY}
-              assistantId={import.meta.env.VITE_VAPI_ASSISTANT_ID}
-              mode="voice"
-            />
+          <div className="flex flex-col items-center justify-center py-8 gap-6">
+            {!isCallActive ? (
+              <Button
+                onClick={startCall}
+                size="lg"
+                className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform"
+              >
+                <Mic className="w-12 h-12" />
+              </Button>
+            ) : (
+              <div className="flex flex-col items-center gap-4">
+                <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-center min-w-[200px]">
+                  <div className="flex items-center justify-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${isSpeaking ? 'bg-destructive animate-pulse' : 'bg-primary'}`}></div>
+                    <p className="text-sm font-medium text-primary">
+                      {isSpeaking ? 'Assistant Speaking...' : 'Listening...'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={endCall}
+                  size="lg"
+                  variant="destructive"
+                  className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform"
+                >
+                  <Phone className="w-12 h-12 rotate-135" />
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="pt-4 border-t border-border">
