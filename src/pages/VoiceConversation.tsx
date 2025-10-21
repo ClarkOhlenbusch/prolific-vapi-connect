@@ -42,47 +42,9 @@ const VoiceConversation = () => {
     vapiRef.current = vapi;
 
     // Set up event listeners
-    vapi.on('call-start', async (callData?: any) => {
-      console.log('Call started event - Full payload:', JSON.stringify(callData, null, 2));
+    vapi.on('call-start', () => {
+      console.log('Call started event');
       setIsCallActive(true);
-      
-      if (!callTracked) {
-        // Extract call ID from Vapi event structure
-        // Try multiple paths based on Vapi webhook structure
-        const callId = callData?.message?.call?.id || 
-                       callData?.call?.id || 
-                       callData?.id || 
-                       `vapi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
-        console.log('Extracted call ID:', callId);
-        
-        try {
-          const { error } = await supabase
-            .from('participant_calls')
-            .insert({
-              prolific_id: prolificId,
-              call_id: callId
-            });
-
-          if (error) {
-            console.error('Error storing call mapping:', error);
-            toast({
-              title: "Warning",
-              description: "Call started but tracking may have failed.",
-              variant: "destructive"
-            });
-          } else {
-            console.log('Successfully stored call mapping:', { prolificId, callId });
-            setCallTracked(true);
-            toast({
-              title: "Call Started",
-              description: "Your conversation has begun and is being tracked.",
-            });
-          }
-        } catch (err) {
-          console.error('Error storing call data:', err);
-        }
-      }
     });
 
     vapi.on('call-end', () => {
@@ -114,8 +76,43 @@ const VoiceConversation = () => {
       });
     });
 
-    vapi.on('message', (message) => {
+    vapi.on('message', async (message: any) => {
       console.log('Vapi message:', message);
+      
+      // Look for the call ID in the message object
+      // Vapi sends the call ID through various message types
+      const callId = message?.call?.id;
+      
+      if (callId && !callTracked && prolificId) {
+        console.log('Found call ID in message:', callId);
+        
+        try {
+          const { error } = await supabase
+            .from('participant_calls')
+            .insert({
+              prolific_id: prolificId,
+              call_id: callId
+            });
+
+          if (error) {
+            console.error('Error storing call mapping:', error);
+            toast({
+              title: "Warning",
+              description: "Call started but tracking may have failed.",
+              variant: "destructive"
+            });
+          } else {
+            console.log('Successfully stored call mapping:', { prolificId, callId });
+            setCallTracked(true);
+            toast({
+              title: "Call Tracked",
+              description: "Your conversation is being tracked.",
+            });
+          }
+        } catch (err) {
+          console.error('Error storing call data:', err);
+        }
+      }
     });
 
     return () => {
