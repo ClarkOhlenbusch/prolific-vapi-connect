@@ -77,7 +77,7 @@ const VoiceConversation = () => {
     });
 
     vapi.on('message', async (message: any) => {
-      console.log('Vapi message:', message);
+      console.log('Vapi message:', JSON.stringify(message, null, 2));
       
       // Look for the call ID in the message object
       // Vapi sends the call ID through various message types
