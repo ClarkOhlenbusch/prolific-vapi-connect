@@ -23,7 +23,7 @@ serve(async (req) => {
     // Vapi sends status-update events with call object
     if (payload.message?.type === 'status-update' && payload.message?.call) {
       const callId = payload.message.call.id;
-      const metadata = payload.message.call.metadata || {};
+      const metadata = payload.message.call.assistantOverrides?.metadata || payload.message.call.metadata || {};
       const prolificId = metadata.prolificId;
 
       console.log('Call ID:', callId);
