@@ -35,6 +35,66 @@ export type Database = {
         }
         Relationships: []
       }
+      pets_responses: {
+        Row: {
+          call_id: string
+          created_at: string
+          e1: number
+          e2: number
+          e3: number
+          e4: number
+          e5: number
+          e6: number
+          id: string
+          pets_er: number
+          pets_total: number
+          pets_ut: number
+          prolific_id: string
+          u1: number
+          u2: number
+          u3: number
+          u4: number
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          e1: number
+          e2: number
+          e3: number
+          e4: number
+          e5: number
+          e6: number
+          id?: string
+          pets_er: number
+          pets_total: number
+          pets_ut: number
+          prolific_id: string
+          u1: number
+          u2: number
+          u3: number
+          u4: number
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          e1?: number
+          e2?: number
+          e3?: number
+          e4?: number
+          e5?: number
+          e6?: number
+          id?: string
+          pets_er?: number
+          pets_total?: number
+          pets_ut?: number
+          prolific_id?: string
+          u1?: number
+          u2?: number
+          u3?: number
+          u4?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
