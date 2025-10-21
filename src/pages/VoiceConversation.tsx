@@ -43,11 +43,18 @@ const VoiceConversation = () => {
 
     // Set up event listeners
     vapi.on('call-start', async (callData?: any) => {
-      console.log('Call started event', callData);
+      console.log('Call started event - Full payload:', JSON.stringify(callData, null, 2));
       setIsCallActive(true);
       
       if (!callTracked) {
-        const callId = callData?.id || callData?.callId || `vapi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        // Extract call ID from Vapi event structure
+        // Try multiple paths based on Vapi webhook structure
+        const callId = callData?.message?.call?.id || 
+                       callData?.call?.id || 
+                       callData?.id || 
+                       `vapi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        console.log('Extracted call ID:', callId);
         
         try {
           const { error } = await supabase
