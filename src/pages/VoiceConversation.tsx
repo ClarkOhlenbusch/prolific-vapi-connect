@@ -33,55 +33,8 @@ const VoiceConversation = () => {
     setProlificId(storedId);
   }, [navigate, toast]);
 
-  const handleCallStart = useCallback(async (callData?: any) => {
-    console.log('Call started, data:', callData);
-    setIsCallActive(true);
-    
-    if (!prolificId || callTracked) return;
-    
-    // Generate a unique call ID
-    // In a real implementation, VAPI would provide this ID
-    const callId = callData?.id || callData?.callId || `vapi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    try {
-      const { error } = await supabase
-        .from('participant_calls')
-        .insert({
-          prolific_id: prolificId,
-          call_id: callId
-        });
 
-      if (error) {
-        console.error('Error storing call mapping:', error);
-        toast({
-          title: "Warning",
-          description: "Call started but tracking may have failed.",
-          variant: "destructive"
-        });
-      } else {
-        console.log('Successfully stored call mapping:', { prolificId, callId });
-        setCallTracked(true);
-        toast({
-          title: "Call Started",
-          description: "Your conversation has begun and is being tracked.",
-        });
-      }
-    } catch (err) {
-      console.error('Error storing call data:', err);
-    }
-  }, [prolificId, callTracked, toast]);
-
-  const handleCallEnd = useCallback(() => {
-    console.log('Call ended');
-    setIsCallActive(false);
-    setCallTracked(false);
-    toast({
-      title: "Call Ended",
-      description: "Thank you for participating in the study!",
-    });
-  }, [toast]);
-
-  // Initialize Vapi SDK
+  // Initialize Vapi SDK - only once when component mounts
   useEffect(() => {
     if (!prolificId) return;
 
@@ -89,14 +42,50 @@ const VoiceConversation = () => {
     vapiRef.current = vapi;
 
     // Set up event listeners
-    vapi.on('call-start', () => {
-      console.log('Call started event');
-      handleCallStart();
+    vapi.on('call-start', async (callData?: any) => {
+      console.log('Call started event', callData);
+      setIsCallActive(true);
+      
+      if (!callTracked) {
+        const callId = callData?.id || callData?.callId || `vapi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        try {
+          const { error } = await supabase
+            .from('participant_calls')
+            .insert({
+              prolific_id: prolificId,
+              call_id: callId
+            });
+
+          if (error) {
+            console.error('Error storing call mapping:', error);
+            toast({
+              title: "Warning",
+              description: "Call started but tracking may have failed.",
+              variant: "destructive"
+            });
+          } else {
+            console.log('Successfully stored call mapping:', { prolificId, callId });
+            setCallTracked(true);
+            toast({
+              title: "Call Started",
+              description: "Your conversation has begun and is being tracked.",
+            });
+          }
+        } catch (err) {
+          console.error('Error storing call data:', err);
+        }
+      }
     });
 
     vapi.on('call-end', () => {
       console.log('Call ended event');
-      handleCallEnd();
+      setIsCallActive(false);
+      setCallTracked(false);
+      toast({
+        title: "Call Ended",
+        description: "Thank you for participating in the study!",
+      });
     });
 
     vapi.on('speech-start', () => {
@@ -123,9 +112,10 @@ const VoiceConversation = () => {
     });
 
     return () => {
+      console.log('Cleaning up Vapi instance');
       vapi.stop();
     };
-  }, [prolificId, handleCallStart, handleCallEnd, toast]);
+  }, [prolificId]);
 
   const startCall = async () => {
     if (!vapiRef.current) return;
