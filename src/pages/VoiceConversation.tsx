@@ -1,20 +1,54 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Vapi from '@vapi-ai/web';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { Mic, MicOff, Phone } from 'lucide-react';
+
+interface PETSItem {
+  id: string;
+  text: string;
+  key: 'e1' | 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'u1' | 'u2' | 'u3' | 'u4';
+}
+
+const PETS_ITEMS: PETSItem[] = [
+  { id: 'E1', text: 'The system considered my mental state.', key: 'e1' },
+  { id: 'E2', text: 'The system seemed emotionally intelligent.', key: 'e2' },
+  { id: 'E3', text: 'The system expressed emotions.', key: 'e3' },
+  { id: 'E4', text: 'The system sympathized with me.', key: 'e4' },
+  { id: 'E5', text: 'The system showed interest in me.', key: 'e5' },
+  { id: 'E6', text: 'The system supported me in coping with an emotional situation.', key: 'e6' },
+  { id: 'U1', text: 'The system understood my goals.', key: 'u1' },
+  { id: 'U2', text: 'The system understood my needs.', key: 'u2' },
+  { id: 'U3', text: 'I trusted the system.', key: 'u3' },
+  { id: 'U4', text: 'The system understood my intentions.', key: 'u4' },
+];
 
 const VoiceConversation = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [isCallActive, setIsCallActive] = useState(false);
   const [callTracked, setCallTracked] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [showCompletion, setShowCompletion] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [callId, setCallId] = useState<string | null>(null);
+  const [responses, setResponses] = useState<Record<string, number>>({
+    e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
+    u1: 50, u2: 50, u3: 50, u4: 50
+  });
+  
   const vapiRef = useRef<Vapi | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Randomize items order once on mount
+  const randomizedItems = useMemo(() => {
+    return [...PETS_ITEMS].sort(() => Math.random() - 0.5);
+  }, []);
 
   useEffect(() => {
     // Retrieve the Prolific ID from sessionStorage
@@ -51,10 +85,7 @@ const VoiceConversation = () => {
       console.log('Call ended event');
       setIsCallActive(false);
       setCallTracked(false);
-      toast({
-        title: "Call Ended",
-        description: "Thank you for participating in the study!",
-      });
+      setShowQuestionnaire(true);
     });
 
     vapi.on('speech-start', () => {
@@ -81,17 +112,18 @@ const VoiceConversation = () => {
       
       // Look for the call ID in the message object
       // Vapi sends the call ID through various message types
-      const callId = message?.call?.id;
+      const messageCallId = message?.call?.id;
       
-      if (callId && !callTracked && prolificId) {
-        console.log('Found call ID in message:', callId);
+      if (messageCallId && !callTracked && prolificId) {
+        console.log('Found call ID in message:', messageCallId);
+        setCallId(messageCallId);
         
         try {
           const { error } = await supabase
             .from('participant_calls')
             .insert({
               prolific_id: prolificId,
-              call_id: callId
+              call_id: messageCallId
             });
 
           if (error) {
@@ -159,8 +191,187 @@ const VoiceConversation = () => {
     navigate('/');
   };
 
+  const handleSliderChange = (key: string, value: number[]) => {
+    setResponses(prev => ({ ...prev, [key]: value[0] }));
+  };
+
+  const handleSubmitQuestionnaire = async () => {
+    if (!prolificId || !callId) {
+      toast({
+        title: "Error",
+        description: "Missing required data. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Calculate scores
+      const erItems = [responses.e1, responses.e2, responses.e3, responses.e4, responses.e5, responses.e6];
+      const utItems = [responses.u1, responses.u2, responses.u3, responses.u4];
+      
+      const pets_er = erItems.reduce((a, b) => a + b, 0) / erItems.length;
+      const pets_ut = utItems.reduce((a, b) => a + b, 0) / utItems.length;
+      const pets_total = pets_er * 0.6 + pets_ut * 0.4;
+
+      const { error } = await supabase
+        .from('pets_responses')
+        .insert({
+          prolific_id: prolificId,
+          call_id: callId,
+          e1: responses.e1,
+          e2: responses.e2,
+          e3: responses.e3,
+          e4: responses.e4,
+          e5: responses.e5,
+          e6: responses.e6,
+          u1: responses.u1,
+          u2: responses.u2,
+          u3: responses.u3,
+          u4: responses.u4,
+          pets_er,
+          pets_ut,
+          pets_total
+        });
+
+      if (error) {
+        console.error('Error submitting questionnaire:', error);
+        toast({
+          title: "Error",
+          description: "Failed to submit questionnaire. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setShowQuestionnaire(false);
+      setShowCompletion(true);
+
+      // Auto-redirect after 5 seconds
+      setTimeout(() => {
+        window.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH';
+      }, 5000);
+
+    } catch (err) {
+      console.error('Error submitting questionnaire:', err);
+      toast({
+        title: "Error",
+        description: "An error occurred. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (!prolificId) {
     return null;
+  }
+
+  // Show completion message
+  if (showCompletion) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
+        <Card className="w-full max-w-2xl shadow-xl border-border">
+          <CardHeader className="space-y-3">
+            <div className="w-16 h-16 mx-auto bg-primary rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-primary-foreground" fill="none" strokeWidth="2" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <CardTitle className="text-2xl text-center">Study Complete!</CardTitle>
+            <CardDescription className="text-center">
+              Thank you for your participation
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="bg-accent/50 rounded-lg p-6 space-y-4 text-center">
+              <p className="text-foreground font-semibold">You will be automatically redirected to Prolific in 5 seconds...</p>
+              <p className="text-sm text-muted-foreground">If you are not redirected automatically, please use the options below:</p>
+              
+              <Button
+                onClick={() => window.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH'}
+                className="w-full"
+                size="lg"
+              >
+                Click here to complete on Prolific
+              </Button>
+
+              <div className="pt-4 border-t border-border">
+                <p className="text-sm text-muted-foreground mb-2">Or copy and paste this completion code:</p>
+                <div className="bg-background rounded-md p-3 border border-border">
+                  <code className="text-lg font-mono font-bold text-primary">CWJF4IWH</code>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show questionnaire
+  if (showQuestionnaire) {
+    const allAnswered = Object.values(responses).every(val => val !== null);
+    
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
+        <Card className="w-full max-w-3xl shadow-xl border-border">
+          <CardHeader className="space-y-3">
+            <CardTitle className="text-2xl text-center">Perceived Empathy of Technology Scale (PETS)</CardTitle>
+            <CardDescription className="text-center">
+              Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="bg-accent/50 rounded-lg p-6">
+              <p className="text-sm text-foreground leading-relaxed">
+                The following questions ask about how empathic you found the system you just interacted with. 
+                Please rate each statement on a scale from 0 (strongly disagree) to 100 (strongly agree). 
+                There are no right or wrong answers.
+              </p>
+            </div>
+
+            <div className="space-y-8">
+              {randomizedItems.map((item, index) => (
+                <div key={item.key} className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
+                    <label className="text-sm text-foreground flex-1">{item.text}</label>
+                  </div>
+                  <div className="pl-6">
+                    <Slider
+                      value={[responses[item.key]]}
+                      onValueChange={(value) => handleSliderChange(item.key, value)}
+                      min={0}
+                      max={100}
+                      step={1}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                      <span>Strongly disagree (0)</span>
+                      <span className="font-semibold text-primary">{responses[item.key]}</span>
+                      <span>Strongly agree (100)</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Button
+              onClick={handleSubmitQuestionnaire}
+              disabled={isSubmitting}
+              className="w-full"
+              size="lg"
+            >
+              {isSubmitting ? 'Submitting...' : 'Submit Questionnaire'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
