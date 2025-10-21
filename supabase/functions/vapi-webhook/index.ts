@@ -20,11 +20,10 @@ serve(async (req) => {
     const payload = await req.json();
     console.log('Vapi webhook received:', JSON.stringify(payload, null, 2));
 
-    // Vapi sends different event types - we're interested in call.started or call.ended
-    // which contain the call.id
-    if (payload.message?.type === 'call-start' || payload.message?.call) {
-      const callId = payload.message?.call?.id || payload.message?.callId;
-      const metadata = payload.message?.call?.metadata || {};
+    // Vapi sends status-update events with call object
+    if (payload.message?.type === 'status-update' && payload.message?.call) {
+      const callId = payload.message.call.id;
+      const metadata = payload.message.call.metadata || {};
       const prolificId = metadata.prolificId;
 
       console.log('Call ID:', callId);
