@@ -131,9 +131,13 @@ const VoiceConversation = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       console.log('Microphone permission granted:', stream);
       
-      // Start the call
-      await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID);
-      console.log('Call start initiated successfully');
+      // Start the call with prolificId in metadata for webhook
+      await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
+        metadata: {
+          prolificId: prolificId
+        }
+      });
+      console.log('Call start initiated successfully with prolific ID:', prolificId);
     } catch (error) {
       console.error('Error starting call:', error);
       toast({
