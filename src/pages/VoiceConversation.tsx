@@ -90,6 +90,12 @@ const VoiceConversation = () => {
   const startCall = async () => {
     if (!vapiRef.current) return;
     
+    // Prevent duplicate calls if already tracking
+    if (callTracked || callId) {
+      console.log('Call already in progress or tracked');
+      return;
+    }
+    
     try {
       console.log('Attempting to start call with assistant:', import.meta.env.VITE_VAPI_ASSISTANT_ID);
       
@@ -107,7 +113,7 @@ const VoiceConversation = () => {
       console.log('Call started with ID:', call.id);
       setCallId(call.id);
       
-      // Store the call mapping immediately
+      // Store the call mapping immediately (unique constraint prevents duplicates at DB level)
       try {
         const { error } = await supabase
           .from('participant_calls')
