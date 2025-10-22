@@ -79,42 +79,6 @@ const VoiceConversation = () => {
 
     vapi.on('message', async (message: any) => {
       console.log('Vapi message:', JSON.stringify(message, null, 2));
-      
-      // Look for the call ID in the message object
-      // Vapi sends the call ID through various message types
-      const messageCallId = message?.call?.id;
-      
-      if (messageCallId && !callTracked && prolificId) {
-        console.log('Found call ID in message:', messageCallId);
-        setCallId(messageCallId);
-        
-        try {
-          const { error } = await supabase
-            .from('participant_calls')
-            .insert({
-              prolific_id: prolificId,
-              call_id: messageCallId
-            });
-
-          if (error) {
-            console.error('Error storing call mapping:', error);
-            toast({
-              title: "Warning",
-              description: "Call started but tracking may have failed.",
-              variant: "destructive"
-            });
-          } else {
-            console.log('Successfully stored call mapping:', { prolificId, callId });
-            setCallTracked(true);
-            toast({
-              title: "Call Tracked",
-              description: "Your conversation is being tracked.",
-            });
-          }
-        } catch (err) {
-          console.error('Error storing call data:', err);
-        }
-      }
     });
 
     return () => {
@@ -134,12 +98,37 @@ const VoiceConversation = () => {
       console.log('Microphone permission granted:', stream);
       
       // Start the call with prolificId in metadata for webhook
-      await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
+      const call = await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
         metadata: {
           prolificId: prolificId
         }
       });
-      console.log('Call start initiated successfully with prolific ID:', prolificId);
+      
+      console.log('Call started with ID:', call.id);
+      setCallId(call.id);
+      
+      // Store the call mapping immediately
+      try {
+        const { error } = await supabase
+          .from('participant_calls')
+          .insert({
+            prolific_id: prolificId,
+            call_id: call.id
+          });
+
+        if (error) {
+          console.error('Error storing call mapping:', error);
+        } else {
+          console.log('Successfully stored call mapping:', { prolificId, callId: call.id });
+          setCallTracked(true);
+          toast({
+            title: "Call Started",
+            description: "Your conversation is being tracked.",
+          });
+        }
+      } catch (err) {
+        console.error('Error storing call data:', err);
+      }
     } catch (error) {
       console.error('Error starting call:', error);
       toast({
