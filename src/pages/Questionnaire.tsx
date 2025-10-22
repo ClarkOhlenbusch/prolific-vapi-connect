@@ -33,9 +33,9 @@ const Questionnaire = () => {
   
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
-  const [responses, setResponses] = useState<Record<string, number | null>>({
-    e1: null, e2: null, e3: null, e4: null, e5: null, e6: null,
-    u1: null, u2: null, u3: null, u4: null
+  const [responses, setResponses] = useState<Record<string, number>>({
+    e1: 0, e2: 0, e3: 0, e4: 0, e5: 0, e6: 0,
+    u1: 0, u2: 0, u3: 0, u4: 0
   });
   const [interacted, setInteracted] = useState<Record<string, boolean>>({
     e1: false, e2: false, e3: false, e4: false, e5: false, e6: false,
@@ -92,7 +92,7 @@ const Questionnaire = () => {
 
       if (existingResponse) {
         // Load existing responses
-        const loadedResponses: Record<string, number | null> = {
+        const loadedResponses: Record<string, number> = {
           e1: existingResponse.e1,
           e2: existingResponse.e2,
           e3: existingResponse.e3,
@@ -106,10 +106,10 @@ const Questionnaire = () => {
         };
         setResponses(loadedResponses);
         
-        // Mark all as interacted if they have values
+        // Mark all as interacted since they have saved values
         const loadedInteracted: Record<string, boolean> = {};
         Object.keys(loadedResponses).forEach(key => {
-          loadedInteracted[key] = loadedResponses[key] !== null;
+          loadedInteracted[key] = true;
         });
         setInteracted(loadedInteracted);
       }
@@ -129,8 +129,8 @@ const Questionnaire = () => {
   };
 
   const handleSubmit = async () => {
-    // Check all questions answered
-    const allAnswered = Object.values(responses).every(val => val !== null);
+    // Check all questions have been interacted with
+    const allAnswered = Object.values(interacted).every(val => val === true);
     
     if (!allAnswered) {
       toast({
@@ -219,7 +219,7 @@ const Questionnaire = () => {
     );
   }
 
-  const allAnswered = Object.values(responses).every(val => val !== null);
+  const allAnswered = Object.values(interacted).every(val => val === true);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
@@ -248,7 +248,7 @@ const Questionnaire = () => {
                 </div>
                 <div className="pl-6">
                   <PetsSlider
-                    value={responses[item.key] !== null ? [responses[item.key]!] : [50]}
+                    value={[responses[item.key]]}
                     onValueChange={(value) => handleSliderChange(item.key, value)}
                     onInteract={() => handleInteract(item.key)}
                     hasInteracted={interacted[item.key]}
@@ -259,7 +259,7 @@ const Questionnaire = () => {
                   />
                   <div className="flex justify-between mt-2 text-xs text-muted-foreground">
                     <span>Strongly disagree (0)</span>
-                    {responses[item.key] !== null && (
+                    {interacted[item.key] && (
                       <span className="font-semibold text-primary">{responses[item.key]}</span>
                     )}
                     <span>Strongly agree (100)</span>

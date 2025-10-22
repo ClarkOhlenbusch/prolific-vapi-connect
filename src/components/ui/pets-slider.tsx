@@ -18,7 +18,12 @@ const PetsSlider = React.forwardRef<
     {...props}
   >
     <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-secondary">
-      <SliderPrimitive.Range className="absolute h-full bg-primary" />
+      <SliderPrimitive.Range 
+        className={cn(
+          "absolute h-full bg-primary transition-opacity",
+          !hasInteracted && "opacity-0"
+        )} 
+      />
     </SliderPrimitive.Track>
     <SliderPrimitive.Thumb 
       className={cn(
