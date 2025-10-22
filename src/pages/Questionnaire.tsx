@@ -154,37 +154,45 @@ const Questionnaire = () => {
 
     try {
       // Calculate scores
-      const erItems = [responses.e1!, responses.e2!, responses.e3!, responses.e4!, responses.e5!, responses.e6!];
-      const utItems = [responses.u1!, responses.u2!, responses.u3!, responses.u4!];
+      const erItems = [responses.e1, responses.e2, responses.e3, responses.e4, responses.e5, responses.e6];
+      const utItems = [responses.u1, responses.u2, responses.u3, responses.u4];
       
       const pets_er = erItems.reduce((a, b) => a + b, 0) / erItems.length;
       const pets_ut = utItems.reduce((a, b) => a + b, 0) / utItems.length;
       const pets_total = pets_er * 0.6 + pets_ut * 0.4;
 
-      // UPSERT: Insert or update if exists
+      // INSERT only (no updates allowed for data integrity)
       const { error } = await supabase
         .from('pets_responses')
-        .upsert({
+        .insert({
           prolific_id: prolificId,
           call_id: callId,
-          e1: responses.e1!,
-          e2: responses.e2!,
-          e3: responses.e3!,
-          e4: responses.e4!,
-          e5: responses.e5!,
-          e6: responses.e6!,
-          u1: responses.u1!,
-          u2: responses.u2!,
-          u3: responses.u3!,
-          u4: responses.u4!,
+          e1: responses.e1,
+          e2: responses.e2,
+          e3: responses.e3,
+          e4: responses.e4,
+          e5: responses.e5,
+          e6: responses.e6,
+          u1: responses.u1,
+          u2: responses.u2,
+          u3: responses.u3,
+          u4: responses.u4,
           pets_er,
           pets_ut,
           pets_total
-        }, {
-          onConflict: 'prolific_id,call_id'
         });
 
       if (error) {
+        // Check for duplicate key violation (already submitted)
+        if (error.code === '23505') {
+          toast({
+            title: "Already Submitted",
+            description: "You have already completed this questionnaire.",
+          });
+          navigate('/complete');
+          return;
+        }
+        
         console.error('Error submitting questionnaire:', error);
         toast({
           title: "Error",
@@ -193,6 +201,11 @@ const Questionnaire = () => {
         });
         return;
       }
+
+      toast({
+        title: "Success",
+        description: "Your responses have been submitted successfully.",
+      });
 
       navigate('/complete');
     } catch (err) {
