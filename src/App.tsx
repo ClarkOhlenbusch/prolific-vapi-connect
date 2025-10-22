@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ProlificId from "./pages/ProlificId";
 import VoiceConversation from "./pages/VoiceConversation";
+import Questionnaire from "./pages/Questionnaire";
+import Complete from "./pages/Complete";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -18,6 +20,8 @@ const App = () => (
         <Routes>
           <Route path="/" element={<ProlificId />} />
           <Route path="/conversation" element={<VoiceConversation />} />
+          <Route path="/questionnaire" element={<Questionnaire />} />
+          <Route path="/complete" element={<Complete />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
