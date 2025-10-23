@@ -126,20 +126,17 @@ const VoiceConversation = () => {
         return;
       }
 
-      // Store the call mapping immediately (unique constraint prevents duplicates at DB level)
+      // Update the existing session record with the call ID
       try {
         const { error } = await supabase
           .from('participant_calls')
-          .insert({
-            prolific_id: prolificId,
-            call_id: call.id,
-            session_token: sessionToken
-          });
+          .update({ call_id: call.id })
+          .eq('session_token', sessionToken);
 
         if (error) {
-          console.error('Error storing call mapping:', error);
+          console.error('Error updating call mapping:', error);
         } else {
-          console.log('Successfully stored call mapping:', { prolificId, callId: call.id });
+          console.log('Successfully updated call mapping:', { prolificId, callId: call.id });
           setCallTracked(true);
           toast({
             title: "Call Started",
@@ -147,7 +144,7 @@ const VoiceConversation = () => {
           });
         }
       } catch (err) {
-        console.error('Error storing call data:', err);
+        console.error('Error updating call data:', err);
       }
     } catch (error) {
       console.error('Error starting call:', error);
