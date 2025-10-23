@@ -113,13 +113,27 @@ const VoiceConversation = () => {
       console.log('Call started with ID:', call.id);
       setCallId(call.id);
       
+      // Get session token from localStorage
+      const sessionToken = localStorage.getItem('sessionToken');
+      if (!sessionToken) {
+        console.error('No session token found');
+        toast({
+          title: "Error",
+          description: "Session expired. Please start over.",
+          variant: "destructive"
+        });
+        navigate('/');
+        return;
+      }
+
       // Store the call mapping immediately (unique constraint prevents duplicates at DB level)
       try {
         const { error } = await supabase
           .from('participant_calls')
           .insert({
             prolific_id: prolificId,
-            call_id: call.id
+            call_id: call.id,
+            session_token: sessionToken
           });
 
         if (error) {

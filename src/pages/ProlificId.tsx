@@ -26,8 +26,12 @@ const ProlificId = () => {
 
     setIsLoading(true);
     
-    // Store the Prolific ID in sessionStorage to pass to the next page
+    // Generate secure session token
+    const sessionToken = crypto.randomUUID();
+    
+    // Store both Prolific ID and session token
     sessionStorage.setItem('prolificId', prolificId.trim());
+    localStorage.setItem('sessionToken', sessionToken);
     
     // Navigate to the voice conversation page
     setTimeout(() => {
