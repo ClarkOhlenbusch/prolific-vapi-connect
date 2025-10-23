@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 const ProlificId = () => {
   const [prolificId, setProlificId] = useState('');
@@ -12,7 +13,7 @@ const ProlificId = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!prolificId.trim()) {
@@ -26,17 +27,45 @@ const ProlificId = () => {
 
     setIsLoading(true);
     
-    // Generate secure session token
-    const sessionToken = crypto.randomUUID();
-    
-    // Store both Prolific ID and session token
-    sessionStorage.setItem('prolificId', prolificId.trim());
-    localStorage.setItem('sessionToken', sessionToken);
-    
-    // Navigate to the voice conversation page
-    setTimeout(() => {
+    try {
+      // Generate secure session token
+      const sessionToken = crypto.randomUUID();
+      
+      // Insert session token into database immediately
+      const { error } = await supabase
+        .from('participant_calls')
+        .insert({
+          prolific_id: prolificId.trim(),
+          call_id: '', // Will be updated when VAPI call starts
+          session_token: sessionToken
+        });
+
+      if (error) {
+        console.error('Error creating session:', error);
+        toast({
+          title: "Error",
+          description: "Failed to create session. Please try again.",
+          variant: "destructive"
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Store both Prolific ID and session token
+      sessionStorage.setItem('prolificId', prolificId.trim());
+      localStorage.setItem('sessionToken', sessionToken);
+      
+      // Navigate to the voice conversation page
       navigate('/conversation');
-    }, 300);
+    } catch (error) {
+      console.error('Session creation error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive"
+      });
+      setIsLoading(false);
+    }
   };
 
   return (
