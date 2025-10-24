@@ -162,11 +162,25 @@ const VoiceConversation = () => {
         }
       });
       
-      console.log('Call started with ID:', call.id);
+      console.log('VAPI Call object:', call);
+      console.log('Call started with ID:', call?.id);
+      
+      if (!call || !call.id) {
+        console.error('No call ID returned from VAPI');
+        toast({
+          title: "Error",
+          description: "Failed to get call ID from VAPI. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       setCallId(call.id);
       
       // Get session token from localStorage
       const sessionToken = localStorage.getItem('sessionToken');
+      console.log('Session token:', sessionToken);
+      
       if (!sessionToken) {
         console.error('No session token found');
         toast({
@@ -180,15 +194,32 @@ const VoiceConversation = () => {
 
       // Update the existing session record with the call ID
       try {
-        const { error } = await supabase
+        console.log('Attempting to update with:', { callId: call.id, sessionToken });
+        
+        const { data, error, count } = await supabase
           .from('participant_calls')
           .update({ call_id: call.id })
-          .eq('session_token', sessionToken);
+          .eq('session_token', sessionToken)
+          .select();
+
+        console.log('Update result:', { data, error, count });
 
         if (error) {
-          console.error('Error updating call mapping:', error);
+          console.error('Supabase error updating call mapping:', error);
+          toast({
+            title: "Warning",
+            description: "Call started but tracking may have failed.",
+            variant: "destructive"
+          });
+        } else if (!data || data.length === 0) {
+          console.error('No rows updated - session token not found');
+          toast({
+            title: "Warning", 
+            description: "Session not found. Please refresh and try again.",
+            variant: "destructive"
+          });
         } else {
-          console.log('Successfully updated call mapping:', { prolificId, callId: call.id });
+          console.log('Successfully updated call mapping:', { prolificId, callId: call.id, updated: data });
           setCallTracked(true);
           toast({
             title: "Call Started",
@@ -196,7 +227,12 @@ const VoiceConversation = () => {
           });
         }
       } catch (err) {
-        console.error('Error updating call data:', err);
+        console.error('Exception updating call data:', err);
+        toast({
+          title: "Warning",
+          description: "Call started but tracking failed.",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('Error starting call:', error);
