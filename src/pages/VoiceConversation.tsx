@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { EndCallDialog } from '@/components/EndCallDialog';
-import { Mic, Phone } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Mic, Phone, Clock } from 'lucide-react';
 
 const VoiceConversation = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
@@ -16,8 +17,11 @@ const VoiceConversation = () => {
   const [callId, setCallId] = useState<string | null>(null);
   const [showEndDialog, setShowEndDialog] = useState(false);
   const [callEnded, setCallEnded] = useState(false);
+  const [showPreCallModal, setShowPreCallModal] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
   
   const vapiRef = useRef<Vapi | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -84,8 +88,53 @@ const VoiceConversation = () => {
     return () => {
       console.log('Cleaning up Vapi instance');
       vapi.stop();
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
     };
   }, [prolificId]);
+
+  // Timer effect - starts when call is active
+  useEffect(() => {
+    if (isCallActive && !callEnded) {
+      timerRef.current = setInterval(() => {
+        setTimeRemaining((prev) => {
+          if (prev <= 1) {
+            // Time's up - force end the call
+            if (vapiRef.current) {
+              vapiRef.current.stop();
+            }
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+            }
+            toast({
+              title: "Time's Up",
+              description: "The 5-minute conversation has ended.",
+            });
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      if (!isCallActive && callEnded) {
+        setTimeRemaining(300); // Reset for next call
+      }
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isCallActive, callEnded, toast]);
+
+  const handleStartCallClick = () => {
+    setShowPreCallModal(true);
+  };
 
   const startCall = async () => {
     if (!vapiRef.current) return;
@@ -95,6 +144,9 @@ const VoiceConversation = () => {
       console.log('Call already in progress or tracked');
       return;
     }
+    
+    setShowPreCallModal(false);
+    setTimeRemaining(300); // Reset timer to 5 minutes
     
     try {
       console.log('Attempting to start call with assistant:', import.meta.env.VITE_VAPI_ASSISTANT_ID);
@@ -184,6 +236,12 @@ const VoiceConversation = () => {
     navigate('/');
   };
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   if (!prolificId) {
     return null;
   }
@@ -234,7 +292,7 @@ const VoiceConversation = () => {
           <div className="flex flex-col items-center justify-center py-8 gap-6">
             {!isCallActive && !callEnded ? (
               <Button
-                onClick={startCall}
+                onClick={handleStartCallClick}
                 size="lg"
                 className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform"
               >
@@ -258,7 +316,13 @@ const VoiceConversation = () => {
               </div>
             ) : (
               <div className="flex flex-col items-center gap-4">
-                <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-center min-w-[200px]">
+                <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-center min-w-[200px] space-y-2">
+                  <div className="flex items-center justify-center gap-2">
+                    <Clock className="w-4 h-4 text-primary" />
+                    <p className="text-lg font-bold text-primary">
+                      {formatTime(timeRemaining)}
+                    </p>
+                  </div>
                   <div className="flex items-center justify-center gap-2">
                     <div className={`w-3 h-3 rounded-full ${isSpeaking ? 'bg-destructive animate-pulse' : 'bg-primary'}`}></div>
                     <p className="text-sm font-medium text-primary">
@@ -283,6 +347,47 @@ const VoiceConversation = () => {
             onOpenChange={setShowEndDialog}
             onConfirm={handleConfirmEndCall}
           />
+
+          <Dialog open={showPreCallModal} onOpenChange={setShowPreCallModal}>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle className="text-xl">Healthcare Conversation Guidelines</DialogTitle>
+                <DialogDescription className="space-y-4 text-left pt-4">
+                  <div className="bg-accent/50 rounded-lg p-4 space-y-3">
+                    <p className="text-foreground font-semibold">
+                      Please read carefully before starting:
+                    </p>
+                    <ul className="space-y-2 text-sm">
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>This is a healthcare conversational setting with an AI assistant</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>The conversation will automatically end after exactly <strong>5 minutes</strong></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>You must complete the entire 5-minute conversation before proceeding to the questionnaire</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>A timer will be displayed during the conversation to show remaining time</span>
+                      </li>
+                    </ul>
+                  </div>
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button variant="outline" onClick={() => setShowPreCallModal(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={startCall}>
+                  I Understand, Start Conversation
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <div className="pt-4 border-t border-border">
             <Button 
