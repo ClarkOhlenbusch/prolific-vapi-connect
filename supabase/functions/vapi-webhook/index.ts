@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Validation regex for Prolific ID
+const PROLIFIC_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -58,10 +61,15 @@ serve(async (req) => {
         );
       }
 
-      if (!prolificId || typeof prolificId !== 'string' || prolificId.length > 255) {
-        console.error('Invalid prolific ID');
+      // Validate prolificId format and length
+      if (!prolificId || 
+          typeof prolificId !== 'string' || 
+          prolificId.length === 0 ||
+          prolificId.length > 100 ||
+          !PROLIFIC_ID_REGEX.test(prolificId)) {
+        console.error('Invalid prolificId format');
         return new Response(
-          JSON.stringify({ error: 'Invalid prolific ID' }),
+          JSON.stringify({ error: 'Invalid prolificId format. Must contain only letters, numbers, hyphens, and underscores (max 100 characters)' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
