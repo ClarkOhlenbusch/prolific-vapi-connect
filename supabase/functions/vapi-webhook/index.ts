@@ -16,22 +16,54 @@ serve(async (req) => {
   }
 
   try {
-    // Verify VAPI webhook signature
-    const signature = req.headers.get('x-vapi-signature');
     const webhookSecret = Deno.env.get('VAPI_WEBHOOK_SECRET');
-
-    if (!signature || !webhookSecret) {
-      console.error('Missing signature or webhook secret');
+    
+    if (!webhookSecret) {
+      console.error('VAPI_WEBHOOK_SECRET not configured');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Webhook not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get the raw body for signature verification
+    const rawBody = await req.text();
+    const signature = req.headers.get('x-vapi-signature');
+
+    if (!signature) {
+      console.error('Missing x-vapi-signature header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - missing signature' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (signature !== webhookSecret) {
+    // Verify HMAC signature
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(webhookSecret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+
+    const signatureBytes = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      encoder.encode(rawBody)
+    );
+
+    const computedSignature = Array.from(new Uint8Array(signatureBytes))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    if (signature !== computedSignature) {
       console.error('Invalid webhook signature');
+      console.log('Expected:', computedSignature);
+      console.log('Received:', signature);
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Unauthorized - invalid signature' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -40,7 +72,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const payload = await req.json();
+    const payload = JSON.parse(rawBody);
     console.log('Vapi webhook received (verified):', JSON.stringify(payload, null, 2));
 
     // Validate input before processing
