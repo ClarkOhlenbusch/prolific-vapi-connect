@@ -40,6 +40,12 @@ export type Database = {
       }
       pets_responses: {
         Row: {
+          attention_check_1: number | null
+          attention_check_1_expected: number | null
+          attention_check_2: number | null
+          attention_check_2_expected: number | null
+          attention_check_3: number | null
+          attention_check_3_expected: number | null
           call_id: string
           created_at: string
           e1: number
@@ -59,6 +65,12 @@ export type Database = {
           u4: number
         }
         Insert: {
+          attention_check_1?: number | null
+          attention_check_1_expected?: number | null
+          attention_check_2?: number | null
+          attention_check_2_expected?: number | null
+          attention_check_3?: number | null
+          attention_check_3_expected?: number | null
           call_id: string
           created_at?: string
           e1: number
@@ -78,6 +90,12 @@ export type Database = {
           u4: number
         }
         Update: {
+          attention_check_1?: number | null
+          attention_check_1_expected?: number | null
+          attention_check_2?: number | null
+          attention_check_2_expected?: number | null
+          attention_check_3?: number | null
+          attention_check_3_expected?: number | null
           call_id?: string
           created_at?: string
           e1?: number

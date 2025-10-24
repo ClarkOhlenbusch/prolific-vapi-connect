@@ -13,6 +13,16 @@ interface PETSItem {
   key: 'e1' | 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'u1' | 'u2' | 'u3' | 'u4';
 }
 
+interface AttentionCheckItem {
+  id: string;
+  text: string;
+  key: 'ac1' | 'ac2' | 'ac3';
+  expectedValue: number;
+  isAttentionCheck: true;
+}
+
+type QuestionItem = PETSItem | AttentionCheckItem;
+
 const PETS_ITEMS: PETSItem[] = [
   { id: 'E1', text: 'The system considered my mental state.', key: 'e1' },
   { id: 'E2', text: 'The system seemed emotionally intelligent.', key: 'e2' },
@@ -35,19 +45,49 @@ const Questionnaire = () => {
   const [callId, setCallId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, number>>({
     e1: 0, e2: 0, e3: 0, e4: 0, e5: 0, e6: 0,
-    u1: 0, u2: 0, u3: 0, u4: 0
+    u1: 0, u2: 0, u3: 0, u4: 0,
+    ac1: 0, ac2: 0, ac3: 0
   });
   const [interacted, setInteracted] = useState<Record<string, boolean>>({
     e1: false, e2: false, e3: false, e4: false, e5: false, e6: false,
-    u1: false, u2: false, u3: false, u4: false
+    u1: false, u2: false, u3: false, u4: false,
+    ac1: false, ac2: false, ac3: false
   });
+  const [exampleValue, setExampleValue] = useState(50);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Randomize items once
-  const randomizedItems = useMemo(() => {
-    return [...PETS_ITEMS].sort(() => Math.random() - 0.5);
+  // Generate attention check questions with random target values
+  const attentionChecks = useMemo((): AttentionCheckItem[] => {
+    const val1 = Math.floor(Math.random() * 101);
+    const val2 = Math.floor(Math.random() * 101);
+    const val3 = Math.floor(Math.random() * 101);
+    
+    return [
+      { id: 'AC1', text: `Please select ${val1}`, key: 'ac1' as const, expectedValue: val1, isAttentionCheck: true as const },
+      { id: 'AC2', text: `Please select ${val2}`, key: 'ac2' as const, expectedValue: val2, isAttentionCheck: true as const },
+      { id: 'AC3', text: `Please select ${val3}`, key: 'ac3' as const, expectedValue: val3, isAttentionCheck: true as const },
+    ];
   }, []);
+
+  // Randomize items once and insert attention checks randomly
+  const randomizedItems = useMemo(() => {
+    const allItems: QuestionItem[] = [...PETS_ITEMS];
+    const shuffled = allItems.sort(() => Math.random() - 0.5);
+    
+    // Insert attention checks at random positions
+    const positions = [
+      Math.floor(Math.random() * 4),
+      Math.floor(Math.random() * 4) + 4,
+      Math.floor(Math.random() * 3) + 8
+    ];
+    
+    positions.sort((a, b) => b - a).forEach((pos, idx) => {
+      shuffled.splice(pos, 0, attentionChecks[2 - idx]);
+    });
+    
+    return shuffled;
+  }, [attentionChecks]);
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -103,6 +143,9 @@ const Questionnaire = () => {
           u2: existingResponse.u2,
           u3: existingResponse.u3,
           u4: existingResponse.u4,
+          ac1: existingResponse.attention_check_1 || 0,
+          ac2: existingResponse.attention_check_2 || 0,
+          ac3: existingResponse.attention_check_3 || 0,
         };
         setResponses(loadedResponses);
         
@@ -179,7 +222,13 @@ const Questionnaire = () => {
           u4: responses.u4,
           pets_er,
           pets_ut,
-          pets_total
+          pets_total,
+          attention_check_1: responses.ac1,
+          attention_check_2: responses.ac2,
+          attention_check_3: responses.ac3,
+          attention_check_1_expected: attentionChecks[0].expectedValue,
+          attention_check_2_expected: attentionChecks[1].expectedValue,
+          attention_check_3_expected: attentionChecks[2].expectedValue,
         });
 
       if (error) {
@@ -244,42 +293,73 @@ const Questionnaire = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="bg-accent/50 rounded-lg p-6">
+          <div className="bg-accent/50 rounded-lg p-6 space-y-4">
             <p className="text-sm text-foreground leading-relaxed">
               The following questions ask about how empathic you found the system you just interacted with. 
               Please rate each statement on a scale from 0 (strongly disagree) to 100 (strongly agree). 
               There are no right or wrong answers.
             </p>
+            
+            {/* Example slider */}
+            <div className="border-t border-border/50 pt-4 mt-4">
+              <p className="text-xs font-semibold text-muted-foreground mb-3">Example: How to use the slider</p>
+              <div className="space-y-2">
+                <p className="text-xs text-foreground italic">
+                  Drag the slider to select your rating. Try it below:
+                </p>
+                <PetsSlider
+                  value={[exampleValue]}
+                  onValueChange={(value) => setExampleValue(value[0])}
+                  onInteract={() => {}}
+                  hasInteracted={true}
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>0</span>
+                  <span className="font-semibold text-primary">{exampleValue}</span>
+                  <span>100</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-8">
-            {randomizedItems.map((item, index) => (
-              <div key={item.key} className="space-y-3">
-                <div className="flex items-start gap-3">
-                  <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
-                  <label className="text-sm text-foreground flex-1">{item.text}</label>
-                </div>
-                <div className="pl-6">
-                  <PetsSlider
-                    value={[responses[item.key]]}
-                    onValueChange={(value) => handleSliderChange(item.key, value)}
-                    onInteract={() => handleInteract(item.key)}
-                    hasInteracted={interacted[item.key]}
-                    min={0}
-                    max={100}
-                    step={1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                    <span>Strongly disagree (0)</span>
-                    {interacted[item.key] && (
-                      <span className="font-semibold text-primary">{responses[item.key]}</span>
-                    )}
-                    <span>Strongly agree (100)</span>
+            {randomizedItems.map((item, index) => {
+              const isAttentionCheck = 'isAttentionCheck' in item && item.isAttentionCheck;
+              
+              return (
+                <div key={item.key} className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
+                    <label className={`text-sm flex-1 ${isAttentionCheck ? 'font-semibold text-foreground' : 'text-foreground'}`}>
+                      {item.text}
+                    </label>
+                  </div>
+                  <div className="pl-6">
+                    <PetsSlider
+                      value={[responses[item.key]]}
+                      onValueChange={(value) => handleSliderChange(item.key, value)}
+                      onInteract={() => handleInteract(item.key)}
+                      hasInteracted={interacted[item.key]}
+                      min={0}
+                      max={100}
+                      step={1}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                      <span>{isAttentionCheck ? '0' : 'Strongly disagree (0)'}</span>
+                      {interacted[item.key] && (
+                        <span className="font-semibold text-primary">{responses[item.key]}</span>
+                      )}
+                      <span>{isAttentionCheck ? '100' : 'Strongly agree (100)'}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="flex gap-4">
