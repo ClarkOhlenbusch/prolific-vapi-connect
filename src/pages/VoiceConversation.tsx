@@ -194,35 +194,126 @@ const VoiceConversation = () => {
 
       // Update the existing session record with the call ID
       try {
-        console.log('Attempting to update with:', { callId: call.id, sessionToken });
+        console.log('=== CALL ID UPDATE PROCESS START ===');
+        console.log('Call ID to update:', call.id);
+        console.log('Session token to match:', sessionToken);
         
-        const { error, count } = await supabase
+        // Step 1: Verify the row exists BEFORE updating
+        console.log('Step 1: Checking if row exists with this session_token...');
+        const { data: existingRow, error: selectError } = await supabase
+          .from('participant_calls')
+          .select('*')
+          .eq('session_token', sessionToken)
+          .maybeSingle();
+        
+        console.log('Existing row query result:', { existingRow, selectError });
+        
+        if (selectError) {
+          console.error('ERROR querying existing row:', selectError);
+        }
+        
+        if (!existingRow) {
+          console.error('CRITICAL: No row found with session_token:', sessionToken);
+          toast({
+            title: "Error",
+            description: "Session not found in database.",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        console.log('Row found! Current state:', {
+          prolific_id: existingRow.prolific_id,
+          call_id: existingRow.call_id,
+          session_token: existingRow.session_token,
+          created_at: existingRow.created_at
+        });
+        
+        // Step 2: Attempt the update
+        console.log('Step 2: Attempting update...');
+        const updateResponse = await supabase
           .from('participant_calls')
           .update({ call_id: call.id })
           .eq('session_token', sessionToken);
+        
+        console.log('Full update response:', JSON.stringify(updateResponse, null, 2));
+        console.log('Update error:', updateResponse.error);
+        console.log('Update status:', updateResponse.status);
+        console.log('Update statusText:', updateResponse.statusText);
 
-        console.log('Update result:', { error, count });
-
-        if (error) {
-          console.error('Supabase error updating call mapping:', error);
+        if (updateResponse.error) {
+          console.error('ERROR during update:', {
+            message: updateResponse.error.message,
+            details: updateResponse.error.details,
+            hint: updateResponse.error.hint,
+            code: updateResponse.error.code
+          });
           toast({
             title: "Warning",
-            description: "Call started but tracking may have failed.",
+            description: `Update failed: ${updateResponse.error.message}`,
             variant: "destructive"
           });
-        } else {
-          console.log('Successfully updated call mapping:', { prolificId, callId: call.id });
+          return;
+        }
+        
+        // Step 3: Verify the update actually happened
+        console.log('Step 3: Verifying update was successful...');
+        const { data: updatedRow, error: verifyError } = await supabase
+          .from('participant_calls')
+          .select('*')
+          .eq('session_token', sessionToken)
+          .maybeSingle();
+        
+        console.log('Verification query result:', { updatedRow, verifyError });
+        
+        if (verifyError) {
+          console.error('ERROR verifying update:', verifyError);
+        }
+        
+        if (!updatedRow) {
+          console.error('CRITICAL: Row disappeared after update!');
+          toast({
+            title: "Error",
+            description: "Row not found after update.",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        console.log('Updated row state:', {
+          prolific_id: updatedRow.prolific_id,
+          call_id: updatedRow.call_id,
+          session_token: updatedRow.session_token,
+          created_at: updatedRow.created_at
+        });
+        
+        if (updatedRow.call_id === call.id) {
+          console.log('SUCCESS: call_id was successfully updated!');
           setCallTracked(true);
           toast({
             title: "Call Started",
             description: "Your conversation is being tracked.",
           });
+        } else {
+          console.error('FAILURE: call_id was NOT updated. Expected:', call.id, 'Got:', updatedRow.call_id);
+          toast({
+            title: "Warning",
+            description: "Call started but tracking verification failed.",
+            variant: "destructive"
+          });
         }
+        
+        console.log('=== CALL ID UPDATE PROCESS END ===');
       } catch (err) {
-        console.error('Exception updating call data:', err);
+        console.error('EXCEPTION in call ID update process:', err);
+        console.error('Exception details:', {
+          name: err instanceof Error ? err.name : 'Unknown',
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : 'No stack trace'
+        });
         toast({
           title: "Warning",
-          description: "Call started but tracking failed.",
+          description: "Call started but tracking failed with exception.",
           variant: "destructive"
         });
       }
