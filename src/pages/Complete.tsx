@@ -11,15 +11,7 @@ const Complete = () => {
     const storedId = sessionStorage.getItem('prolificId');
     if (!storedId) {
       navigate('/');
-      return;
     }
-
-    // Auto-redirect after 5 seconds
-    const timer = setTimeout(() => {
-      window.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH';
-    }, 5000);
-
-    return () => clearTimeout(timer);
   }, [navigate]);
 
   return (
@@ -38,8 +30,7 @@ const Complete = () => {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="bg-accent/50 rounded-lg p-6 space-y-4 text-center">
-            <p className="text-foreground font-semibold">You will be automatically redirected to Prolific in 5 seconds...</p>
-            <p className="text-sm text-muted-foreground">If you are not redirected automatically, please use the options below:</p>
+            <p className="text-foreground font-semibold">Please use one of the options below to complete your submission:</p>
             
             <Button
               onClick={() => window.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH'}
