@@ -196,13 +196,12 @@ const VoiceConversation = () => {
       try {
         console.log('Attempting to update with:', { callId: call.id, sessionToken });
         
-        const { data, error, count } = await supabase
+        const { error, count } = await supabase
           .from('participant_calls')
           .update({ call_id: call.id })
-          .eq('session_token', sessionToken)
-          .select();
+          .eq('session_token', sessionToken);
 
-        console.log('Update result:', { data, error, count });
+        console.log('Update result:', { error, count });
 
         if (error) {
           console.error('Supabase error updating call mapping:', error);
@@ -211,15 +210,8 @@ const VoiceConversation = () => {
             description: "Call started but tracking may have failed.",
             variant: "destructive"
           });
-        } else if (!data || data.length === 0) {
-          console.error('No rows updated - session token not found');
-          toast({
-            title: "Warning", 
-            description: "Session not found. Please refresh and try again.",
-            variant: "destructive"
-          });
         } else {
-          console.log('Successfully updated call mapping:', { prolificId, callId: call.id, updated: data });
+          console.log('Successfully updated call mapping:', { prolificId, callId: call.id });
           setCallTracked(true);
           toast({
             title: "Call Started",
