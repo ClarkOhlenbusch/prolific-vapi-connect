@@ -13,14 +13,34 @@ serve(async (req) => {
   }
 
   try {
+    // Verify VAPI webhook signature
+    const signature = req.headers.get('x-vapi-signature');
+    const webhookSecret = Deno.env.get('VAPI_WEBHOOK_SECRET');
+
+    if (!signature || !webhookSecret) {
+      console.error('Missing signature or webhook secret');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (signature !== webhookSecret) {
+      console.error('Invalid webhook signature');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const payload = await req.json();
-    console.log('Vapi webhook received:', JSON.stringify(payload, null, 2));
+    console.log('Vapi webhook received (verified):', JSON.stringify(payload, null, 2));
 
-    // Vapi sends status-update events with call object
+    // Validate input before processing
     if (payload.message?.type === 'status-update' && payload.message?.call) {
       const callId = payload.message.call.id;
       const metadata = payload.message.call.assistantOverrides?.metadata || payload.message.call.metadata || {};
@@ -28,6 +48,23 @@ serve(async (req) => {
 
       console.log('Call ID:', callId);
       console.log('Prolific ID:', prolificId);
+
+      // Validate inputs
+      if (!callId || typeof callId !== 'string' || callId.length > 255) {
+        console.error('Invalid call ID');
+        return new Response(
+          JSON.stringify({ error: 'Invalid call ID' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!prolificId || typeof prolificId !== 'string' || prolificId.length > 255) {
+        console.error('Invalid prolific ID');
+        return new Response(
+          JSON.stringify({ error: 'Invalid prolific ID' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       if (callId && prolificId) {
         const { data, error } = await supabase
