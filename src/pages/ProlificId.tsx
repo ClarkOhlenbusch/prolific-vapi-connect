@@ -6,6 +6,14 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { z } from 'zod';
+
+// Validation schema for Prolific ID
+const prolificIdSchema = z.string()
+  .trim()
+  .min(1, 'Prolific ID is required')
+  .max(100, 'Prolific ID is too long')
+  .regex(/^[a-zA-Z0-9_-]+$/, 'Prolific ID can only contain letters, numbers, hyphens, and underscores');
 
 const ProlificId = () => {
   const [prolificId, setProlificId] = useState('');
@@ -16,16 +24,20 @@ const ProlificId = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!prolificId.trim()) {
+    // Validate Prolific ID format
+    const validationResult = prolificIdSchema.safeParse(prolificId);
+    
+    if (!validationResult.success) {
       toast({
-        title: "Error",
-        description: "Please enter your Prolific ID",
+        title: "Invalid Prolific ID",
+        description: validationResult.error.errors[0].message,
         variant: "destructive"
       });
       return;
     }
 
     setIsLoading(true);
+    const validatedId = validationResult.data;
     
     try {
       // Generate secure session token
@@ -35,7 +47,7 @@ const ProlificId = () => {
       const { error } = await supabase
         .from('participant_calls')
         .insert({
-          prolific_id: prolificId.trim(),
+          prolific_id: validatedId,
           call_id: '', // Will be updated when VAPI call starts
           session_token: sessionToken
         });
@@ -52,7 +64,7 @@ const ProlificId = () => {
       }
 
       // Store both Prolific ID and session token
-      sessionStorage.setItem('prolificId', prolificId.trim());
+      sessionStorage.setItem('prolificId', validatedId);
       localStorage.setItem('sessionToken', sessionToken);
       
       // Navigate to the voice conversation page
