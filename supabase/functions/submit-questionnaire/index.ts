@@ -42,6 +42,12 @@ const petsResponseSchema = z.object({
   tias_11: z.number().min(1).max(7).int(),
   tias_12: z.number().min(1).max(7).int(),
   tias_total: z.number(),
+  tias_attention_check_1: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_2: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_3: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_1_expected: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_2_expected: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_3_expected: z.number().min(1).max(7).int().optional(),
   // IDs
   prolific_id: z.string().min(1).max(100),
   call_id: z.string().min(1).max(100),

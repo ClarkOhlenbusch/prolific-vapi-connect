@@ -16,6 +16,16 @@ interface TIASItem {
   isReversed: boolean;
 }
 
+interface TIASAttentionCheckItem {
+  id: string;
+  text: string;
+  key: 'tias_ac1' | 'tias_ac2' | 'tias_ac3';
+  expectedValue: number;
+  isAttentionCheck: true;
+}
+
+type TIASQuestionItem = TIASItem | TIASAttentionCheckItem;
+
 const TIAS_ITEMS: TIASItem[] = [
   { id: 'T1', text: 'The voice assistant is deceptive.', key: 'tias_1', isReversed: true },
   { id: 'T2', text: 'The voice assistant behaves in an underhanded manner.', key: 'tias_2', isReversed: true },
@@ -55,6 +65,12 @@ const tiasResponseSchema = z.object({
   tias_11: z.number().min(1).max(7).int(),
   tias_12: z.number().min(1).max(7).int(),
   tias_total: z.number(),
+  tias_attention_check_1: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_2: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_3: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_1_expected: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_2_expected: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_3_expected: z.number().min(1).max(7).int().optional(),
 });
 
 const TiasQuestionnaire = () => {
@@ -68,10 +84,37 @@ const TiasQuestionnaire = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Randomize items once
-  const randomizedItems = useMemo(() => {
-    return [...TIAS_ITEMS].sort(() => Math.random() - 0.5);
+  // Generate attention check questions with random target values (1-7)
+  const attentionChecks = useMemo((): TIASAttentionCheckItem[] => {
+    const val1 = Math.floor(Math.random() * 7) + 1;
+    const val2 = Math.floor(Math.random() * 7) + 1;
+    const val3 = Math.floor(Math.random() * 7) + 1;
+    
+    return [
+      { id: 'TAC1', text: `For data quality purposes, please select ${val1} for this question.`, key: 'tias_ac1' as const, expectedValue: val1, isAttentionCheck: true as const },
+      { id: 'TAC2', text: `For data quality purposes, please select ${val2} for this question.`, key: 'tias_ac2' as const, expectedValue: val2, isAttentionCheck: true as const },
+      { id: 'TAC3', text: `For data quality purposes, please select ${val3} for this question.`, key: 'tias_ac3' as const, expectedValue: val3, isAttentionCheck: true as const },
+    ];
   }, []);
+
+  // Randomize items once and insert attention checks randomly
+  const randomizedItems = useMemo(() => {
+    const allItems: TIASQuestionItem[] = [...TIAS_ITEMS];
+    const shuffled = allItems.sort(() => Math.random() - 0.5);
+    
+    // Insert attention checks at random positions
+    const positions = [
+      Math.floor(Math.random() * 5),
+      Math.floor(Math.random() * 5) + 5,
+      Math.floor(Math.random() * 3) + 10
+    ];
+    
+    positions.sort((a, b) => b - a).forEach((pos, idx) => {
+      shuffled.splice(pos, 0, attentionChecks[2 - idx]);
+    });
+    
+    return shuffled;
+  }, [attentionChecks]);
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -127,7 +170,7 @@ const TiasQuestionnaire = () => {
   };
 
   const handleSubmit = async () => {
-    // Check all questions have been answered
+    // Check all questions have been answered (including attention checks)
     const allAnswered = randomizedItems.every(item => responses[item.key] !== undefined && responses[item.key] > 0);
     
     if (!allAnswered) {
@@ -176,8 +219,8 @@ const TiasQuestionnaire = () => {
     try {
       const petsData = JSON.parse(petsDataString);
 
-      // Calculate TIAS score with reverse scoring for items 1-5
-      const tiasScores = randomizedItems.map(item => {
+      // Calculate TIAS score with reverse scoring for items 1-5 (excluding attention checks)
+      const tiasScores = TIAS_ITEMS.map(item => {
         const score = responses[item.key];
         return item.isReversed ? (8 - score) : score;
       });
@@ -193,6 +236,14 @@ const TiasQuestionnaire = () => {
         const key = `tias_${i}`;
         tiasData[key] = responses[key];
       }
+
+      // Add attention check data
+      tiasData.tias_attention_check_1 = responses.tias_ac1;
+      tiasData.tias_attention_check_2 = responses.tias_ac2;
+      tiasData.tias_attention_check_3 = responses.tias_ac3;
+      tiasData.tias_attention_check_1_expected = attentionChecks[0].expectedValue;
+      tiasData.tias_attention_check_2_expected = attentionChecks[1].expectedValue;
+      tiasData.tias_attention_check_3_expected = attentionChecks[2].expectedValue;
 
       // Validate TIAS data
       const validationResult = tiasResponseSchema.safeParse(tiasData);
@@ -314,14 +365,17 @@ const TiasQuestionnaire = () => {
           </div>
 
           <div className="space-y-6">
-            {randomizedItems.map((item, index) => (
-              <div key={item.key} className="space-y-3 pb-6 border-b border-border last:border-b-0">
-                <div className="flex items-start gap-3">
-                  <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
-                  <label className="text-sm flex-1 text-foreground font-medium">
-                    {item.text}
-                  </label>
-                </div>
+            {randomizedItems.map((item, index) => {
+              const isAttentionCheck = 'isAttentionCheck' in item && item.isAttentionCheck;
+              
+              return (
+                <div key={item.key} className="space-y-3 pb-6 border-b border-border last:border-b-0">
+                  <div className="flex items-start gap-3">
+                    <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
+                    <label className={`text-sm flex-1 font-medium ${isAttentionCheck ? 'text-primary font-semibold' : 'text-foreground'}`}>
+                      {item.text}
+                    </label>
+                  </div>
                 <div className="pl-6">
                   <RadioGroup
                     value={responses[item.key]?.toString()}
@@ -341,12 +395,13 @@ const TiasQuestionnaire = () => {
                     ))}
                   </RadioGroup>
                   <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                    <span>Not at all</span>
-                    <span>Extremely</span>
+                    <span>Not at all (1)</span>
+                    <span>Extremely (7)</span>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="flex gap-4">
