@@ -83,10 +83,10 @@ Deno.serve(async (req) => {
     }
 
     // Get VAPI credentials from environment
-    const vapiPublicKey = Deno.env.get('VITE_VAPI_PUBLIC_KEY');
+    const vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
     const vapiAssistantId = Deno.env.get('VITE_VAPI_ASSISTANT_ID');
 
-    if (!vapiPublicKey || !vapiAssistantId) {
+    if (!vapiPrivateKey || !vapiAssistantId) {
       console.error('VAPI credentials not configured');
       return new Response(
         JSON.stringify({ error: 'Service configuration error' }),
@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
     const vapiResponse = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${vapiPublicKey}`,
+        'Authorization': `Bearer ${vapiPrivateKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
