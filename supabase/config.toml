@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.initiate-vapi-call]
 verify_jwt = false
+
+[functions.start-vapi-call]
+verify_jwt = false

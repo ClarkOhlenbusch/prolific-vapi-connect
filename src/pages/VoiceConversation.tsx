@@ -179,39 +179,29 @@ const VoiceConversation = () => {
         return;
       }
 
-      // Start the call with VAPI SDK
-      const call = await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
-        metadata: {
-          prolificId: prolificId
-        }
+      // Start the call through secure backend proxy
+      const { data: callData, error: callError } = await supabase.functions.invoke('start-vapi-call', {
+        body: { sessionToken, prolificId }
       });
-      
-      if (!call || !call.id) {
+
+      if (callError || !callData?.success || !callData?.callId) {
         toast({
           title: "Error",
-          description: "Failed to establish call connection.",
+          description: callError?.message || "Failed to establish call connection.",
           variant: "destructive"
         });
         return;
       }
       
-      setCallId(call.id);
+      setCallId(callData.callId);
 
-      // Update database with actual call ID from VAPI - with error handling
-      const { error: updateError } = await supabase
-        .from('participant_calls')
-        .update({ call_id: call.id })
-        .eq('session_token', sessionToken);
-      
-      if (updateError) {
-        console.error('Failed to update call_id in database:', updateError);
-        toast({
-          title: "Warning",
-          description: "Call started but tracking may be incomplete. Please contact support if this persists.",
-          variant: "destructive"
-        });
-        // Continue anyway - the call is active
-      }
+      // Now connect the client-side VAPI SDK to the existing call
+      await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
+        metadata: {
+          prolificId: prolificId,
+          callId: callData.callId
+        }
+      });
       
       setCallTracked(true);
       toast({

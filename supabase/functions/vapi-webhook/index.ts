@@ -109,10 +109,9 @@ serve(async (req) => {
           .is('call_id', null);
 
         if (error) {
-          console.error('Database update failed:', error.code);
-          const errorMessage = 'Database update failed';
+          console.error('Database update failed');
           return new Response(
-            JSON.stringify({ error: errorMessage }),
+            JSON.stringify({ error: 'Operation failed' }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
