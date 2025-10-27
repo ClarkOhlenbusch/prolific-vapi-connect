@@ -9,6 +9,7 @@ const corsHeaders = {
 interface StartCallRequest {
   sessionToken: string;
   prolificId: string;
+  phoneNumber: string;
 }
 
 const validateUUID = (uuid: string): boolean => {
@@ -23,7 +24,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as StartCallRequest;
-    const { sessionToken, prolificId } = body;
+    const { sessionToken, prolificId, phoneNumber } = body;
 
     // Input validation
     if (!sessionToken || typeof sessionToken !== 'string') {
@@ -46,6 +47,24 @@ Deno.serve(async (req) => {
       console.error('Invalid prolificId format');
       return new Response(
         JSON.stringify({ error: 'Invalid participant ID format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!phoneNumber || typeof phoneNumber !== 'string') {
+      console.error('Invalid phoneNumber format');
+      return new Response(
+        JSON.stringify({ error: 'Invalid phone number format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate E.164 format (+ followed by digits)
+    const phoneRegex = /^\+[1-9]\d{1,14}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      console.error('Phone number not in E.164 format');
+      return new Response(
+        JSON.stringify({ error: 'Phone number must be in E.164 format (e.g., +1234567890)' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -85,8 +104,9 @@ Deno.serve(async (req) => {
     // Get VAPI credentials from environment
     const vapiPrivateKey = Deno.env.get('VAPI_PRIVATE_KEY');
     const vapiAssistantId = Deno.env.get('VITE_VAPI_ASSISTANT_ID');
+    const vapiPhoneNumberId = Deno.env.get('VAPI_PHONE_NUMBER_ID');
 
-    if (!vapiPrivateKey || !vapiAssistantId) {
+    if (!vapiPrivateKey || !vapiAssistantId || !vapiPhoneNumberId) {
       console.error('VAPI credentials not configured');
       return new Response(
         JSON.stringify({ error: 'Service configuration error' }),
@@ -103,10 +123,16 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        phoneNumberId: vapiPhoneNumberId,
+        customer: {
+          number: phoneNumber
+        },
         assistantId: vapiAssistantId,
-        metadata: {
-          prolificId: prolificId,
-          sessionToken: sessionToken
+        assistantOverrides: {
+          variableValues: {
+            prolificId: prolificId,
+            sessionToken: sessionToken
+          }
         }
       }),
     });
