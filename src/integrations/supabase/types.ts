@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           call_id: string
           created_at: string
+          expires_at: string
           id: string
           prolific_id: string
           session_token: string
@@ -26,6 +27,7 @@ export type Database = {
         Insert: {
           call_id: string
           created_at?: string
+          expires_at: string
           id?: string
           prolific_id: string
           session_token?: string
@@ -34,6 +36,7 @@ export type Database = {
         Update: {
           call_id?: string
           created_at?: string
+          expires_at?: string
           id?: string
           prolific_id?: string
           session_token?: string
