@@ -51,29 +51,24 @@ const VoiceConversation = () => {
 
     // Set up event listeners
     vapi.on('call-start', () => {
-      console.log('Call started event');
       setIsCallActive(true);
     });
 
     vapi.on('call-end', () => {
-      console.log('Call ended event');
       setIsCallActive(false);
       setCallTracked(false);
       setCallEnded(true);
     });
 
     vapi.on('speech-start', () => {
-      console.log('Assistant started speaking');
       setIsSpeaking(true);
     });
 
     vapi.on('speech-end', () => {
-      console.log('Assistant stopped speaking');
       setIsSpeaking(false);
     });
 
     vapi.on('error', (error) => {
-      console.error('Vapi error details:', error);
       toast({
         title: "Call Error",
         description: error?.message || "An error occurred during the call.",
@@ -81,12 +76,7 @@ const VoiceConversation = () => {
       });
     });
 
-    vapi.on('message', async (message: any) => {
-      console.log('Vapi message:', JSON.stringify(message, null, 2));
-    });
-
     return () => {
-      console.log('Cleaning up Vapi instance');
       vapi.stop();
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -141,7 +131,6 @@ const VoiceConversation = () => {
     
     // Prevent duplicate calls if already tracking
     if (callTracked || callId) {
-      console.log('Call already in progress or tracked');
       return;
     }
     
@@ -149,11 +138,8 @@ const VoiceConversation = () => {
     setTimeRemaining(300); // Reset timer to 5 minutes
     
     try {
-      console.log('Attempting to start call with assistant:', import.meta.env.VITE_VAPI_ASSISTANT_ID);
-      
       // Request microphone permission explicitly
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('Microphone permission granted:', stream);
       
       // Start the call with prolificId in metadata for webhook
       const call = await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
@@ -162,11 +148,7 @@ const VoiceConversation = () => {
         }
       });
       
-      console.log('VAPI Call object:', call);
-      console.log('Call started with ID:', call?.id);
-      
       if (!call || !call.id) {
-        console.error('No call ID returned from VAPI');
         toast({
           title: "Error",
           description: "Failed to get call ID from VAPI. Please try again.",
@@ -179,10 +161,8 @@ const VoiceConversation = () => {
       
       // Get session token from localStorage
       const sessionToken = localStorage.getItem('sessionToken');
-      console.log('Session token:', sessionToken);
       
       if (!sessionToken) {
-        console.error('No session token found');
         toast({
           title: "Error",
           description: "Session expired. Please start over.",
@@ -194,26 +174,13 @@ const VoiceConversation = () => {
 
       // Update the existing session record with the call ID
       try {
-        console.log('=== CALL ID UPDATE PROCESS START ===');
-        console.log('Call ID to update:', call.id);
-        console.log('Session token to match:', sessionToken);
-        
-        // Step 1: Verify the row exists BEFORE updating
-        console.log('Step 1: Checking if row exists with this session_token...');
         const { data: existingRow, error: selectError } = await supabase
           .from('participant_calls')
           .select('*')
           .eq('session_token', sessionToken)
           .maybeSingle();
         
-        console.log('Existing row query result:', { existingRow, selectError });
-        
-        if (selectError) {
-          console.error('ERROR querying existing row:', selectError);
-        }
-        
-        if (!existingRow) {
-          console.error('CRITICAL: No row found with session_token:', sessionToken);
+        if (selectError || !existingRow) {
           toast({
             title: "Error",
             description: "Session not found in database.",
@@ -222,80 +189,42 @@ const VoiceConversation = () => {
           return;
         }
         
-        console.log('Row found! Current state:', {
-          prolific_id: existingRow.prolific_id,
-          call_id: existingRow.call_id,
-          session_token: existingRow.session_token,
-          created_at: existingRow.created_at
-        });
-        
-        // Step 2: Attempt the update
-        console.log('Step 2: Attempting update...');
         const updateResponse = await supabase
           .from('participant_calls')
           .update({ call_id: call.id })
           .eq('session_token', sessionToken);
-        
-        console.log('Full update response:', JSON.stringify(updateResponse, null, 2));
-        console.log('Update error:', updateResponse.error);
-        console.log('Update status:', updateResponse.status);
-        console.log('Update statusText:', updateResponse.statusText);
 
         if (updateResponse.error) {
-          console.error('ERROR during update:', {
-            message: updateResponse.error.message,
-            details: updateResponse.error.details,
-            hint: updateResponse.error.hint,
-            code: updateResponse.error.code
-          });
           toast({
             title: "Warning",
-            description: `Update failed: ${updateResponse.error.message}`,
+            description: "Failed to link call to session.",
             variant: "destructive"
           });
           return;
         }
         
-        // Step 3: Verify the update actually happened
-        console.log('Step 3: Verifying update was successful...');
         const { data: updatedRow, error: verifyError } = await supabase
           .from('participant_calls')
           .select('*')
           .eq('session_token', sessionToken)
           .maybeSingle();
         
-        console.log('Verification query result:', { updatedRow, verifyError });
-        
-        if (verifyError) {
-          console.error('ERROR verifying update:', verifyError);
-        }
-        
-        if (!updatedRow) {
-          console.error('CRITICAL: Row disappeared after update!');
+        if (verifyError || !updatedRow) {
           toast({
             title: "Error",
-            description: "Row not found after update.",
+            description: "Failed to verify session update.",
             variant: "destructive"
           });
           return;
         }
         
-        console.log('Updated row state:', {
-          prolific_id: updatedRow.prolific_id,
-          call_id: updatedRow.call_id,
-          session_token: updatedRow.session_token,
-          created_at: updatedRow.created_at
-        });
-        
         if (updatedRow.call_id === call.id) {
-          console.log('SUCCESS: call_id was successfully updated!');
           setCallTracked(true);
           toast({
             title: "Call Started",
             description: "Your conversation is being tracked.",
           });
         } else {
-          console.error('FAILURE: call_id was NOT updated. Expected:', call.id, 'Got:', updatedRow.call_id);
           toast({
             title: "Warning",
             description: "Call started but tracking verification failed.",
