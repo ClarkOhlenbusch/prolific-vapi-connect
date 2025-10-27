@@ -12,11 +12,24 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { sessionToken } = await req.json();
+    const body = await req.json();
+    const { sessionToken } = body;
 
-    if (!sessionToken) {
+    // Input validation
+    if (!sessionToken || typeof sessionToken !== 'string') {
+      console.error('Invalid sessionToken format');
       return new Response(
-        JSON.stringify({ error: 'Session token is required' }),
+        JSON.stringify({ error: 'Invalid session token format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(sessionToken)) {
+      console.error('Session token is not a valid UUID');
+      return new Response(
+        JSON.stringify({ error: 'Invalid session token format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -37,9 +50,9 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   if (callError) {
-    console.error('Session validation failed:', callError.code);
+    console.error('Session validation failed');
     return new Response(
-      JSON.stringify({ error: 'Session validation failed' }),
+      JSON.stringify({ error: 'Operation failed' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
