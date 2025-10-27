@@ -27,10 +27,12 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Validate session token and get participant data
+    // Token must exist and not be used yet
     const { data: participantCall, error: callError } = await supabase
       .from('participant_calls')
-      .select('prolific_id, call_id, created_at')
+      .select('prolific_id, call_id, created_at, token_used')
       .eq('session_token', sessionToken)
+      .eq('token_used', false)
       .maybeSingle();
 
     if (callError) {
@@ -43,7 +45,7 @@ Deno.serve(async (req) => {
 
     if (!participantCall) {
       return new Response(
-        JSON.stringify({ valid: false, error: 'Invalid session token' }),
+        JSON.stringify({ valid: false, error: 'Invalid or already used session token' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
