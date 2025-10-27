@@ -179,29 +179,32 @@ const VoiceConversation = () => {
         return;
       }
 
-      // Start the call through secure backend proxy
+      // Validate session for call initiation
       const { data: callData, error: callError } = await supabase.functions.invoke('start-vapi-call', {
         body: { sessionToken, prolificId }
       });
 
-      if (callError || !callData?.success || !callData?.callId) {
+      if (callError || !callData?.success) {
         toast({
           title: "Error",
-          description: callError?.message || "Failed to establish call connection.",
+          description: callError?.message || "Failed to validate session for call.",
           variant: "destructive"
         });
         return;
       }
       
-      setCallId(callData.callId);
-
-      // Now connect the client-side VAPI SDK to the existing call
-      await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
-        metadata: {
+      // Start the web call using Vapi SDK
+      const call = await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
+        variableValues: {
           prolificId: prolificId,
-          callId: callData.callId
+          sessionToken: sessionToken
         }
       });
+      
+      // Store the call ID from the Vapi SDK
+      if (call?.id) {
+        setCallId(call.id);
+      }
       
       setCallTracked(true);
       toast({
