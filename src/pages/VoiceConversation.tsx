@@ -139,7 +139,7 @@ const VoiceConversation = () => {
     
     try {
       // Request microphone permission explicitly
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      await navigator.mediaDevices.getUserMedia({ audio: true });
       
       const sessionToken = localStorage.getItem('sessionToken');
       
@@ -153,13 +153,13 @@ const VoiceConversation = () => {
         return;
       }
       
-      // Initiate call through secure edge function
-      const { data: callData, error: initiateError } = await supabase.functions.invoke('initiate-vapi-call', {
+      // Validate session through secure edge function
+      const { data: validationData, error: validationError } = await supabase.functions.invoke('initiate-vapi-call', {
         body: { sessionToken, prolificId }
       });
 
-      if (initiateError || !callData) {
-        const errorMsg = initiateError?.message || '';
+      if (validationError || !validationData?.success) {
+        const errorMsg = validationError?.message || '';
         if (errorMsg.includes('expired')) {
           toast({
             title: "Session Expired",
@@ -172,14 +172,14 @@ const VoiceConversation = () => {
         } else {
           toast({
             title: "Error",
-            description: "Failed to initiate the conversation. Please try again.",
+            description: "Failed to validate session. Please try again.",
             variant: "destructive"
           });
         }
         return;
       }
 
-      // Start the call with VAPI SDK using the validated call setup
+      // Start the call with VAPI SDK
       const call = await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
         metadata: {
           prolificId: prolificId
@@ -197,11 +197,21 @@ const VoiceConversation = () => {
       
       setCallId(call.id);
 
-      // Update database with actual call ID from VAPI
+      // Update database with actual call ID from VAPI - with error handling
       const { error: updateError } = await supabase
         .from('participant_calls')
         .update({ call_id: call.id })
         .eq('session_token', sessionToken);
+      
+      if (updateError) {
+        console.error('Failed to update call_id in database:', updateError);
+        toast({
+          title: "Warning",
+          description: "Call started but tracking may be incomplete. Please contact support if this persists.",
+          variant: "destructive"
+        });
+        // Continue anyway - the call is active
+      }
       
       setCallTracked(true);
       toast({

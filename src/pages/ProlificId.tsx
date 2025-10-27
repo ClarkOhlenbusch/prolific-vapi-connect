@@ -54,11 +54,20 @@ const ProlificId = () => {
         });
 
       if (error) {
-        toast({
-          title: "Error",
-          description: "Failed to create session. Please try again.",
-          variant: "destructive"
-        });
+        // Check if it's a duplicate prolific_id error
+        if (error.code === '23505' && error.message.includes('unique_prolific_call')) {
+          toast({
+            title: "Duplicate Entry",
+            description: "This Prolific ID has already been used. Each participant can only join once.",
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to create session. Please try again.",
+            variant: "destructive"
+          });
+        }
         setIsLoading(false);
         return;
       }
