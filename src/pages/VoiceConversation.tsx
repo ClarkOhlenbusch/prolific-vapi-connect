@@ -254,7 +254,7 @@ const VoiceConversation = () => {
       });
       return;
     }
-    navigate('/questionnaire', { state: { callId } });
+    navigate('/questionnaire/pets', { state: { callId } });
   };
 
   const handleGoBack = () => {

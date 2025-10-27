@@ -65,6 +65,19 @@ export type Database = {
           pets_total: number
           pets_ut: number
           prolific_id: string
+          tias_1: number | null
+          tias_10: number | null
+          tias_11: number | null
+          tias_12: number | null
+          tias_2: number | null
+          tias_3: number | null
+          tias_4: number | null
+          tias_5: number | null
+          tias_6: number | null
+          tias_7: number | null
+          tias_8: number | null
+          tias_9: number | null
+          tias_total: number | null
           u1: number
           u2: number
           u3: number
@@ -90,6 +103,19 @@ export type Database = {
           pets_total: number
           pets_ut: number
           prolific_id: string
+          tias_1?: number | null
+          tias_10?: number | null
+          tias_11?: number | null
+          tias_12?: number | null
+          tias_2?: number | null
+          tias_3?: number | null
+          tias_4?: number | null
+          tias_5?: number | null
+          tias_6?: number | null
+          tias_7?: number | null
+          tias_8?: number | null
+          tias_9?: number | null
+          tias_total?: number | null
           u1: number
           u2: number
           u3: number
@@ -115,6 +141,19 @@ export type Database = {
           pets_total?: number
           pets_ut?: number
           prolific_id?: string
+          tias_1?: number | null
+          tias_10?: number | null
+          tias_11?: number | null
+          tias_12?: number | null
+          tias_2?: number | null
+          tias_3?: number | null
+          tias_4?: number | null
+          tias_5?: number | null
+          tias_6?: number | null
+          tias_7?: number | null
+          tias_8?: number | null
+          tias_9?: number | null
+          tias_total?: number | null
           u1?: number
           u2?: number
           u3?: number
