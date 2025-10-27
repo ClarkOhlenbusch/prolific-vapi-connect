@@ -77,6 +77,12 @@ export type Database = {
           tias_7: number | null
           tias_8: number | null
           tias_9: number | null
+          tias_attention_check_1: number | null
+          tias_attention_check_1_expected: number | null
+          tias_attention_check_2: number | null
+          tias_attention_check_2_expected: number | null
+          tias_attention_check_3: number | null
+          tias_attention_check_3_expected: number | null
           tias_total: number | null
           u1: number
           u2: number
@@ -115,6 +121,12 @@ export type Database = {
           tias_7?: number | null
           tias_8?: number | null
           tias_9?: number | null
+          tias_attention_check_1?: number | null
+          tias_attention_check_1_expected?: number | null
+          tias_attention_check_2?: number | null
+          tias_attention_check_2_expected?: number | null
+          tias_attention_check_3?: number | null
+          tias_attention_check_3_expected?: number | null
           tias_total?: number | null
           u1: number
           u2: number
@@ -153,6 +165,12 @@ export type Database = {
           tias_7?: number | null
           tias_8?: number | null
           tias_9?: number | null
+          tias_attention_check_1?: number | null
+          tias_attention_check_1_expected?: number | null
+          tias_attention_check_2?: number | null
+          tias_attention_check_2_expected?: number | null
+          tias_attention_check_3?: number | null
+          tias_attention_check_3_expected?: number | null
           tias_total?: number | null
           u1?: number
           u2?: number
