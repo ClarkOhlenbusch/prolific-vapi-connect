@@ -19,8 +19,8 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const validateSession = async () => {
-      // Skip validation on landing page
-      if (location.pathname === '/') return;
+      // Skip validation on landing page and complete page
+      if (location.pathname === '/' || location.pathname === '/complete') return;
 
       const sessionToken = localStorage.getItem('sessionToken');
       
