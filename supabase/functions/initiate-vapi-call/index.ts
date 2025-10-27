@@ -51,48 +51,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Initiate VAPI call server-side
-    const vapiPublicKey = Deno.env.get('VITE_VAPI_PUBLIC_KEY');
-    const vapiAssistantId = Deno.env.get('VITE_VAPI_ASSISTANT_ID');
-
-    if (!vapiPublicKey || !vapiAssistantId) {
-      console.error('VAPI credentials not configured');
-      return new Response(
-        JSON.stringify({ error: 'Service configuration error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const vapiResponse = await fetch('https://api.vapi.ai/call/web', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${vapiPublicKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        assistantId: vapiAssistantId,
-        assistantOverrides: {
-          metadata: { prolificId }
-        }
-      }),
-    });
-
-    if (!vapiResponse.ok) {
-      console.error('VAPI API error:', vapiResponse.status);
-      return new Response(
-        JSON.stringify({ error: 'Failed to initiate call' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const callData = await vapiResponse.json();
-
-    console.log('VAPI call initiated successfully');
+    // Session is valid, allow client to proceed with VAPI call
+    console.log('Session validated successfully for prolific_id:', prolificId);
 
     return new Response(
       JSON.stringify({ 
-        callId: callData.id,
-        webCallUrl: callData.webCallUrl
+        success: true,
+        message: 'Session validated'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
