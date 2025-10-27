@@ -73,16 +73,12 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const payload = JSON.parse(rawBody);
-    console.log('Vapi webhook received (verified):', JSON.stringify(payload, null, 2));
 
     // Validate input before processing
     if (payload.message?.type === 'status-update' && payload.message?.call) {
       const callId = payload.message.call.id;
       const metadata = payload.message.call.assistantOverrides?.metadata || payload.message.call.metadata || {};
       const prolificId = metadata.prolificId;
-
-      console.log('Call ID:', callId);
-      console.log('Prolific ID:', prolificId);
 
       // Validate inputs
       if (!callId || typeof callId !== 'string' || callId.length > 255) {
@@ -107,25 +103,21 @@ serve(async (req) => {
       }
 
       if (callId && prolificId) {
-        const { data, error } = await supabase
+        // Update existing participant_calls record instead of inserting
+        const { error } = await supabase
           .from('participant_calls')
-          .insert({
-            prolific_id: prolificId,
-            call_id: callId,
-          });
+          .update({ call_id: callId })
+          .eq('prolific_id', prolificId)
+          .is('call_id', null);
 
         if (error) {
-          console.error('Error inserting call data:', error);
-          const errorMessage = error?.message || 'Database insert failed';
+          console.error('Database update failed:', error.code);
+          const errorMessage = 'Database update failed';
           return new Response(
             JSON.stringify({ error: errorMessage }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-
-        console.log('Successfully stored call data:', data);
-      } else {
-        console.log('Missing callId or prolificId in payload');
       }
     }
 
