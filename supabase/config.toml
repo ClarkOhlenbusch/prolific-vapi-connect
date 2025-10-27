@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.start-vapi-call]
 verify_jwt = false
+
+[functions.submit-questionnaire]
+verify_jwt = false

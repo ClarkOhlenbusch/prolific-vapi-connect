@@ -218,6 +218,17 @@ const Questionnaire = () => {
       return;
     }
 
+    const sessionToken = localStorage.getItem('sessionToken');
+    if (!sessionToken) {
+      toast({
+        title: "Error",
+        description: "Session token not found. Please start over.",
+        variant: "destructive"
+      });
+      navigate('/');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -229,8 +240,8 @@ const Questionnaire = () => {
       const pets_ut = utItems.reduce((a, b) => a + b, 0) / utItems.length;
       const pets_total = pets_er * 0.6 + pets_ut * 0.4;
 
-      // Validate response data
-      const validationResult = petsResponseSchema.safeParse({
+      // Prepare questionnaire data
+      const questionnaireData = {
         e1: responses.e1,
         e2: responses.e2,
         e3: responses.e3,
@@ -252,7 +263,10 @@ const Questionnaire = () => {
         pets_er,
         pets_ut,
         pets_total,
-      });
+      };
+
+      // Validate response data client-side
+      const validationResult = petsResponseSchema.safeParse(questionnaireData);
 
       if (!validationResult.success) {
         toast({
@@ -264,36 +278,21 @@ const Questionnaire = () => {
         return;
       }
 
-      // INSERT only (no updates allowed for data integrity)
-      const { error } = await supabase
-        .from('pets_responses')
-        .insert({
-          prolific_id: prolificId,
-          call_id: callId,
-          e1: responses.e1,
-          e2: responses.e2,
-          e3: responses.e3,
-          e4: responses.e4,
-          e5: responses.e5,
-          e6: responses.e6,
-          u1: responses.u1,
-          u2: responses.u2,
-          u3: responses.u3,
-          u4: responses.u4,
-          pets_er,
-          pets_ut,
-          pets_total,
-          attention_check_1: responses.ac1,
-          attention_check_2: responses.ac2,
-          attention_check_3: responses.ac3,
-          attention_check_1_expected: attentionChecks[0].expectedValue,
-          attention_check_2_expected: attentionChecks[1].expectedValue,
-          attention_check_3_expected: attentionChecks[2].expectedValue,
-        });
+      // Submit via secure edge function
+      const { data, error } = await supabase.functions.invoke('submit-questionnaire', {
+        body: {
+          sessionToken,
+          questionnaireData: validationResult.data,
+        },
+      });
 
       if (error) {
-        // Check for duplicate key violation (already submitted)
-        if (error.code === '23505') {
+        console.error('Error submitting questionnaire:', error);
+        
+        // Handle specific error cases
+        const errorMessage = error.message || '';
+        
+        if (errorMessage.includes('already submitted') || errorMessage.includes('409')) {
           toast({
             title: "Already Submitted",
             description: "You have already completed this questionnaire.",
@@ -302,29 +301,22 @@ const Questionnaire = () => {
           return;
         }
         
+        if (errorMessage.includes('Invalid or expired session') || errorMessage.includes('401')) {
+          toast({
+            title: "Session Expired",
+            description: "Your session has expired. Please start over.",
+            variant: "destructive"
+          });
+          navigate('/');
+          return;
+        }
+
         toast({
           title: "Error",
-          description: "Failed to submit. Please try again.",
+          description: "Failed to submit questionnaire. Please try again.",
           variant: "destructive"
         });
         return;
-      }
-
-      // Mark the session token as used (single-use token)
-      const sessionToken = localStorage.getItem('sessionToken');
-      if (sessionToken) {
-        const { error: tokenError } = await supabase
-          .from('participant_calls')
-          .update({ token_used: true })
-          .eq('session_token', sessionToken);
-
-        if (tokenError) {
-          toast({
-            title: "Warning",
-            description: "Response saved but session not closed properly.",
-            variant: "destructive"
-          });
-        }
       }
 
       toast({
@@ -334,6 +326,7 @@ const Questionnaire = () => {
 
       navigate('/complete');
     } catch (err) {
+      console.error('Unexpected error submitting questionnaire:', err);
       toast({
         title: "Error",
         description: "An error occurred. Please try again.",
