@@ -127,7 +127,7 @@ const VoiceConversation = () => {
   };
 
   const startCall = async () => {
-    if (!vapiRef.current) return;
+    if (!vapiRef.current || !prolificId) return;
     
     // Prevent duplicate calls if already tracking
     if (callTracked || callId) {
@@ -141,25 +141,6 @@ const VoiceConversation = () => {
       // Request microphone permission explicitly
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Start the call with prolificId in metadata for webhook
-      const call = await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
-        metadata: {
-          prolificId: prolificId
-        }
-      });
-      
-      if (!call || !call.id) {
-        toast({
-          title: "Error",
-          description: "Failed to get call ID from VAPI. Please try again.",
-          variant: "destructive"
-        });
-        return;
-      }
-      
-      setCallId(call.id);
-      
-      // Get session token from localStorage
       const sessionToken = localStorage.getItem('sessionToken');
       
       if (!sessionToken) {
@@ -171,59 +152,66 @@ const VoiceConversation = () => {
         navigate('/');
         return;
       }
+      
+      // Initiate call through secure edge function
+      const { data: callData, error: initiateError } = await supabase.functions.invoke('initiate-vapi-call', {
+        body: { sessionToken, prolificId }
+      });
 
-      // Update the existing session record with the call ID
-      // No SELECT needed - UPDATE will only succeed if session_token exists
-      if (import.meta.env.DEV) {
-        console.log('📞 Starting call ID update:', {
-          callId: call.id,
-          sessionToken,
-          prolificId
-        });
-      }
-
-      try {
-        const { error: updateError } = await supabase
-          .from('participant_calls')
-          .update({ call_id: call.id })
-          .eq('session_token', sessionToken);
-
-        if (updateError) {
-          if (import.meta.env.DEV) {
-            console.error('❌ Call ID update failed:', updateError);
-          }
-          toast({
-            title: "Warning",
-            description: "Failed to link call to session.",
-            variant: "destructive"
-          });
-          return;
-        }
-        
-        if (import.meta.env.DEV) {
-          console.log('✅ Call ID updated successfully:', call.id);
-        }
-        
-        setCallTracked(true);
+      if (initiateError || !callData) {
+        console.error('Failed to initiate call');
         toast({
-          title: "Call Started",
-          description: "Your conversation is being tracked.",
-        });
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          console.error('❌ Exception in call ID update:', err);
-        }
-        toast({
-          title: "Warning",
-          description: "Call started but tracking failed.",
+          title: "Error",
+          description: "Failed to initiate the conversation. Please try again.",
           variant: "destructive"
         });
+        return;
       }
+
+      // Start the call with VAPI SDK using the validated call setup
+      const call = await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
+        metadata: {
+          prolificId: prolificId
+        }
+      });
+      
+      if (!call || !call.id) {
+        toast({
+          title: "Error",
+          description: "Failed to establish call connection.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      setCallId(call.id);
+
+      // Update database with actual call ID from VAPI
+      const { error: updateError } = await supabase
+        .from('participant_calls')
+        .update({ call_id: call.id })
+        .eq('session_token', sessionToken);
+
+      if (updateError) {
+        console.error('Call ID update failed');
+        toast({
+          title: "Warning",
+          description: "Call started but registration failed.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      setCallTracked(true);
+      toast({
+        title: "Call Started",
+        description: "Your conversation is being tracked.",
+      });
     } catch (error) {
-      console.error('Error starting call:', error);
+      console.error('Error starting call');
       toast({
         title: "Failed to Start Call",
-        description: error instanceof Error ? error.message : "Please check microphone permissions.",
+        description: "Please check your microphone permissions.",
         variant: "destructive"
       });
     }
@@ -241,14 +229,7 @@ const VoiceConversation = () => {
   };
 
   const handleProceedToQuestionnaire = () => {
-    if (import.meta.env.DEV) {
-      console.log('📋 Proceeding to questionnaire with callId:', callId);
-    }
-    
     if (!callId) {
-      if (import.meta.env.DEV) {
-        console.error('❌ No callId available for questionnaire');
-      }
       toast({
         title: "Error",
         description: "Call ID not found. Please try again.",
