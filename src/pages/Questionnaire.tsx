@@ -251,6 +251,19 @@ const Questionnaire = () => {
         return;
       }
 
+      // Mark the session token as used (single-use token)
+      const sessionToken = localStorage.getItem('sessionToken');
+      if (sessionToken) {
+        const { error: tokenError } = await supabase
+          .from('participant_calls')
+          .update({ token_used: true })
+          .eq('session_token', sessionToken);
+
+        if (tokenError) {
+          console.error('Error marking token as used:', tokenError);
+        }
+      }
+
       toast({
         title: "Success",
         description: "Your responses have been submitted successfully.",
