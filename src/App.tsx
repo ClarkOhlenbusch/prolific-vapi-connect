@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 const ProlificId = lazy(() => import("./pages/ProlificId"));
 const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
 const Questionnaire = lazy(() => import("./pages/Questionnaire"));
+const TiasQuestionnaire = lazy(() => import("./pages/TiasQuestionnaire"));
 const Complete = lazy(() => import("./pages/Complete"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -72,6 +73,8 @@ const App = () => (
                 <Route path="/" element={<ProlificId />} />
                 <Route path="/conversation" element={<VoiceConversation />} />
                 <Route path="/questionnaire" element={<Questionnaire />} />
+                <Route path="/questionnaire/pets" element={<Questionnaire />} />
+                <Route path="/questionnaire/tias" element={<TiasQuestionnaire />} />
                 <Route path="/complete" element={<Complete />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />

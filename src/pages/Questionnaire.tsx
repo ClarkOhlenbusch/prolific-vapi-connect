@@ -79,7 +79,6 @@ const Questionnaire = () => {
     ac1: false, ac2: false, ac3: false
   });
   const [exampleValue, setExampleValue] = useState(50);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Generate attention check questions with random target values
@@ -196,14 +195,14 @@ const Questionnaire = () => {
     setInteracted(prev => ({ ...prev, [key]: true }));
   };
 
-  const handleSubmit = async () => {
+  const handleNext = () => {
     // Check all questions have been interacted with
     const allAnswered = Object.values(interacted).every(val => val === true);
     
     if (!allAnswered) {
       toast({
         title: "Incomplete",
-        description: "Please answer all questions before submitting.",
+        description: "Please answer all questions before continuing.",
         variant: "destructive"
       });
       return;
@@ -218,123 +217,56 @@ const Questionnaire = () => {
       return;
     }
 
-    const sessionToken = localStorage.getItem('sessionToken');
-    if (!sessionToken) {
+    // Calculate scores
+    const erItems = [responses.e1, responses.e2, responses.e3, responses.e4, responses.e5, responses.e6];
+    const utItems = [responses.u1, responses.u2, responses.u3, responses.u4];
+    
+    const pets_er = erItems.reduce((a, b) => a + b, 0) / erItems.length;
+    const pets_ut = utItems.reduce((a, b) => a + b, 0) / utItems.length;
+    const pets_total = pets_er * 0.6 + pets_ut * 0.4;
+
+    // Prepare questionnaire data
+    const questionnaireData = {
+      e1: responses.e1,
+      e2: responses.e2,
+      e3: responses.e3,
+      e4: responses.e4,
+      e5: responses.e5,
+      e6: responses.e6,
+      u1: responses.u1,
+      u2: responses.u2,
+      u3: responses.u3,
+      u4: responses.u4,
+      attention_check_1: responses.ac1,
+      attention_check_2: responses.ac2,
+      attention_check_3: responses.ac3,
+      attention_check_1_expected: attentionChecks[0].expectedValue,
+      attention_check_2_expected: attentionChecks[1].expectedValue,
+      attention_check_3_expected: attentionChecks[2].expectedValue,
+      prolific_id: prolificId,
+      call_id: callId,
+      pets_er,
+      pets_ut,
+      pets_total,
+    };
+
+    // Validate response data client-side
+    const validationResult = petsResponseSchema.safeParse(questionnaireData);
+
+    if (!validationResult.success) {
       toast({
-        title: "Error",
-        description: "Session token not found. Please start over.",
+        title: "Invalid Data",
+        description: "Please ensure all values are valid.",
         variant: "destructive"
       });
-      navigate('/');
       return;
     }
 
-    setIsSubmitting(true);
+    // Store PETS data in sessionStorage
+    sessionStorage.setItem('petsData', JSON.stringify(validationResult.data));
 
-    try {
-      // Calculate scores
-      const erItems = [responses.e1, responses.e2, responses.e3, responses.e4, responses.e5, responses.e6];
-      const utItems = [responses.u1, responses.u2, responses.u3, responses.u4];
-      
-      const pets_er = erItems.reduce((a, b) => a + b, 0) / erItems.length;
-      const pets_ut = utItems.reduce((a, b) => a + b, 0) / utItems.length;
-      const pets_total = pets_er * 0.6 + pets_ut * 0.4;
-
-      // Prepare questionnaire data
-      const questionnaireData = {
-        e1: responses.e1,
-        e2: responses.e2,
-        e3: responses.e3,
-        e4: responses.e4,
-        e5: responses.e5,
-        e6: responses.e6,
-        u1: responses.u1,
-        u2: responses.u2,
-        u3: responses.u3,
-        u4: responses.u4,
-        attention_check_1: responses.ac1,
-        attention_check_2: responses.ac2,
-        attention_check_3: responses.ac3,
-        attention_check_1_expected: attentionChecks[0].expectedValue,
-        attention_check_2_expected: attentionChecks[1].expectedValue,
-        attention_check_3_expected: attentionChecks[2].expectedValue,
-        prolific_id: prolificId,
-        call_id: callId,
-        pets_er,
-        pets_ut,
-        pets_total,
-      };
-
-      // Validate response data client-side
-      const validationResult = petsResponseSchema.safeParse(questionnaireData);
-
-      if (!validationResult.success) {
-        toast({
-          title: "Invalid Data",
-          description: "Please ensure all values are valid.",
-          variant: "destructive"
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Submit via secure edge function
-      const { data, error } = await supabase.functions.invoke('submit-questionnaire', {
-        body: {
-          sessionToken,
-          questionnaireData: validationResult.data,
-        },
-      });
-
-      if (error) {
-        console.error('Error submitting questionnaire:', error);
-        
-        // Handle specific error cases
-        const errorMessage = error.message || '';
-        
-        if (errorMessage.includes('already submitted') || errorMessage.includes('409')) {
-          toast({
-            title: "Already Submitted",
-            description: "You have already completed this questionnaire.",
-          });
-          navigate('/complete');
-          return;
-        }
-        
-        if (errorMessage.includes('Invalid or expired session') || errorMessage.includes('401')) {
-          toast({
-            title: "Session Expired",
-            description: "Your session has expired. Please start over.",
-            variant: "destructive"
-          });
-          navigate('/');
-          return;
-        }
-
-        toast({
-          title: "Error",
-          description: "Failed to submit questionnaire. Please try again.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      toast({
-        title: "Success",
-        description: "Your responses have been submitted successfully.",
-      });
-
-      navigate('/complete');
-    } catch (err) {
-      console.error('Unexpected error submitting questionnaire:', err);
-      toast({
-        title: "Error",
-        description: "An error occurred. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    // Navigate to TIAS questionnaire
+    navigate('/questionnaire/tias', { state: { callId } });
   };
 
   if (isLoading) {
@@ -440,12 +372,12 @@ const Questionnaire = () => {
               Back to Conversation
             </Button>
             <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting || !allAnswered}
+              onClick={handleNext}
+              disabled={!allAnswered}
               className="flex-1"
               size="lg"
             >
-              {isSubmitting ? 'Submitting...' : 'Submit Questionnaire'}
+              Next: Trust Scale
             </Button>
           </div>
         </CardContent>

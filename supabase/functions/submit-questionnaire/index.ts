@@ -6,8 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Validation schema matching the client-side schema (0-100 scale)
+// Validation schema matching the client-side schema
 const petsResponseSchema = z.object({
+  // PETS items (0-100 scale)
   e1: z.number().min(0).max(100).int(),
   e2: z.number().min(0).max(100).int(),
   e3: z.number().min(0).max(100).int(),
@@ -27,6 +28,21 @@ const petsResponseSchema = z.object({
   attention_check_1_expected: z.number().min(0).max(100).int().optional(),
   attention_check_2_expected: z.number().min(0).max(100).int().optional(),
   attention_check_3_expected: z.number().min(0).max(100).int().optional(),
+  // TIAS items (1-7 scale)
+  tias_1: z.number().min(1).max(7).int(),
+  tias_2: z.number().min(1).max(7).int(),
+  tias_3: z.number().min(1).max(7).int(),
+  tias_4: z.number().min(1).max(7).int(),
+  tias_5: z.number().min(1).max(7).int(),
+  tias_6: z.number().min(1).max(7).int(),
+  tias_7: z.number().min(1).max(7).int(),
+  tias_8: z.number().min(1).max(7).int(),
+  tias_9: z.number().min(1).max(7).int(),
+  tias_10: z.number().min(1).max(7).int(),
+  tias_11: z.number().min(1).max(7).int(),
+  tias_12: z.number().min(1).max(7).int(),
+  tias_total: z.number(),
+  // IDs
   prolific_id: z.string().min(1).max(100),
   call_id: z.string().min(1).max(100),
 });
