@@ -204,6 +204,20 @@ const VoiceConversation = () => {
       // Store the call ID from the Vapi SDK
       if (call?.id) {
         setCallId(call.id);
+        
+        // Update the database with the call ID
+        const { error: updateError } = await supabase.functions.invoke('update-call-id', {
+          body: { 
+            sessionToken, 
+            prolificId,
+            callId: call.id 
+          }
+        });
+
+        if (updateError) {
+          console.error('Failed to update call ID in database:', updateError);
+          // Don't block the call from starting, just log the error
+        }
       }
       
       setCallTracked(true);
