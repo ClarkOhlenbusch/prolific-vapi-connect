@@ -32,12 +32,13 @@ Deno.serve(async (req) => {
       .eq('session_token', sessionToken)
       .eq('prolific_id', prolificId)
       .eq('token_used', false)
+      .gt('expires_at', new Date().toISOString())
       .maybeSingle();
 
     if (sessionError || !session) {
       console.error('Session validation failed');
       return new Response(
-        JSON.stringify({ error: 'Invalid session' }),
+        JSON.stringify({ error: 'Invalid or expired session' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -77,8 +78,7 @@ Deno.serve(async (req) => {
     });
 
     if (!vapiResponse.ok) {
-      const errorText = await vapiResponse.text();
-      console.error('VAPI API error:', vapiResponse.status, errorText);
+      console.error('VAPI API error:', vapiResponse.status);
       return new Response(
         JSON.stringify({ error: 'Failed to initiate call' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

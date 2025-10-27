@@ -58,15 +58,13 @@ serve(async (req) => {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    if (signature !== computedSignature) {
-      console.error('Invalid webhook signature');
-      console.log('Expected:', computedSignature);
-      console.log('Received:', signature);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - invalid signature' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+  if (signature !== computedSignature) {
+    console.error('Webhook signature verification failed');
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;

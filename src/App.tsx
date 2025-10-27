@@ -34,23 +34,22 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
           body: { sessionToken }
         });
 
-        if (error || !data?.valid) {
-          // Invalid token - clear everything and redirect
-          localStorage.removeItem('sessionToken');
-          sessionStorage.removeItem('prolificId');
-          navigate('/');
-          return;
-        }
-
-        // Store validated prolific ID
-        sessionStorage.setItem('prolificId', data.participant.prolificId);
-      } catch (error) {
-        console.error('Session validation error:', error);
+      if (error || !data?.valid) {
+        // Invalid token - clear everything and redirect
         localStorage.removeItem('sessionToken');
         sessionStorage.removeItem('prolificId');
         navigate('/');
+        return;
       }
-    };
+
+      // Store validated prolific ID
+      sessionStorage.setItem('prolificId', data.participant.prolificId);
+    } catch (error) {
+      localStorage.removeItem('sessionToken');
+      sessionStorage.removeItem('prolificId');
+      navigate('/');
+    }
+  };
 
     validateSession();
   }, [location.pathname, navigate]);

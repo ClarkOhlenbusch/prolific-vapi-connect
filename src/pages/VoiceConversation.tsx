@@ -159,12 +159,23 @@ const VoiceConversation = () => {
       });
 
       if (initiateError || !callData) {
-        console.error('Failed to initiate call');
-        toast({
-          title: "Error",
-          description: "Failed to initiate the conversation. Please try again.",
-          variant: "destructive"
-        });
+        const errorMsg = initiateError?.message || '';
+        if (errorMsg.includes('expired')) {
+          toast({
+            title: "Session Expired",
+            description: "Your session has expired. Please start over.",
+            variant: "destructive"
+          });
+          localStorage.removeItem('sessionToken');
+          sessionStorage.removeItem('prolificId');
+          navigate('/');
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to initiate the conversation. Please try again.",
+            variant: "destructive"
+          });
+        }
         return;
       }
 
@@ -191,16 +202,6 @@ const VoiceConversation = () => {
         .from('participant_calls')
         .update({ call_id: call.id })
         .eq('session_token', sessionToken);
-
-      if (updateError) {
-        console.error('Call ID update failed');
-        toast({
-          title: "Warning",
-          description: "Call started but registration failed.",
-          variant: "destructive"
-        });
-        return;
-      }
       
       setCallTracked(true);
       toast({
@@ -208,7 +209,6 @@ const VoiceConversation = () => {
         description: "Your conversation is being tracked.",
       });
     } catch (error) {
-      console.error('Error starting call');
       toast({
         title: "Failed to Start Call",
         description: "Please check your microphone permissions.",
