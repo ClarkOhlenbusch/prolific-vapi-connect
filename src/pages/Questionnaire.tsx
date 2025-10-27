@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { PetsSlider } from '@/components/ui/pets-slider';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
+import { z } from 'zod';
 
 interface PETSItem {
   id: string;
@@ -35,6 +36,30 @@ const PETS_ITEMS: PETSItem[] = [
   { id: 'U3', text: 'I trusted the system.', key: 'u3' },
   { id: 'U4', text: 'The system understood my intentions.', key: 'u4' },
 ];
+
+const petsResponseSchema = z.object({
+  e1: z.number().min(0).max(100).int(),
+  e2: z.number().min(0).max(100).int(),
+  e3: z.number().min(0).max(100).int(),
+  e4: z.number().min(0).max(100).int(),
+  e5: z.number().min(0).max(100).int(),
+  e6: z.number().min(0).max(100).int(),
+  u1: z.number().min(0).max(100).int(),
+  u2: z.number().min(0).max(100).int(),
+  u3: z.number().min(0).max(100).int(),
+  u4: z.number().min(0).max(100).int(),
+  attention_check_1: z.number().min(0).max(100).int().optional(),
+  attention_check_2: z.number().min(0).max(100).int().optional(),
+  attention_check_3: z.number().min(0).max(100).int().optional(),
+  attention_check_1_expected: z.number().min(0).max(100).int().optional(),
+  attention_check_2_expected: z.number().min(0).max(100).int().optional(),
+  attention_check_3_expected: z.number().min(0).max(100).int().optional(),
+  prolific_id: z.string().trim().min(1).max(100),
+  call_id: z.string().trim().min(1).max(255),
+  pets_er: z.number(),
+  pets_ut: z.number(),
+  pets_total: z.number(),
+});
 
 const Questionnaire = () => {
   const navigate = useNavigate();
@@ -204,6 +229,41 @@ const Questionnaire = () => {
       const pets_ut = utItems.reduce((a, b) => a + b, 0) / utItems.length;
       const pets_total = pets_er * 0.6 + pets_ut * 0.4;
 
+      // Validate response data
+      const validationResult = petsResponseSchema.safeParse({
+        e1: responses.e1,
+        e2: responses.e2,
+        e3: responses.e3,
+        e4: responses.e4,
+        e5: responses.e5,
+        e6: responses.e6,
+        u1: responses.u1,
+        u2: responses.u2,
+        u3: responses.u3,
+        u4: responses.u4,
+        attention_check_1: responses.ac1,
+        attention_check_2: responses.ac2,
+        attention_check_3: responses.ac3,
+        attention_check_1_expected: attentionChecks[0].expectedValue,
+        attention_check_2_expected: attentionChecks[1].expectedValue,
+        attention_check_3_expected: attentionChecks[2].expectedValue,
+        prolific_id: prolificId,
+        call_id: callId,
+        pets_er,
+        pets_ut,
+        pets_total,
+      });
+
+      if (!validationResult.success) {
+        toast({
+          title: "Invalid Data",
+          description: "Please ensure all values are valid.",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       // INSERT only (no updates allowed for data integrity)
       const { error } = await supabase
         .from('pets_responses')
@@ -242,7 +302,6 @@ const Questionnaire = () => {
           return;
         }
         
-        console.error('Error submitting questionnaire:', error);
         toast({
           title: "Error",
           description: "Failed to submit. Please try again.",
@@ -260,7 +319,11 @@ const Questionnaire = () => {
           .eq('session_token', sessionToken);
 
         if (tokenError) {
-          console.error('Error marking token as used:', tokenError);
+          toast({
+            title: "Warning",
+            description: "Response saved but session not closed properly.",
+            variant: "destructive"
+          });
         }
       }
 
@@ -271,7 +334,6 @@ const Questionnaire = () => {
 
       navigate('/complete');
     } catch (err) {
-      console.error('Error submitting questionnaire:', err);
       toast({
         title: "Error",
         description: "An error occurred. Please try again.",

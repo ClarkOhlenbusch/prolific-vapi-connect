@@ -28,27 +28,28 @@ Deno.serve(async (req) => {
 
     // Validate session token and get participant data
     // Token must exist and not be used yet
-    const { data: participantCall, error: callError } = await supabase
-      .from('participant_calls')
-      .select('prolific_id, call_id, created_at, token_used')
-      .eq('session_token', sessionToken)
-      .eq('token_used', false)
-      .maybeSingle();
+  const { data: participantCall, error: callError } = await supabase
+    .from('participant_calls')
+    .select('prolific_id, call_id, created_at, token_used, expires_at')
+    .eq('session_token', sessionToken)
+    .eq('token_used', false)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle();
 
-    if (callError) {
-      console.error('Error fetching participant call:', callError);
-      return new Response(
-        JSON.stringify({ error: 'Database error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+  if (callError) {
+    console.error('Session validation failed:', callError.code);
+    return new Response(
+      JSON.stringify({ error: 'Session validation failed' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 
-    if (!participantCall) {
-      return new Response(
-        JSON.stringify({ valid: false, error: 'Invalid or already used session token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+  if (!participantCall) {
+    return new Response(
+      JSON.stringify({ valid: false, error: 'Invalid, expired, or already used session token' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 
     // Optionally fetch PETS responses for this participant
     const { data: petsResponse } = await supabase

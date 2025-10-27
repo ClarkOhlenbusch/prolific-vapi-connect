@@ -48,12 +48,12 @@ const ProlificId = () => {
         .from('participant_calls')
         .insert({
           prolific_id: validatedId,
-          call_id: '', // Will be updated when VAPI call starts
-          session_token: sessionToken
+          call_id: '',
+          session_token: sessionToken,
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
         });
 
       if (error) {
-        console.error('Error creating session:', error);
         toast({
           title: "Error",
           description: "Failed to create session. Please try again.",
@@ -70,7 +70,6 @@ const ProlificId = () => {
       // Navigate to the voice conversation page
       navigate('/conversation');
     } catch (error) {
-      console.error('Session creation error:', error);
       toast({
         title: "Error",
         description: "An unexpected error occurred. Please try again.",
