@@ -174,6 +174,14 @@ const VoiceConversation = () => {
 
       // Update the existing session record with the call ID
       // No SELECT needed - UPDATE will only succeed if session_token exists
+      if (import.meta.env.DEV) {
+        console.log('📞 Starting call ID update:', {
+          callId: call.id,
+          sessionToken,
+          prolificId
+        });
+      }
+
       try {
         const { error: updateError } = await supabase
           .from('participant_calls')
@@ -181,12 +189,19 @@ const VoiceConversation = () => {
           .eq('session_token', sessionToken);
 
         if (updateError) {
+          if (import.meta.env.DEV) {
+            console.error('❌ Call ID update failed:', updateError);
+          }
           toast({
             title: "Warning",
             description: "Failed to link call to session.",
             variant: "destructive"
           });
           return;
+        }
+        
+        if (import.meta.env.DEV) {
+          console.log('✅ Call ID updated successfully:', call.id);
         }
         
         setCallTracked(true);
@@ -196,7 +211,7 @@ const VoiceConversation = () => {
         });
       } catch (err) {
         if (import.meta.env.DEV) {
-          console.error('Exception in call ID update process:', err);
+          console.error('❌ Exception in call ID update:', err);
         }
         toast({
           title: "Warning",
@@ -226,7 +241,14 @@ const VoiceConversation = () => {
   };
 
   const handleProceedToQuestionnaire = () => {
+    if (import.meta.env.DEV) {
+      console.log('📋 Proceeding to questionnaire with callId:', callId);
+    }
+    
     if (!callId) {
+      if (import.meta.env.DEV) {
+        console.error('❌ No callId available for questionnaire');
+      }
       toast({
         title: "Error",
         description: "Call ID not found. Please try again.",
