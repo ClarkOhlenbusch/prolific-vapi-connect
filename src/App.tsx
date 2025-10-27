@@ -1,15 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import ProlificId from "./pages/ProlificId";
-import VoiceConversation from "./pages/VoiceConversation";
-import Questionnaire from "./pages/Questionnaire";
-import Complete from "./pages/Complete";
-import NotFound from "./pages/NotFound";
+
+// Lazy load route components for code splitting
+const ProlificId = lazy(() => import("./pages/ProlificId"));
+const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
+const Questionnaire = lazy(() => import("./pages/Questionnaire"));
+const Complete = lazy(() => import("./pages/Complete"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
@@ -65,14 +67,16 @@ const App = () => (
       <BrowserRouter>
         <SessionValidator>
           <main>
-            <Routes>
-              <Route path="/" element={<ProlificId />} />
-              <Route path="/conversation" element={<VoiceConversation />} />
-              <Route path="/questionnaire" element={<Questionnaire />} />
-              <Route path="/complete" element={<Complete />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
+              <Routes>
+                <Route path="/" element={<ProlificId />} />
+                <Route path="/conversation" element={<VoiceConversation />} />
+                <Route path="/questionnaire" element={<Questionnaire />} />
+                <Route path="/complete" element={<Complete />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
           </main>
         </SessionValidator>
       </BrowserRouter>
