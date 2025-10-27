@@ -64,14 +64,16 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <SessionValidator>
-          <Routes>
-            <Route path="/" element={<ProlificId />} />
-            <Route path="/conversation" element={<VoiceConversation />} />
-            <Route path="/questionnaire" element={<Questionnaire />} />
-            <Route path="/complete" element={<Complete />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <main>
+            <Routes>
+              <Route path="/" element={<ProlificId />} />
+              <Route path="/conversation" element={<VoiceConversation />} />
+              <Route path="/questionnaire" element={<Questionnaire />} />
+              <Route path="/complete" element={<Complete />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </main>
         </SessionValidator>
       </BrowserRouter>
     </TooltipProvider>
