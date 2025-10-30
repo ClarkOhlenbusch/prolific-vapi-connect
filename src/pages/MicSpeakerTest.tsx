@@ -14,14 +14,16 @@ const MicSpeakerTest = () => {
   const prolificId = searchParams.get("prolificId");
   
   const [micPermission, setMicPermission] = useState<boolean | null>(null);
-  const [micLevel, setMicLevel] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedAudio, setRecordedAudio] = useState<Blob | null>(null);
+  const [hasPlayedRecording, setHasPlayedRecording] = useState(false);
   const [speakerTested, setSpeakerTested] = useState(false);
-  const [isTestingMic, setIsTestingMic] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const animationRef = useRef<number | null>(null);
+  const recordingTimerRef = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (!sessionToken || !prolificId) {
@@ -29,9 +31,8 @@ const MicSpeakerTest = () => {
     }
   }, [sessionToken, prolificId, navigate]);
 
-  const startMicTest = async () => {
+  const startRecording = async () => {
     try {
-      setIsTestingMic(true);
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
@@ -43,31 +44,46 @@ const MicSpeakerTest = () => {
       streamRef.current = stream;
       setMicPermission(true);
       
-      // Set up audio analysis
-      audioContextRef.current = new AudioContext();
-      analyserRef.current = audioContextRef.current.createAnalyser();
-      const source = audioContextRef.current.createMediaStreamSource(stream);
-      source.connect(analyserRef.current);
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      const audioChunks: Blob[] = [];
       
-      analyserRef.current.fftSize = 256;
-      const bufferLength = analyserRef.current.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-      
-      const updateLevel = () => {
-        if (!analyserRef.current) return;
-        
-        analyserRef.current.getByteFrequencyData(dataArray);
-        const average = dataArray.reduce((a, b) => a + b) / bufferLength;
-        setMicLevel(Math.min(100, (average / 255) * 200));
-        
-        animationRef.current = requestAnimationFrame(updateLevel);
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
       };
       
-      updateLevel();
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        setRecordedAudio(audioBlob);
+        
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+        
+        toast({
+          title: "Recording complete",
+          description: "Play it back to verify your microphone works",
+        });
+      };
+      
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      
+      // Update timer every 100ms
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingTime(prev => {
+          const newTime = prev + 0.1;
+          if (newTime >= 3) {
+            stopRecording();
+          }
+          return newTime;
+        });
+      }, 100);
       
       toast({
-        title: "Microphone access granted",
-        description: "Please speak to test your microphone",
+        title: "Recording started",
+        description: "Speak for 3 seconds to test your microphone",
       });
     } catch (error) {
       console.error("Mic access error:", error);
@@ -76,6 +92,38 @@ const MicSpeakerTest = () => {
         title: "Microphone access denied",
         description: "Please allow microphone access to continue",
         variant: "destructive",
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+    }
+  };
+
+  const playRecording = () => {
+    if (recordedAudio) {
+      const audioUrl = URL.createObjectURL(recordedAudio);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      
+      audio.onended = () => {
+        setHasPlayedRecording(true);
+        URL.revokeObjectURL(audioUrl);
+      };
+      
+      audio.play();
+      
+      toast({
+        title: "Playing recording",
+        description: "Listen to verify your audio quality",
       });
     }
   };
@@ -104,20 +152,21 @@ const MicSpeakerTest = () => {
 
   const handleProceed = () => {
     // Clean up
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
     }
     
     navigate('/conversation');
   };
 
-  const canProceed = micPermission === true && speakerTested && micLevel > 10;
+  const canProceed = recordedAudio !== null && hasPlayedRecording && speakerTested;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-secondary/20">
@@ -137,37 +186,48 @@ const MicSpeakerTest = () => {
                 <div>
                   <h3 className="font-semibold">Microphone Test</h3>
                   <p className="text-sm text-muted-foreground">
-                    {!isTestingMic && "Click to test your microphone"}
-                    {isTestingMic && micLevel <= 10 && "Speak to test your microphone"}
-                    {isTestingMic && micLevel > 10 && "Microphone working!"}
+                    {!recordedAudio && !isRecording && "Record a 3-second audio clip"}
+                    {isRecording && "Recording... speak now!"}
+                    {recordedAudio && !hasPlayedRecording && "Play back to verify"}
+                    {recordedAudio && hasPlayedRecording && "Microphone test complete"}
                   </p>
                 </div>
               </div>
-              {micPermission === true && micLevel > 10 ? (
+              {recordedAudio && hasPlayedRecording ? (
                 <CheckCircle2 className="h-6 w-6 text-green-500" />
               ) : micPermission === false ? (
                 <XCircle className="h-6 w-6 text-red-500" />
               ) : null}
             </div>
             
-            {!isTestingMic && (
-              <Button onClick={startMicTest} className="w-full">
-                Start Microphone Test
+            {!recordedAudio && !isRecording && (
+              <Button onClick={startRecording} className="w-full">
+                <Mic className="h-4 w-4 mr-2" />
+                Start Recording
               </Button>
             )}
             
-            {isTestingMic && (
+            {isRecording && (
               <div className="space-y-2">
-                <div className="h-4 bg-secondary rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-primary transition-all duration-100"
-                    style={{ width: `${micLevel}%` }}
-                  />
+                <div className="flex items-center justify-center gap-2 py-4">
+                  <div className="h-3 w-3 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-lg font-mono">{recordingTime.toFixed(1)}s / 3.0s</span>
                 </div>
                 <p className="text-xs text-center text-muted-foreground">
-                  Speak into your microphone - the bar should move
+                  Recording will stop automatically after 3 seconds
                 </p>
               </div>
+            )}
+            
+            {recordedAudio && (
+              <Button 
+                onClick={playRecording} 
+                variant={hasPlayedRecording ? "outline" : "default"}
+                className="w-full"
+              >
+                <Volume2 className="h-4 w-4 mr-2" />
+                {hasPlayedRecording ? "Play Recording Again" : "Play Recording"}
+              </Button>
             )}
           </div>
 
@@ -190,7 +250,6 @@ const MicSpeakerTest = () => {
               onClick={playSpeakerTest} 
               variant={speakerTested ? "outline" : "default"}
               className="w-full"
-              disabled={!isTestingMic}
             >
               {speakerTested ? "Play Test Tone Again" : "Play Test Tone"}
             </Button>
@@ -206,9 +265,11 @@ const MicSpeakerTest = () => {
             >
               {canProceed ? "Proceed to Conversation" : "Complete Tests to Continue"}
             </Button>
-            {!canProceed && micPermission === true && (
+            {!canProceed && (
               <p className="text-xs text-center text-muted-foreground mt-2">
-                {micLevel <= 10 ? "Please speak into your microphone to verify it's working" : "Please complete the speaker test"}
+                {!recordedAudio ? "Please record and play back your audio" : 
+                 !hasPlayedRecording ? "Please play back your recording" :
+                 !speakerTested ? "Please complete the speaker test" : ""}
               </p>
             )}
           </div>
