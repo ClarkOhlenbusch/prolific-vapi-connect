@@ -23,6 +23,7 @@ const MicSpeakerTest = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<number | null>(null);
+  const recordingTimeoutRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -70,16 +71,15 @@ const MicSpeakerTest = () => {
       setIsRecording(true);
       setRecordingTime(0);
       
-      // Update timer every 100ms
+      // Update timer display every 100ms
       recordingTimerRef.current = window.setInterval(() => {
-        setRecordingTime(prev => {
-          const newTime = prev + 0.1;
-          if (newTime >= 3) {
-            stopRecording();
-          }
-          return newTime;
-        });
+        setRecordingTime(prev => Math.min(prev + 0.1, 3.0));
       }, 100);
+      
+      // Auto-stop after exactly 3 seconds
+      recordingTimeoutRef.current = window.setTimeout(() => {
+        stopRecording();
+      }, 3000);
       
       toast({
         title: "Recording started",
@@ -97,15 +97,23 @@ const MicSpeakerTest = () => {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-      }
+    console.log("Stopping recording...");
+    
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
     }
+    
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+    
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    setIsRecording(false);
   };
 
   const playRecording = () => {
@@ -154,6 +162,9 @@ const MicSpeakerTest = () => {
     // Clean up
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
+    }
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
