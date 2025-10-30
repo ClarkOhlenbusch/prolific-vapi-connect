@@ -76,8 +76,8 @@ const ProlificId = () => {
       sessionStorage.setItem('prolificId', validatedId);
       localStorage.setItem('sessionToken', sessionToken);
       
-      // Navigate to the voice conversation page
-      navigate('/conversation');
+      // Navigate to mic/speaker test page
+      navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${validatedId}`);
     } catch (error) {
       toast({
         title: "Error",
