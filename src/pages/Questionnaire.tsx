@@ -17,7 +17,7 @@ interface PETSItem {
 interface AttentionCheckItem {
   id: string;
   text: string;
-  key: 'ac1' | 'ac2' | 'ac3';
+  key: 'ac1';
   expectedValue: number;
   isAttentionCheck: true;
 }
@@ -71,47 +71,34 @@ const Questionnaire = () => {
   const [responses, setResponses] = useState<Record<string, number>>({
     e1: 0, e2: 0, e3: 0, e4: 0, e5: 0, e6: 0,
     u1: 0, u2: 0, u3: 0, u4: 0,
-    ac1: 0, ac2: 0, ac3: 0
+    ac1: 0
   });
   const [interacted, setInteracted] = useState<Record<string, boolean>>({
     e1: false, e2: false, e3: false, e4: false, e5: false, e6: false,
     u1: false, u2: false, u3: false, u4: false,
-    ac1: false, ac2: false, ac3: false
+    ac1: false
   });
   const [exampleValue, setExampleValue] = useState(50);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Generate attention check questions with random target values
-  const attentionChecks = useMemo((): AttentionCheckItem[] => {
-    const val1 = Math.floor(Math.random() * 101);
-    const val2 = Math.floor(Math.random() * 101);
-    const val3 = Math.floor(Math.random() * 101);
+  // Generate attention check question with random target value
+  const attentionCheck = useMemo((): AttentionCheckItem => {
+    const val = Math.floor(Math.random() * 101);
     
-    return [
-      { id: 'AC1', text: `Please select ${val1}`, key: 'ac1' as const, expectedValue: val1, isAttentionCheck: true as const },
-      { id: 'AC2', text: `Please select ${val2}`, key: 'ac2' as const, expectedValue: val2, isAttentionCheck: true as const },
-      { id: 'AC3', text: `Please select ${val3}`, key: 'ac3' as const, expectedValue: val3, isAttentionCheck: true as const },
-    ];
+    return { id: 'AC1', text: `Please select ${val}`, key: 'ac1' as const, expectedValue: val, isAttentionCheck: true as const };
   }, []);
 
-  // Randomize items once and insert attention checks randomly
+  // Randomize items once and insert attention check randomly
   const randomizedItems = useMemo(() => {
     const allItems: QuestionItem[] = [...PETS_ITEMS];
     const shuffled = allItems.sort(() => Math.random() - 0.5);
     
-    // Insert attention checks at random positions
-    const positions = [
-      Math.floor(Math.random() * 4),
-      Math.floor(Math.random() * 4) + 4,
-      Math.floor(Math.random() * 3) + 8
-    ];
-    
-    positions.sort((a, b) => b - a).forEach((pos, idx) => {
-      shuffled.splice(pos, 0, attentionChecks[2 - idx]);
-    });
+    // Insert attention check at random position
+    const position = Math.floor(Math.random() * (shuffled.length + 1));
+    shuffled.splice(position, 0, attentionCheck);
     
     return shuffled;
-  }, [attentionChecks]);
+  }, [attentionCheck]);
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -168,8 +155,6 @@ const Questionnaire = () => {
           u3: existingResponse.u3,
           u4: existingResponse.u4,
           ac1: existingResponse.attention_check_1 || 0,
-          ac2: existingResponse.attention_check_2 || 0,
-          ac3: existingResponse.attention_check_3 || 0,
         };
         setResponses(loadedResponses);
         
@@ -238,11 +223,7 @@ const Questionnaire = () => {
       u3: responses.u3,
       u4: responses.u4,
       attention_check_1: responses.ac1,
-      attention_check_2: responses.ac2,
-      attention_check_3: responses.ac3,
-      attention_check_1_expected: attentionChecks[0].expectedValue,
-      attention_check_2_expected: attentionChecks[1].expectedValue,
-      attention_check_3_expected: attentionChecks[2].expectedValue,
+      attention_check_1_expected: attentionCheck.expectedValue,
       prolific_id: prolificId,
       call_id: callId,
       pets_er,
@@ -328,13 +309,11 @@ const Questionnaire = () => {
 
           <div className="space-y-8">
             {randomizedItems.map((item, index) => {
-              const isAttentionCheck = 'isAttentionCheck' in item && item.isAttentionCheck;
-              
               return (
                 <div key={item.key} className="space-y-3">
                   <div className="flex items-start gap-3">
                     <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
-                    <label className={`text-sm flex-1 ${isAttentionCheck ? 'font-semibold text-foreground' : 'text-foreground'}`}>
+                    <label className="text-sm flex-1 text-foreground">
                       {item.text}
                     </label>
                   </div>
@@ -350,11 +329,11 @@ const Questionnaire = () => {
                       className="w-full"
                     />
                     <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                      <span>{isAttentionCheck ? '0' : 'Strongly disagree (0)'}</span>
+                      <span>Strongly disagree (0)</span>
                       {interacted[item.key] && (
                         <span className="font-semibold text-primary">{responses[item.key]}</span>
                       )}
-                      <span>{isAttentionCheck ? '100' : 'Strongly agree (100)'}</span>
+                      <span>Strongly agree (100)</span>
                     </div>
                   </div>
                 </div>
