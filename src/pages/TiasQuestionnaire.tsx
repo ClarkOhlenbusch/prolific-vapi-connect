@@ -101,6 +101,13 @@ const TiasQuestionnaire = () => {
 
   useEffect(() => {
     const checkAccess = async () => {
+      // Enforce flow: must be at step 4
+      const currentStep = sessionStorage.getItem('flowStep');
+      if (currentStep !== '4') {
+        navigate('/');
+        return;
+      }
+
       const storedId = sessionStorage.getItem('prolificId');
       const stateCallId = location.state?.callId;
       
@@ -291,6 +298,9 @@ const TiasQuestionnaire = () => {
         title: "Success",
         description: "Your responses have been submitted successfully.",
       });
+
+      // Advance to final step
+      sessionStorage.setItem('flowStep', '5');
 
       navigate('/complete');
     } catch (err) {

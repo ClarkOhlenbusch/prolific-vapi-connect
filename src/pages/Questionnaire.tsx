@@ -98,6 +98,13 @@ const Questionnaire = () => {
 
   useEffect(() => {
     const checkAccess = async () => {
+      // Enforce flow: must be at step 3
+      const currentStep = sessionStorage.getItem('flowStep');
+      if (currentStep !== '3') {
+        navigate('/');
+        return;
+      }
+
       // Get state from location or sessionStorage
       const stateCallId = location.state?.callId;
       const storedId = sessionStorage.getItem('prolificId');
@@ -241,6 +248,9 @@ const Questionnaire = () => {
 
     // Store PETS data in sessionStorage
     sessionStorage.setItem('petsData', JSON.stringify(validationResult.data));
+
+    // Advance to next step
+    sessionStorage.setItem('flowStep', '4');
 
     // Navigate to TIAS questionnaire
     navigate('/questionnaire/tias', { state: { callId } });

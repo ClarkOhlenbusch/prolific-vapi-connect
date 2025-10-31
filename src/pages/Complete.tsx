@@ -7,7 +7,13 @@ const Complete = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user has prolific ID
+    // Enforce flow: must be at step 5 (final)
+    const currentStep = sessionStorage.getItem('flowStep');
+    if (currentStep !== '5') {
+      navigate('/');
+      return;
+    }
+
     const storedId = sessionStorage.getItem('prolificId');
     if (!storedId) {
       navigate('/');

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,11 @@ const ProlificId = () => {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Initialize flow at step 0
+    sessionStorage.setItem('flowStep', '0');
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,6 +80,9 @@ const ProlificId = () => {
       // Store both Prolific ID and session token
       sessionStorage.setItem('prolificId', validatedId);
       localStorage.setItem('sessionToken', sessionToken);
+      
+      // Advance to next step
+      sessionStorage.setItem('flowStep', '1');
       
       // Navigate to mic/speaker test page
       navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${validatedId}`);
