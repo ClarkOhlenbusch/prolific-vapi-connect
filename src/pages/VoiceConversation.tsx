@@ -237,6 +237,27 @@ const VoiceConversation = () => {
     setShowEndDialog(false);
   };
 
+  const handleRestartCall = () => {
+    // Stop the current call
+    if (vapiRef.current) {
+      vapiRef.current.stop();
+    }
+    
+    // Reset all states
+    setIsCallActive(false);
+    setCallTracked(false);
+    setIsSpeaking(false);
+    setCallId(null);
+    setCallEnded(false);
+    setTimeRemaining(300);
+    
+    // Show the pre-call modal again
+    toast({
+      title: "Call Restarted",
+      description: "You can now start a new conversation.",
+    });
+  };
+
   const handleProceedToQuestionnaire = () => {
     if (!callId) {
       toast({
@@ -294,23 +315,35 @@ const VoiceConversation = () => {
           </div>
 
           <div className="bg-accent/50 rounded-lg p-6 space-y-4">
-            <h3 className="font-semibold text-foreground">Instructions:</h3>
+            <h3 className="font-semibold text-foreground">Please read carefully before starting:</h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Click the voice button below to start your conversation with the AI</span>
+                <span>You will have a conversation with the voice assistant.</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Speak clearly and naturally during the conversation</span>
+                <span>The conversation will automatically end after exactly 5 minutes.</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Your conversation is being tracked for research purposes</span>
+                <span>You must complete the entire 5-minute conversation before the questionnaire.</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">•</span>
-                <span>Click the button again to end the conversation when you're done</span>
+                <span>A timer shows the remaining time.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary mt-0.5">•</span>
+                <span>If you experience minor issues (e.g., a brief pause or repeated line), please continue the conversation as normal.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary mt-0.5">•</span>
+                <span>If your microphone or speakers do not work/stop working, please click the "Restart Call" button.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary mt-0.5">•</span>
+                <span>Click the blue button below to begin the conversation.</span>
               </li>
             </ul>
           </div>
@@ -361,14 +394,24 @@ const VoiceConversation = () => {
                     </p>
                   </div>
                 </div>
-                <Button
-                  onClick={handleEndCallClick}
-                  size="lg"
-                  variant="destructive"
-                  className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform"
-                >
-                  <Phone className="w-12 h-12 rotate-135" />
-                </Button>
+                <div className="flex gap-4">
+                  <Button
+                    onClick={handleRestartCall}
+                    size="lg"
+                    variant="outline"
+                    className="px-6"
+                  >
+                    Restart Call
+                  </Button>
+                  <Button
+                    onClick={handleEndCallClick}
+                    size="lg"
+                    variant="destructive"
+                    className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform"
+                  >
+                    <Phone className="w-12 h-12 rotate-135" />
+                  </Button>
+                </div>
               </div>
             )}
           </div>
