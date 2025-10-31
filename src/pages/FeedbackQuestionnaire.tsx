@@ -56,7 +56,17 @@ const FeedbackQuestionnaire = () => {
     checkAccess();
   }, [navigate, location, toast]);
 
-  const handleSubmit = async (skipFeedback = false) => {
+  const handleSubmit = async () => {
+    // Validate that both feedback fields are filled
+    if (!voiceAssistantFeedback.trim() || !experimentFeedback.trim()) {
+      toast({
+        title: "Incomplete",
+        description: "Please answer both feedback questions before submitting.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (!prolificId || !callId) {
       toast({
         title: "Error",
@@ -106,8 +116,8 @@ const FeedbackQuestionnaire = () => {
         ...petsData,
         ...tiasData,
         // formality: formalityData.formality,
-        // voiceAssistantFeedback: skipFeedback ? '' : voiceAssistantFeedback,
-        // experimentFeedback: skipFeedback ? '' : experimentFeedback,
+        // voiceAssistantFeedback: voiceAssistantFeedback,
+        // experimentFeedback: experimentFeedback,
       };
 
       // Submit via secure edge function
@@ -211,7 +221,7 @@ const FeedbackQuestionnaire = () => {
                     setVoiceAssistantFeedback(e.target.value);
                   }
                 }}
-                placeholder="Share your thoughts about the voice assistant... (optional)"
+                placeholder="Share your thoughts about the voice assistant..."
                 className="min-h-[120px] resize-none bg-background"
               />
               <div className="mt-2 text-sm text-muted-foreground text-right">
@@ -233,7 +243,7 @@ const FeedbackQuestionnaire = () => {
                     setExperimentFeedback(e.target.value);
                   }
                 }}
-                placeholder="Share your thoughts about the experiment... (optional)"
+                placeholder="Share your thoughts about the experiment..."
                 className="min-h-[120px] resize-none bg-background"
               />
               <div className="mt-2 text-sm text-muted-foreground text-right">
@@ -252,16 +262,8 @@ const FeedbackQuestionnaire = () => {
               Back
             </Button>
             <Button
-              variant="secondary"
-              onClick={() => handleSubmit(true)}
-              disabled={isSubmitting}
-              className="flex-1"
-            >
-              Skip
-            </Button>
-            <Button
-              onClick={() => handleSubmit(false)}
-              disabled={isSubmitting}
+              onClick={handleSubmit}
+              disabled={isSubmitting || !voiceAssistantFeedback.trim() || !experimentFeedback.trim()}
               className="flex-1"
               size="lg"
             >
