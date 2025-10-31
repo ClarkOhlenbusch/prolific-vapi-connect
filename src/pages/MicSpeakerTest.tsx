@@ -9,6 +9,15 @@ const MicSpeakerTest = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Enforce flow: must be at step 1
+    const currentStep = sessionStorage.getItem('flowStep');
+    if (currentStep !== '1') {
+      navigate('/');
+      return;
+    }
+  }, [navigate]);
   
   const sessionToken = searchParams.get("sessionToken");
   const prolificId = searchParams.get("prolificId");
@@ -192,6 +201,8 @@ const MicSpeakerTest = () => {
       audioRef.current = null;
     }
     
+    // Advance to next step
+    sessionStorage.setItem('flowStep', '2');
     navigate('/conversation');
   };
 

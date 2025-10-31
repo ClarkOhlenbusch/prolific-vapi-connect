@@ -27,6 +27,13 @@ const VoiceConversation = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    // Enforce flow: must be at step 2
+    const currentStep = sessionStorage.getItem('flowStep');
+    if (currentStep !== '2') {
+      navigate('/');
+      return;
+    }
+
     // Retrieve the Prolific ID from sessionStorage
     const storedId = sessionStorage.getItem('prolificId');
     
@@ -239,6 +246,8 @@ const VoiceConversation = () => {
       });
       return;
     }
+    // Advance to next step
+    sessionStorage.setItem('flowStep', '3');
     navigate('/questionnaire/pets', { state: { callId } });
   };
 
