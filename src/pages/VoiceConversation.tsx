@@ -435,7 +435,7 @@ const VoiceConversation = () => {
           <Dialog open={showPreCallModal} onOpenChange={setShowPreCallModal}>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
-                <DialogTitle className="text-xl">Healthcare Conversation Guidelines</DialogTitle>
+                <DialogTitle className="text-xl">Instructions</DialogTitle>
                 <DialogDescription className="space-y-4 text-left pt-4">
                   <div className="bg-accent/50 rounded-lg p-4 space-y-3">
                     <p className="text-foreground font-semibold">
@@ -444,19 +444,11 @@ const VoiceConversation = () => {
                     <div className="space-y-2 text-sm">
                       <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
-                        <span>This is a healthcare conversational setting with an AI assistant</span>
-                      </p>
-                      <p className="flex items-start gap-2">
-                        <span className="text-primary mt-0.5">•</span>
                         <span>The conversation will automatically end after exactly <strong>5 minutes</strong></span>
                       </p>
                       <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
                         <span>You must complete the entire 5-minute conversation before proceeding to the questionnaire</span>
-                      </p>
-                      <p className="flex items-start gap-2">
-                        <span className="text-primary mt-0.5">•</span>
-                        <span>A timer will be displayed during the conversation to show remaining time</span>
                       </p>
                     </div>
                   </div>
