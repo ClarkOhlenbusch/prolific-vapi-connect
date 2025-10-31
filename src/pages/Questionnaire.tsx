@@ -282,7 +282,7 @@ const Questionnaire = () => {
         <CardContent className="space-y-6">
           <div className="bg-accent/50 rounded-lg p-6 space-y-4">
             <p className="text-sm text-foreground leading-relaxed">
-              The following questions ask about how empathic you found the system you just interacted with. 
+              The following questions ask about how empathic you found the system (ie. the voice AI assistant) you just interacted with. 
               Please rate each statement on a scale from 0 (strongly disagree) to 100 (strongly agree). 
               There are no right or wrong answers.
             </p>
