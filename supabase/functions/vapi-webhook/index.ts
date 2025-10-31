@@ -72,11 +72,19 @@ serve(async (req) => {
 
     const payload = JSON.parse(rawBody);
 
-    // Validate input before processing
-    if (payload.message?.type === 'status-update' && payload.message?.call) {
-      const callId = payload.message.call.id;
-      const metadata = payload.message.call.assistantOverrides?.metadata || payload.message.call.metadata || {};
-      const prolificId = metadata.prolificId;
+    // Handle different webhook event types
+    const eventType = payload.message?.type;
+    const call = payload.message?.call;
+
+    // Process call-start and status-update events
+    if ((eventType === 'call-start' || eventType === 'status-update') && call) {
+      const callId = call.id;
+      
+      // Try to get prolificId from variableValues or metadata
+      const variableValues = call.assistantOverrides?.variableValues || {};
+      const metadata = call.assistantOverrides?.metadata || call.metadata || {};
+      const prolificId = variableValues.prolificId || metadata.prolificId;
+      const sessionToken = variableValues.sessionToken || metadata.sessionToken;
 
       // Validate inputs
       if (!callId || typeof callId !== 'string' || callId.length > 255) {
@@ -100,12 +108,15 @@ serve(async (req) => {
         );
       }
 
-      if (callId && prolificId) {
-        // Update existing participant_calls record instead of inserting
+      if (callId && prolificId && sessionToken) {
+        console.log(`Updating call ID ${callId} for participant ${prolificId}`);
+        
+        // Update existing participant_calls record
         const { error } = await supabase
           .from('participant_calls')
           .update({ call_id: callId })
           .eq('prolific_id', prolificId)
+          .eq('session_token', sessionToken)
           .is('call_id', null);
 
         if (error) {
