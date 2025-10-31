@@ -243,7 +243,7 @@ const VoiceConversation = () => {
       vapiRef.current.stop();
     }
     
-    // Reset all states
+    // Reset states
     setIsCallActive(false);
     setCallTracked(false);
     setIsSpeaking(false);
@@ -251,10 +251,14 @@ const VoiceConversation = () => {
     setCallEnded(false);
     setTimeRemaining(300);
     
-    // Show the pre-call modal again
+    // Go back to step 1 and redirect to audio test
+    sessionStorage.setItem('flowStep', '1');
+    const sessionToken = localStorage.getItem('sessionToken');
+    navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+    
     toast({
-      title: "Call Restarted",
-      description: "You can now start a new conversation.",
+      title: "Redirecting to Audio Test",
+      description: "Please test your audio before restarting the conversation.",
     });
   };
 
