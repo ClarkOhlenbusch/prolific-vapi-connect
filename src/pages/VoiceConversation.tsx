@@ -287,6 +287,12 @@ const VoiceConversation = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="bg-primary/10 rounded-lg p-6">
+            <p className="text-foreground">
+              <span className="font-bold">Scenario:</span> Your healthcare provider has introduced a new voice assistant powered by artificial intelligence (AI) to help conduct brief well-being check-ins. You will have a conversation with the assistant, and it will ask you some questions about how you've been feeling lately.
+            </p>
+          </div>
+
           <div className="bg-accent/50 rounded-lg p-6 space-y-4">
             <h3 className="font-semibold text-foreground">Instructions:</h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
