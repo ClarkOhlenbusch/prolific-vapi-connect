@@ -240,7 +240,7 @@ const TiasQuestionnaire = () => {
         <CardContent className="space-y-6">
           <div className="bg-accent/50 rounded-lg p-6 space-y-4">
             <p className="text-sm text-foreground leading-relaxed">
-              Please indicate the extent to which you agree with each of the following statements about the voice assistant you just interacted with. Use the following scale:
+              Please indicate the extent to which you agree with each of the following statements about the system (i.e voice assistant) you just interacted with. Use the following scale:
             </p>
             <div className="grid grid-cols-7 gap-2 text-xs text-center">
               {SCALE_LABELS.map(label => (
