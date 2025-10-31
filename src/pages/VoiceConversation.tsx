@@ -250,12 +250,25 @@ const VoiceConversation = () => {
       vapiRef.current.stop();
     }
     
+    // Clear the call_id from the database to allow a new call
+    const sessionToken = localStorage.getItem('sessionToken');
+    if (sessionToken && prolificId) {
+      try {
+        await supabase
+          .from('participant_calls')
+          .update({ call_id: '' })
+          .eq('session_token', sessionToken)
+          .eq('prolific_id', prolificId);
+      } catch (error) {
+        console.error('Failed to clear call_id:', error);
+      }
+    }
+    
     // Wait a moment for the call to fully end
     await new Promise(resolve => setTimeout(resolve, 500));
     
     // Reset flow and redirect
     sessionStorage.setItem('flowStep', '1');
-    const sessionToken = localStorage.getItem('sessionToken');
     navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${prolificId}`);
   };
 
