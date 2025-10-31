@@ -19,6 +19,7 @@ const VoiceConversation = () => {
   const [callEnded, setCallEnded] = useState(false);
   const [showPreCallModal, setShowPreCallModal] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
+  const [isConnecting, setIsConnecting] = useState(false);
   
   const vapiRef = useRef<Vapi | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -52,6 +53,7 @@ const VoiceConversation = () => {
     // Set up event listeners
     vapi.on('call-start', () => {
       setIsCallActive(true);
+      setIsConnecting(false);
     });
 
     vapi.on('call-end', () => {
@@ -135,6 +137,7 @@ const VoiceConversation = () => {
     }
     
     setShowPreCallModal(false);
+    setIsConnecting(true);
     setTimeRemaining(300); // Reset timer to 5 minutes
     
     try {
@@ -207,6 +210,7 @@ const VoiceConversation = () => {
         description: "Your conversation is being tracked.",
       });
     } catch (error) {
+      setIsConnecting(false);
       toast({
         title: "Failed to Start Call",
         description: "Please check your microphone permissions.",
@@ -297,7 +301,7 @@ const VoiceConversation = () => {
           </div>
 
           <div className="flex flex-col items-center justify-center py-8 gap-6">
-            {!isCallActive && !callEnded ? (
+            {!isCallActive && !callEnded && !isConnecting ? (
               <Button
                 onClick={handleStartCallClick}
                 size="lg"
@@ -305,6 +309,11 @@ const VoiceConversation = () => {
               >
                 <Mic className="w-12 h-12" />
               </Button>
+            ) : isConnecting ? (
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-muted-foreground">Connecting...</p>
+              </div>
             ) : callEnded ? (
               <div className="text-center space-y-4">
                 <div className="bg-primary/10 border border-primary/20 rounded-lg p-6">
