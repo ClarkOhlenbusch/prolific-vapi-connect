@@ -48,10 +48,6 @@ export type Database = {
         Row: {
           attention_check_1: number | null
           attention_check_1_expected: number | null
-          attention_check_2: number | null
-          attention_check_2_expected: number | null
-          attention_check_3: number | null
-          attention_check_3_expected: number | null
           call_id: string
           created_at: string
           e1: number
@@ -79,10 +75,6 @@ export type Database = {
           tias_9: number | null
           tias_attention_check_1: number | null
           tias_attention_check_1_expected: number | null
-          tias_attention_check_2: number | null
-          tias_attention_check_2_expected: number | null
-          tias_attention_check_3: number | null
-          tias_attention_check_3_expected: number | null
           tias_total: number | null
           u1: number
           u2: number
@@ -92,10 +84,6 @@ export type Database = {
         Insert: {
           attention_check_1?: number | null
           attention_check_1_expected?: number | null
-          attention_check_2?: number | null
-          attention_check_2_expected?: number | null
-          attention_check_3?: number | null
-          attention_check_3_expected?: number | null
           call_id: string
           created_at?: string
           e1: number
@@ -123,10 +111,6 @@ export type Database = {
           tias_9?: number | null
           tias_attention_check_1?: number | null
           tias_attention_check_1_expected?: number | null
-          tias_attention_check_2?: number | null
-          tias_attention_check_2_expected?: number | null
-          tias_attention_check_3?: number | null
-          tias_attention_check_3_expected?: number | null
           tias_total?: number | null
           u1: number
           u2: number
@@ -136,10 +120,6 @@ export type Database = {
         Update: {
           attention_check_1?: number | null
           attention_check_1_expected?: number | null
-          attention_check_2?: number | null
-          attention_check_2_expected?: number | null
-          attention_check_3?: number | null
-          attention_check_3_expected?: number | null
           call_id?: string
           created_at?: string
           e1?: number
@@ -167,10 +147,6 @@ export type Database = {
           tias_9?: number | null
           tias_attention_check_1?: number | null
           tias_attention_check_1_expected?: number | null
-          tias_attention_check_2?: number | null
-          tias_attention_check_2_expected?: number | null
-          tias_attention_check_3?: number | null
-          tias_attention_check_3_expected?: number | null
           tias_total?: number | null
           u1?: number
           u2?: number
