@@ -159,160 +159,59 @@ const TiasQuestionnaire = () => {
     setResponses(prev => ({ ...prev, [key]: parseInt(value) }));
   };
 
-  const handleSubmit = async () => {
+  const handleNext = () => {
     // Check all questions have been answered (including attention checks)
     const allAnswered = randomizedItems.every(item => responses[item.key] !== undefined && responses[item.key] > 0);
     
     if (!allAnswered) {
       toast({
         title: "Incomplete",
-        description: "Please answer all questions before submitting.",
+        description: "Please answer all questions before continuing.",
         variant: "destructive"
       });
       return;
     }
 
-    if (!prolificId || !callId) {
+    // Calculate TIAS score with reverse scoring for items 1-5 (excluding attention checks)
+    const tiasScores = TIAS_ITEMS.map(item => {
+      const score = responses[item.key];
+      return item.isReversed ? (8 - score) : score;
+    });
+    
+    const tias_total = tiasScores.reduce((a, b) => a + b, 0) / tiasScores.length;
+
+    // Prepare TIAS data
+    const tiasData: Record<string, number> = {
+      tias_total
+    };
+    
+    for (let i = 1; i <= 12; i++) {
+      const key = `tias_${i}`;
+      tiasData[key] = responses[key];
+    }
+
+    // Add attention check data
+    tiasData.tias_attention_check_1 = responses.tias_ac1;
+    tiasData.tias_attention_check_1_expected = attentionCheck.expectedValue;
+
+    // Validate TIAS data
+    const validationResult = tiasResponseSchema.safeParse(tiasData);
+
+    if (!validationResult.success) {
+      console.error('TIAS validation error:', validationResult.error);
       toast({
-        title: "Error",
-        description: "Missing required data.",
+        title: "Invalid Data",
+        description: "Please ensure all values are valid.",
         variant: "destructive"
       });
       return;
     }
 
-    const sessionToken = localStorage.getItem('sessionToken');
-    if (!sessionToken) {
-      toast({
-        title: "Error",
-        description: "Session token not found. Please start over.",
-        variant: "destructive"
-      });
-      navigate('/');
-      return;
-    }
+    // Store TIAS data in sessionStorage
+    sessionStorage.setItem('tiasData', JSON.stringify(validationResult.data));
 
-    // Get PETS data from sessionStorage
-    const petsDataString = sessionStorage.getItem('petsData');
-    if (!petsDataString) {
-      toast({
-        title: "Error",
-        description: "PETS data not found. Please complete the PETS questionnaire first.",
-        variant: "destructive"
-      });
-      navigate('/questionnaire/pets');
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const petsData = JSON.parse(petsDataString);
-
-      // Calculate TIAS score with reverse scoring for items 1-5 (excluding attention checks)
-      const tiasScores = TIAS_ITEMS.map(item => {
-        const score = responses[item.key];
-        return item.isReversed ? (8 - score) : score;
-      });
-      
-      const tias_total = tiasScores.reduce((a, b) => a + b, 0) / tiasScores.length;
-
-      // Prepare TIAS data
-      const tiasData: Record<string, number> = {
-        tias_total
-      };
-      
-      for (let i = 1; i <= 12; i++) {
-        const key = `tias_${i}`;
-        tiasData[key] = responses[key];
-      }
-
-      // Add attention check data
-      tiasData.tias_attention_check_1 = responses.tias_ac1;
-      tiasData.tias_attention_check_1_expected = attentionCheck.expectedValue;
-
-      // Validate TIAS data
-      const validationResult = tiasResponseSchema.safeParse(tiasData);
-
-      if (!validationResult.success) {
-        console.error('TIAS validation error:', validationResult.error);
-        toast({
-          title: "Invalid Data",
-          description: "Please ensure all values are valid.",
-          variant: "destructive"
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Combine PETS and TIAS data
-      const combinedData = {
-        ...petsData,
-        ...validationResult.data,
-      };
-
-      // Submit via secure edge function
-      const { data, error } = await supabase.functions.invoke('submit-questionnaire', {
-        body: {
-          sessionToken,
-          questionnaireData: combinedData,
-        },
-      });
-
-      if (error) {
-        console.error('Error submitting questionnaire:', error);
-        
-        const errorMessage = error.message || '';
-        
-        if (errorMessage.includes('already submitted') || errorMessage.includes('409')) {
-          toast({
-            title: "Already Submitted",
-            description: "You have already completed this questionnaire.",
-          });
-          navigate('/complete');
-          return;
-        }
-        
-        if (errorMessage.includes('Invalid or expired session') || errorMessage.includes('401')) {
-          toast({
-            title: "Session Expired",
-            description: "Your session has expired. Please start over.",
-            variant: "destructive"
-          });
-          navigate('/');
-          return;
-        }
-
-        toast({
-          title: "Error",
-          description: "Failed to submit questionnaire. Please try again.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Clear stored data
-      sessionStorage.removeItem('petsData');
-
-      toast({
-        title: "Success",
-        description: "Your responses have been submitted successfully.",
-      });
-
-      // Advance to final step
-      sessionStorage.setItem('flowStep', '5');
-
-      navigate('/complete');
-    } catch (err) {
-      console.error('Unexpected error submitting questionnaire:', err);
-      toast({
-        title: "Error",
-        description: "An error occurred. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    // Navigate to formality questionnaire
+    navigate('/questionnaire/formality', { state: { callId } });
   };
 
   if (isLoading) {
@@ -401,12 +300,12 @@ const TiasQuestionnaire = () => {
               Back to PETS
             </Button>
             <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting || !allAnswered}
+              onClick={handleNext}
+              disabled={!allAnswered}
               className="flex-1"
               size="lg"
             >
-              {isSubmitting ? 'Submitting...' : 'Submit Questionnaires'}
+              Next
             </Button>
           </div>
         </CardContent>
