@@ -20,6 +20,7 @@ const VoiceConversation = () => {
   const [showPreCallModal, setShowPreCallModal] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   
   const vapiRef = useRef<Vapi | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -66,7 +67,16 @@ const VoiceConversation = () => {
     vapi.on('call-end', () => {
       setIsCallActive(false);
       setCallTracked(false);
-      setCallEnded(true);
+      
+      // If we're restarting, redirect to audio test
+      if (isRestarting) {
+        sessionStorage.setItem('flowStep', '1');
+        const sessionToken = localStorage.getItem('sessionToken');
+        navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+        setIsRestarting(false);
+      } else {
+        setCallEnded(true);
+      }
     });
 
     vapi.on('speech-start', () => {
@@ -238,27 +248,23 @@ const VoiceConversation = () => {
   };
 
   const handleRestartCall = () => {
-    // Stop the current call
-    if (vapiRef.current) {
-      vapiRef.current.stop();
-    }
+    setIsRestarting(true);
     
     // Reset states
-    setIsCallActive(false);
     setCallTracked(false);
     setIsSpeaking(false);
     setCallId(null);
     setCallEnded(false);
     setTimeRemaining(300);
     
-    // Go back to step 1 and redirect to audio test
-    sessionStorage.setItem('flowStep', '1');
-    const sessionToken = localStorage.getItem('sessionToken');
-    navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+    // Stop the call - the call-end event will handle navigation
+    if (vapiRef.current) {
+      vapiRef.current.stop();
+    }
     
     toast({
-      title: "Redirecting to Audio Test",
-      description: "Please test your audio before restarting the conversation.",
+      title: "Restarting Call",
+      description: "Ending current call and redirecting to audio test...",
     });
   };
 
