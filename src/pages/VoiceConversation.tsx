@@ -138,9 +138,6 @@ const VoiceConversation = () => {
     setTimeRemaining(300); // Reset timer to 5 minutes
     
     try {
-      // Request microphone permission explicitly
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      
       const sessionToken = localStorage.getItem('sessionToken');
       
       if (!sessionToken) {
@@ -176,20 +173,6 @@ const VoiceConversation = () => {
             variant: "destructive"
           });
         }
-        return;
-      }
-
-      // Validate session for call initiation
-      const { data: callData, error: callError } = await supabase.functions.invoke('start-vapi-call', {
-        body: { sessionToken, prolificId }
-      });
-
-      if (callError || !callData?.success) {
-        toast({
-          title: "Error",
-          description: callError?.message || "Failed to validate session for call.",
-          variant: "destructive"
-        });
         return;
       }
       
