@@ -232,11 +232,6 @@ const FormalityQuestionnaire = () => {
                       >
                         {label.value}
                       </Label>
-                      {label.label && (
-                        <span className="text-xs text-muted-foreground text-center whitespace-nowrap">
-                          {label.label}
-                        </span>
-                      )}
                     </div>
                   ))}
                 </RadioGroup>
