@@ -136,6 +136,24 @@ const MicSpeakerTest = () => {
     }
   };
 
+  const resetMicTest = () => {
+    // Stop any playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    
+    // Reset states
+    setRecordedAudio(null);
+    setHasPlayedRecording(false);
+    setRecordingTime(0);
+    
+    toast({
+      title: "Mic test reset",
+      description: "You can record a new audio clip",
+    });
+  };
+
   const playSpeakerTest = () => {
     const audioContext = new AudioContext();
     const oscillator = audioContext.createOscillator();
@@ -231,14 +249,23 @@ const MicSpeakerTest = () => {
             )}
             
             {recordedAudio && (
-              <Button 
-                onClick={playRecording} 
-                variant={hasPlayedRecording ? "outline" : "default"}
-                className="w-full"
-              >
-                <Volume2 className="h-4 w-4 mr-2" />
-                {hasPlayedRecording ? "Play Recording Again" : "Play Recording"}
-              </Button>
+              <div className="space-y-2">
+                <Button 
+                  onClick={playRecording} 
+                  variant={hasPlayedRecording ? "outline" : "default"}
+                  className="w-full"
+                >
+                  <Volume2 className="h-4 w-4 mr-2" />
+                  {hasPlayedRecording ? "Play Recording Again" : "Play Recording"}
+                </Button>
+                <Button 
+                  onClick={resetMicTest} 
+                  variant="outline"
+                  className="w-full"
+                >
+                  Record Again
+                </Button>
+              </div>
             )}
           </div>
 
