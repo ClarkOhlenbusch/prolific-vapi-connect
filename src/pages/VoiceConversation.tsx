@@ -68,13 +68,8 @@ const VoiceConversation = () => {
       setIsCallActive(false);
       setCallTracked(false);
       
-      // If we're restarting, redirect to audio test
-      if (isRestarting) {
-        sessionStorage.setItem('flowStep', '1');
-        const sessionToken = localStorage.getItem('sessionToken');
-        navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${prolificId}`);
-        setIsRestarting(false);
-      } else {
+      // If we're restarting, don't show "ended" state
+      if (!isRestarting) {
         setCallEnded(true);
       }
     });
@@ -247,25 +242,21 @@ const VoiceConversation = () => {
     setShowEndDialog(false);
   };
 
-  const handleRestartCall = () => {
+  const handleRestartCall = async () => {
     setIsRestarting(true);
     
-    // Reset states
-    setCallTracked(false);
-    setIsSpeaking(false);
-    setCallId(null);
-    setCallEnded(false);
-    setTimeRemaining(300);
-    
-    // Stop the call - the call-end event will handle navigation
+    // Stop the call first
     if (vapiRef.current) {
       vapiRef.current.stop();
     }
     
-    toast({
-      title: "Restarting Call",
-      description: "Ending current call and redirecting to audio test...",
-    });
+    // Wait a moment for the call to fully end
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Reset flow and redirect
+    sessionStorage.setItem('flowStep', '1');
+    const sessionToken = localStorage.getItem('sessionToken');
+    navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${prolificId}`);
   };
 
   const handleProceedToQuestionnaire = () => {
@@ -441,24 +432,24 @@ const VoiceConversation = () => {
                     <p className="text-foreground font-semibold">
                       Please read carefully before starting:
                     </p>
-                    <ul className="space-y-2 text-sm">
-                      <li className="flex items-start gap-2">
+                    <div className="space-y-2 text-sm">
+                      <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
                         <span>This is a healthcare conversational setting with an AI assistant</span>
-                      </li>
-                      <li className="flex items-start gap-2">
+                      </p>
+                      <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
                         <span>The conversation will automatically end after exactly <strong>5 minutes</strong></span>
-                      </li>
-                      <li className="flex items-start gap-2">
+                      </p>
+                      <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
                         <span>You must complete the entire 5-minute conversation before proceeding to the questionnaire</span>
-                      </li>
-                      <li className="flex items-start gap-2">
+                      </p>
+                      <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
                         <span>A timer will be displayed during the conversation to show remaining time</span>
-                      </li>
-                    </ul>
+                      </p>
+                    </div>
                   </div>
                 </DialogDescription>
               </DialogHeader>
