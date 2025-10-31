@@ -13,6 +13,7 @@ const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
 const Questionnaire = lazy(() => import("./pages/Questionnaire"));
 const TiasQuestionnaire = lazy(() => import("./pages/TiasQuestionnaire"));
 const FormalityQuestionnaire = lazy(() => import("./pages/FormalityQuestionnaire"));
+const FeedbackQuestionnaire = lazy(() => import("./pages/FeedbackQuestionnaire"));
 const Complete = lazy(() => import("./pages/Complete"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -79,6 +80,7 @@ const App = () => (
                 <Route path="/questionnaire/pets" element={<SessionValidator><Questionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/tias" element={<SessionValidator><TiasQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/formality" element={<SessionValidator><FormalityQuestionnaire /></SessionValidator>} />
+                <Route path="/questionnaire/feedback" element={<SessionValidator><FeedbackQuestionnaire /></SessionValidator>} />
                 <Route path="/complete" element={<SessionValidator><Complete /></SessionValidator>} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />

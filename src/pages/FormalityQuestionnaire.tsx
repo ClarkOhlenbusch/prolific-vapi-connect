@@ -63,126 +63,22 @@ const FormalityQuestionnaire = () => {
     checkAccess();
   }, [navigate, location, toast]);
 
-  const handleSubmit = async () => {
+  const handleContinue = () => {
     if (formalityRating === null) {
       toast({
         title: "Incomplete",
-        description: "Please select a rating before submitting.",
+        description: "Please select a rating before continuing.",
         variant: "destructive"
       });
       return;
     }
 
-    if (!prolificId || !callId) {
-      toast({
-        title: "Error",
-        description: "Missing required data.",
-        variant: "destructive"
-      });
-      return;
-    }
+    // Store formality data in sessionStorage
+    const formalityData = { formality: formalityRating };
+    sessionStorage.setItem('formalityData', JSON.stringify(formalityData));
 
-    const sessionToken = localStorage.getItem('sessionToken');
-    if (!sessionToken) {
-      toast({
-        title: "Error",
-        description: "Session token not found. Please start over.",
-        variant: "destructive"
-      });
-      navigate('/');
-      return;
-    }
-
-    // Get PETS and TIAS data from sessionStorage
-    const petsDataString = sessionStorage.getItem('petsData');
-    const tiasDataString = sessionStorage.getItem('tiasData');
-    
-    if (!petsDataString || !tiasDataString) {
-      toast({
-        title: "Error",
-        description: "Previous questionnaire data not found.",
-        variant: "destructive"
-      });
-      navigate('/questionnaire/pets');
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const petsData = JSON.parse(petsDataString);
-      const tiasData = JSON.parse(tiasDataString);
-
-      // Combine all questionnaire data (for now, formality will be stored in sessionStorage for later DB update)
-      const combinedData = {
-        ...petsData,
-        ...tiasData,
-        // formality will be added to DB schema later
-      };
-
-      // Submit via secure edge function
-      const { data, error } = await supabase.functions.invoke('submit-questionnaire', {
-        body: {
-          sessionToken,
-          questionnaireData: combinedData,
-        },
-      });
-
-      if (error) {
-        console.error('Error submitting questionnaire:', error);
-        
-        const errorMessage = error.message || '';
-        
-        if (errorMessage.includes('already submitted') || errorMessage.includes('409')) {
-          toast({
-            title: "Already Submitted",
-            description: "You have already completed this questionnaire.",
-          });
-          navigate('/complete');
-          return;
-        }
-        
-        if (errorMessage.includes('Invalid or expired session') || errorMessage.includes('401')) {
-          toast({
-            title: "Session Expired",
-            description: "Your session has expired. Please start over.",
-            variant: "destructive"
-          });
-          navigate('/');
-          return;
-        }
-
-        toast({
-          title: "Error",
-          description: "Failed to submit questionnaire. Please try again.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Clear stored data
-      sessionStorage.removeItem('petsData');
-      sessionStorage.removeItem('tiasData');
-
-      toast({
-        title: "Success",
-        description: "Your responses have been submitted successfully.",
-      });
-
-      // Advance to final step
-      sessionStorage.setItem('flowStep', '5');
-
-      navigate('/complete');
-    } catch (err) {
-      console.error('Unexpected error submitting questionnaire:', err);
-      toast({
-        title: "Error",
-        description: "An error occurred. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    // Navigate to feedback page
+    navigate('/questionnaire/feedback', { state: { callId } });
   };
 
   if (isLoading) {
@@ -253,12 +149,12 @@ const FormalityQuestionnaire = () => {
               Back to TIAS
             </Button>
             <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting || formalityRating === null}
+              onClick={handleContinue}
+              disabled={formalityRating === null}
               className="flex-1"
               size="lg"
             >
-              {isSubmitting ? 'Submitting...' : 'Submit All Questionnaires'}
+              Continue
             </Button>
           </div>
         </CardContent>
