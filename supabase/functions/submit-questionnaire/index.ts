@@ -23,11 +23,7 @@ const petsResponseSchema = z.object({
   pets_ut: z.number(),
   pets_total: z.number(),
   attention_check_1: z.number().min(0).max(100).int().optional(),
-  attention_check_2: z.number().min(0).max(100).int().optional(),
-  attention_check_3: z.number().min(0).max(100).int().optional(),
   attention_check_1_expected: z.number().min(0).max(100).int().optional(),
-  attention_check_2_expected: z.number().min(0).max(100).int().optional(),
-  attention_check_3_expected: z.number().min(0).max(100).int().optional(),
   // TIAS items (1-7 scale)
   tias_1: z.number().min(1).max(7).int(),
   tias_2: z.number().min(1).max(7).int(),
@@ -43,11 +39,7 @@ const petsResponseSchema = z.object({
   tias_12: z.number().min(1).max(7).int(),
   tias_total: z.number(),
   tias_attention_check_1: z.number().min(1).max(7).int().optional(),
-  tias_attention_check_2: z.number().min(1).max(7).int().optional(),
-  tias_attention_check_3: z.number().min(1).max(7).int().optional(),
   tias_attention_check_1_expected: z.number().min(1).max(7).int().optional(),
-  tias_attention_check_2_expected: z.number().min(1).max(7).int().optional(),
-  tias_attention_check_3_expected: z.number().min(1).max(7).int().optional(),
   // IDs
   prolific_id: z.string().min(1).max(100),
   call_id: z.string().min(1).max(100),
