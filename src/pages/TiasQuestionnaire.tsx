@@ -232,24 +232,16 @@ const TiasQuestionnaire = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-4xl shadow-xl border-border">
         <CardHeader className="space-y-3">
-          <CardTitle className="text-2xl text-center">Trust in Automation Scale (TIAS)</CardTitle>
+          <CardTitle className="text-2xl text-center">Questionnaire 2</CardTitle>
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="bg-accent/50 rounded-lg p-6 space-y-4">
+          <div className="bg-accent/50 rounded-lg p-6">
             <p className="text-sm text-foreground leading-relaxed">
-              Please indicate the extent to which you agree with each of the following statements about the system (i.e voice assistant) you just interacted with. Use the following scale:
+              Please indicate the extent to which you agree with each of the following statements using the scale provided (1 = Not at all, 7 = Extremely).
             </p>
-            <div className="grid grid-cols-7 gap-2 text-xs text-center">
-              {SCALE_LABELS.map(label => (
-                <div key={label.value} className="space-y-1">
-                  <div className="font-semibold text-primary">{label.value}</div>
-                  <div className="text-muted-foreground">{label.label}</div>
-                </div>
-              ))}
-            </div>
           </div>
 
           <div className="space-y-6">
@@ -275,15 +267,11 @@ const TiasQuestionnaire = () => {
                           htmlFor={`${item.key}-${label.value}`}
                           className="text-sm font-normal cursor-pointer"
                         >
-                          {label.value}
+                          {label.value} - {label.label}
                         </Label>
                       </div>
                     ))}
                   </RadioGroup>
-                  <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                    <span>Not at all (1)</span>
-                    <span>Extremely (7)</span>
-                  </div>
                 </div>
               </div>
               );
