@@ -265,7 +265,7 @@ const VoiceConversation = () => {
     // Reset flow and redirect
     sessionStorage.setItem('flowStep', '1');
     const sessionToken = localStorage.getItem('sessionToken');
-    navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+    navigate(`/practice?sessionToken=${sessionToken}&prolificId=${prolificId}`);
   };
 
   const handleProceedToQuestionnaire = () => {
