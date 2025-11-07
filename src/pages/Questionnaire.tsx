@@ -65,16 +65,15 @@ const Questionnaire = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, number>>({
-    e1: 0, e2: 0, e3: 0, e4: 0, e5: 0, e6: 0,
-    u1: 0, u2: 0, u3: 0, u4: 0,
-    ac1: 0
+    e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
+    u1: 50, u2: 50, u3: 50, u4: 50,
+    ac1: 50
   });
   const [interacted, setInteracted] = useState<Record<string, boolean>>({
     e1: false, e2: false, e3: false, e4: false, e5: false, e6: false,
     u1: false, u2: false, u3: false, u4: false,
     ac1: false
   });
-  const [exampleValue, setExampleValue] = useState(50);
   const [isLoading, setIsLoading] = useState(true);
 
   // Generate attention check question with random target value
@@ -274,43 +273,17 @@ const Questionnaire = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-3xl shadow-xl border-border">
         <CardHeader className="space-y-3">
-          <CardTitle className="text-2xl text-center">Perceived Empathy of Technology Scale (PETS)</CardTitle>
+          <CardTitle className="text-2xl text-center">Questionnaire 1</CardTitle>
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="bg-accent/50 rounded-lg p-6 space-y-4">
+          <div className="bg-accent/50 rounded-lg p-6">
             <p className="text-sm text-foreground leading-relaxed">
-              The following questions ask about how empathic you found the system (ie. the voice AI assistant) you just interacted with. 
               Please rate each statement on a scale from 0 (strongly disagree) to 100 (strongly agree). 
-              There are no right or wrong answers.
+              Use the slider to adjust your rating. There are no right or wrong answers.
             </p>
-            
-            {/* Example slider */}
-            <div className="border-t border-border/50 pt-4 mt-4">
-              <p className="text-xs font-semibold text-muted-foreground mb-3">Example: How to use the slider</p>
-              <div className="space-y-2">
-                <p className="text-xs text-foreground italic">
-                  Drag the slider to select your rating. Try it below:
-                </p>
-                <PetsSlider
-                  value={[exampleValue]}
-                  onValueChange={(value) => setExampleValue(value[0])}
-                  onInteract={() => {}}
-                  hasInteracted={true}
-                  min={0}
-                  max={100}
-                  step={1}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>0</span>
-                  <span className="font-semibold text-primary">{exampleValue}</span>
-                  <span>100</span>
-                </div>
-              </div>
-            </div>
           </div>
 
           <div className="space-y-8">
