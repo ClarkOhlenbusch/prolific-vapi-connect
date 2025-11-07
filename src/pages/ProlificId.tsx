@@ -84,8 +84,8 @@ const ProlificId = () => {
       // Advance to next step
       sessionStorage.setItem('flowStep', '1');
       
-      // Navigate to mic/speaker test page
-      navigate(`/test-audio?sessionToken=${sessionToken}&prolificId=${validatedId}`);
+      // Navigate to practice conversation page
+      navigate(`/practice?sessionToken=${sessionToken}&prolificId=${validatedId}`);
     } catch (error) {
       toast({
         title: "Error",

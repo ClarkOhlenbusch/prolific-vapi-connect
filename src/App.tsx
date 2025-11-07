@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
-const MicSpeakerTest = lazy(() => import("./pages/MicSpeakerTest"));
+const PracticeConversation = lazy(() => import("./pages/PracticeConversation"));
 const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
 const Questionnaire = lazy(() => import("./pages/Questionnaire"));
 const TiasQuestionnaire = lazy(() => import("./pages/TiasQuestionnaire"));
@@ -25,8 +25,8 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const validateSession = async () => {
-      // Skip validation on landing page, test-audio page, and complete page
-      if (location.pathname === '/' || location.pathname === '/test-audio' || location.pathname === '/complete') return;
+      // Skip validation on landing page, practice page, and complete page
+      if (location.pathname === '/' || location.pathname === '/practice' || location.pathname === '/complete') return;
 
       const sessionToken = localStorage.getItem('sessionToken');
       
@@ -74,7 +74,7 @@ const App = () => (
             <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
               <Routes>
                 <Route path="/" element={<ProlificId />} />
-                <Route path="/test-audio" element={<MicSpeakerTest />} />
+                <Route path="/practice" element={<PracticeConversation />} />
                 <Route path="/conversation" element={<VoiceConversation />} />
                 <Route path="/questionnaire" element={<Questionnaire />} />
                 <Route path="/questionnaire/pets" element={<SessionValidator><Questionnaire /></SessionValidator>} />
