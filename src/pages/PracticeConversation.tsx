@@ -194,6 +194,10 @@ const PracticeConversation = () => {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">•</span>
+                <span>Ensure you're in a quiet environment with minimal background noise</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary mt-0.5">•</span>
                 <span>Click the microphone button to start the practice conversation</span>
               </li>
               <li className="flex items-start gap-2">
