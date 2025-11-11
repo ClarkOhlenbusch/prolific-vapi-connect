@@ -294,7 +294,7 @@ const Questionnaire = () => {
           <div className="bg-accent/50 rounded-lg p-6">
             <p className="text-sm text-foreground leading-relaxed">
               Please rate each statement on a scale from 0 (strongly disagree) to 100 (strongly agree). 
-              Use the slider to adjust your rating. There are no right or wrong answers.
+              Use the slider or type in the number to adjust your rating. There are no right or wrong answers.
             </p>
           </div>
 
