@@ -308,18 +308,19 @@ const Questionnaire = () => {
                       {item.text}
                     </label>
                   </div>
-                  <div className="pl-6">
-                    <div className="flex items-center gap-4">
-                      <PetsSlider
-                        value={[responses[item.key]]}
-                        onValueChange={(value) => handleSliderChange(item.key, value)}
-                        onInteract={() => handleInteract(item.key)}
-                        hasInteracted={interacted[item.key]}
-                        min={0}
-                        max={100}
-                        step={1}
-                        className="flex-1"
-                      />
+                  <div className="pl-6 space-y-2">
+                    <PetsSlider
+                      value={[responses[item.key]]}
+                      onValueChange={(value) => handleSliderChange(item.key, value)}
+                      onInteract={() => handleInteract(item.key)}
+                      hasInteracted={interacted[item.key]}
+                      min={0}
+                      max={100}
+                      step={1}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between items-center text-xs text-muted-foreground">
+                      <span>Strongly disagree (0)</span>
                       <Input
                         type="number"
                         min={0}
@@ -329,9 +330,6 @@ const Questionnaire = () => {
                         onFocus={() => handleInteract(item.key)}
                         className="w-20 text-center"
                       />
-                    </div>
-                    <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                      <span>Strongly disagree (0)</span>
                       <span>Strongly agree (100)</span>
                     </div>
                   </div>
