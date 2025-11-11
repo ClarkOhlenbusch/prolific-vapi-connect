@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PetsSlider } from '@/components/ui/pets-slider';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
@@ -178,6 +179,17 @@ const Questionnaire = () => {
     setResponses(prev => ({ ...prev, [key]: value[0] }));
   };
 
+  const handleInputChange = (key: string, value: string) => {
+    const numValue = parseInt(value, 10);
+    if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
+      setResponses(prev => ({ ...prev, [key]: numValue }));
+      setInteracted(prev => ({ ...prev, [key]: true }));
+    } else if (value === '') {
+      // Allow empty input during typing
+      setResponses(prev => ({ ...prev, [key]: 0 }));
+    }
+  };
+
   const handleInteract = (key: string) => {
     setInteracted(prev => ({ ...prev, [key]: true }));
   };
@@ -297,21 +309,29 @@ const Questionnaire = () => {
                     </label>
                   </div>
                   <div className="pl-6">
-                    <PetsSlider
-                      value={[responses[item.key]]}
-                      onValueChange={(value) => handleSliderChange(item.key, value)}
-                      onInteract={() => handleInteract(item.key)}
-                      hasInteracted={interacted[item.key]}
-                      min={0}
-                      max={100}
-                      step={1}
-                      className="w-full"
-                    />
+                    <div className="flex items-center gap-4">
+                      <PetsSlider
+                        value={[responses[item.key]]}
+                        onValueChange={(value) => handleSliderChange(item.key, value)}
+                        onInteract={() => handleInteract(item.key)}
+                        hasInteracted={interacted[item.key]}
+                        min={0}
+                        max={100}
+                        step={1}
+                        className="flex-1"
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={responses[item.key]}
+                        onChange={(e) => handleInputChange(item.key, e.target.value)}
+                        onFocus={() => handleInteract(item.key)}
+                        className="w-20 text-center"
+                      />
+                    </div>
                     <div className="flex justify-between mt-2 text-xs text-muted-foreground">
                       <span>Strongly disagree (0)</span>
-                      {interacted[item.key] && (
-                        <span className="font-semibold text-primary">{responses[item.key]}</span>
-                      )}
                       <span>Strongly agree (100)</span>
                     </div>
                   </div>
