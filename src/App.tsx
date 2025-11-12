@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
+const Demographics = lazy(() => import("./pages/Demographics"));
 const PracticeConversation = lazy(() => import("./pages/PracticeConversation"));
 const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
 const Questionnaire = lazy(() => import("./pages/Questionnaire"));
@@ -25,8 +26,8 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const validateSession = async () => {
-      // Skip validation on landing page, practice page, and complete page
-      if (location.pathname === '/' || location.pathname === '/practice' || location.pathname === '/complete') return;
+      // Skip validation on landing page, demographics, practice page, and complete page
+      if (location.pathname === '/' || location.pathname === '/demographics' || location.pathname === '/practice' || location.pathname === '/complete') return;
 
       const sessionToken = localStorage.getItem('sessionToken');
       
@@ -74,6 +75,7 @@ const App = () => (
             <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
               <Routes>
                 <Route path="/" element={<ProlificId />} />
+                <Route path="/demographics" element={<Demographics />} />
                 <Route path="/practice" element={<PracticeConversation />} />
                 <Route path="/conversation" element={<VoiceConversation />} />
                 <Route path="/questionnaire" element={<Questionnaire />} />

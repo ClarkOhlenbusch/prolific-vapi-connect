@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      demographics: {
+        Row: {
+          age: string
+          created_at: string
+          ethnicity: Json
+          gender: string
+          id: string
+          native_english: string
+          prolific_id: string
+          session_token: string
+        }
+        Insert: {
+          age: string
+          created_at?: string
+          ethnicity: Json
+          gender: string
+          id?: string
+          native_english: string
+          prolific_id: string
+          session_token: string
+        }
+        Update: {
+          age?: string
+          created_at?: string
+          ethnicity?: Json
+          gender?: string
+          id?: string
+          native_english?: string
+          prolific_id?: string
+          session_token?: string
+        }
+        Relationships: []
+      }
       participant_calls: {
         Row: {
           call_id: string
