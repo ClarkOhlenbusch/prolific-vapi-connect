@@ -10,10 +10,7 @@ const NotEligible = () => {
             Unfortunately, you do not meet the eligibility criteria for this study.
           </CardDescription>
         </CardHeader>
-        <CardContent className="text-center space-y-4">
-          <p className="text-muted-foreground">
-            We appreciate your time and interest in participating. However, this study is specifically targeting participants aged 60 and above.
-          </p>
+        <CardContent className="text-center">
           <p className="text-muted-foreground">
             Thank you for your understanding.
           </p>
