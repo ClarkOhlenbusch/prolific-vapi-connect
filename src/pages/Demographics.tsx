@@ -47,6 +47,12 @@ const Demographics = () => {
       return;
     }
 
+    // Check age eligibility
+    if (formData.age !== '60+') {
+      navigate('/not-eligible');
+      return;
+    }
+
     if (formData.ethnicity.includes('Other') && !formData.ethnicityOther.trim()) {
       toast({
         title: "Missing Information",
@@ -87,7 +93,7 @@ const Demographics = () => {
     }
   };
 
-  const ageOptions = ['Under 18', '18-29', '30-49', '50-64', '65+'];
+  const ageOptions = ['Under 18', '18-29', '30-49', '50-59', '60+'];
   const genderOptions = ['Male', 'Female', 'Other', 'Prefer not to say'];
   const ethnicityOptions = [
     'Hispanic or Latino',
