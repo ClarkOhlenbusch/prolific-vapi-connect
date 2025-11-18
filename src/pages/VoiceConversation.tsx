@@ -284,7 +284,7 @@ const VoiceConversation = () => {
 
   const handleGoBack = () => {
     sessionStorage.removeItem('prolificId');
-    navigate('/');
+    navigate('/practice');
   };
 
   const formatTime = (seconds: number) => {
