@@ -283,6 +283,7 @@ const VoiceConversation = () => {
   };
 
   const handleGoBack = () => {
+    sessionStorage.setItem('flowStep', '1');
     navigate('/practice');
   };
 
