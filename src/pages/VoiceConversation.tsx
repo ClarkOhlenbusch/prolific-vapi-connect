@@ -283,8 +283,16 @@ const VoiceConversation = () => {
   };
 
   const handleGoBack = () => {
+    const storedProlificId = sessionStorage.getItem('prolificId');
+    const storedSessionToken = localStorage.getItem('sessionToken');
+    
     sessionStorage.setItem('flowStep', '1');
-    navigate('/practice');
+    
+    if (storedProlificId && storedSessionToken) {
+      navigate(`/practice?prolificId=${storedProlificId}&sessionToken=${storedSessionToken}`);
+    } else {
+      navigate('/');
+    }
   };
 
   const formatTime = (seconds: number) => {
