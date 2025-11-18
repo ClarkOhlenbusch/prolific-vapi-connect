@@ -283,7 +283,6 @@ const VoiceConversation = () => {
   };
 
   const handleGoBack = () => {
-    sessionStorage.removeItem('prolificId');
     navigate('/practice');
   };
 
