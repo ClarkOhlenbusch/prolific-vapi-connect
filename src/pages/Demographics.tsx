@@ -102,6 +102,7 @@ const Demographics = () => {
     'Native Hawaiian or Other Pacific Islander',
     'Black or African American',
     'White or Caucasian',
+    'Prefer not to say',
     'Other'
   ];
   const englishOptions = ['Yes', 'No'];
@@ -118,7 +119,7 @@ const Demographics = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-3">
-              <Label className="text-base font-semibold">What is your age group? *</Label>
+              <Label className="text-base font-semibold">What is your age group?</Label>
               <RadioGroup value={formData.age} onValueChange={(value) => setFormData(prev => ({ ...prev, age: value }))}>
                 {ageOptions.map(option => (
                   <div key={option} className="flex items-center space-x-2">
@@ -130,7 +131,7 @@ const Demographics = () => {
             </div>
 
             <div className="space-y-3">
-              <Label className="text-base font-semibold">What's your gender? *</Label>
+              <Label className="text-base font-semibold">What's your gender?</Label>
               <RadioGroup value={formData.gender} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}>
                 {genderOptions.map(option => (
                   <div key={option} className="flex items-center space-x-2">
@@ -143,7 +144,7 @@ const Demographics = () => {
 
             <div className="space-y-3">
               <Label className="text-base font-semibold">
-                Please check all of the following ethnic or racial categories that best describe you. *
+                Please check all of the following ethnic or racial categories that best describe you.
               </Label>
               <div className="space-y-2">
                 {ethnicityOptions.map(option => (
@@ -172,7 +173,7 @@ const Demographics = () => {
             </div>
 
             <div className="space-y-3">
-              <Label className="text-base font-semibold">Are you a native speaker of English? *</Label>
+              <Label className="text-base font-semibold">Are you a native speaker of English?</Label>
               <RadioGroup value={formData.native_english} onValueChange={(value) => setFormData(prev => ({ ...prev, native_english: value }))}>
                 {englishOptions.map(option => (
                   <div key={option} className="flex items-center space-x-2">
