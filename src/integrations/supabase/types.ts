@@ -24,6 +24,8 @@ export type Database = {
           native_english: string
           prolific_id: string
           session_token: string
+          voice_assistant_familiarity: number | null
+          voice_assistant_usage_frequency: number | null
         }
         Insert: {
           age: string
@@ -34,6 +36,8 @@ export type Database = {
           native_english: string
           prolific_id: string
           session_token: string
+          voice_assistant_familiarity?: number | null
+          voice_assistant_usage_frequency?: number | null
         }
         Update: {
           age?: string
@@ -44,6 +48,8 @@ export type Database = {
           native_english?: string
           prolific_id?: string
           session_token?: string
+          voice_assistant_familiarity?: number | null
+          voice_assistant_usage_frequency?: number | null
         }
         Relationships: []
       }
