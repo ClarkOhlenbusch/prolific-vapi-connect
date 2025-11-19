@@ -82,7 +82,7 @@ const Demographics = () => {
 
       if (error) throw error;
 
-      navigate(`/chatbot-familiarity?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+      navigate(`/voiceassistant-familiarity?sessionToken=${sessionToken}&prolificId=${prolificId}`);
     } catch (error) {
       toast({
         title: "Error",
