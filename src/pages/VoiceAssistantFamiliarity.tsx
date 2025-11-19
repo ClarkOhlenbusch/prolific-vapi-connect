@@ -5,8 +5,9 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
-const ChatbotFamiliarity = () => {
+const VoiceAssistantFamiliarity = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -34,9 +35,27 @@ const ChatbotFamiliarity = () => {
 
     setIsLoading(true);
 
-    // Here we'll store the responses - for now, just navigate to practice
-    // TODO: Add database storage if needed
-    navigate(`/practice?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+    try {
+      const { error } = await supabase
+        .from('demographics')
+        .update({
+          voice_assistant_familiarity: parseInt(formData.familiarity),
+          voice_assistant_usage_frequency: parseInt(formData.usage_frequency)
+        })
+        .eq('session_token', sessionToken)
+        .eq('prolific_id', prolificId);
+
+      if (error) throw error;
+
+      navigate(`/practice?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save responses. Please try again.",
+        variant: "destructive"
+      });
+      setIsLoading(false);
+    }
   };
 
   const familiarityOptions = [
@@ -59,7 +78,7 @@ const ChatbotFamiliarity = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-2xl shadow-xl border-border">
         <CardHeader className="space-y-3">
-          <CardTitle className="text-2xl text-center">Voice Assistant Experience</CardTitle>
+          <CardTitle className="text-2xl text-center">Voice Assistant Familiarity</CardTitle>
           <CardDescription className="text-center">
             Please answer the following questions about your experience with voice assistants.
           </CardDescription>
@@ -128,4 +147,4 @@ const ChatbotFamiliarity = () => {
   );
 };
 
-export default ChatbotFamiliarity;
+export default VoiceAssistantFamiliarity;
