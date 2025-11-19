@@ -109,22 +109,29 @@ const FeedbackQuestionnaire = () => {
       const tiasData = JSON.parse(tiasDataString);
       const formalityData = JSON.parse(formalityDataString);
 
-      // Combine all questionnaire data
-      // Note: formality, voiceAssistantFeedback, and experimentFeedback fields 
-      // need to be added to the pets_responses table schema before uncommenting
-      const combinedData = {
+      // Combine PETS and TIAS questionnaire data
+      const questionnaireData = {
+        prolific_id: prolificId,
+        call_id: callId,
         ...petsData,
         ...tiasData,
-        // formality: formalityData.formality,
-        // voiceAssistantFeedback: voiceAssistantFeedback,
-        // experimentFeedback: experimentFeedback,
+      };
+
+      // Create feedback data object
+      const feedbackPayload = {
+        prolific_id: prolificId,
+        call_id: callId,
+        formality: formalityData.formality,
+        voice_assistant_feedback: voiceAssistantFeedback,
+        experiment_feedback: experimentFeedback,
       };
 
       // Submit via secure edge function
       const { data, error } = await supabase.functions.invoke('submit-questionnaire', {
         body: {
           sessionToken,
-          questionnaireData: combinedData,
+          questionnaireData,
+          feedbackData: feedbackPayload,
         },
       });
 
