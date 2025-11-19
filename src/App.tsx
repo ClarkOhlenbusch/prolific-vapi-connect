@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
 const Demographics = lazy(() => import("./pages/Demographics"));
-const ChatbotFamiliarity = lazy(() => import("./pages/ChatbotFamiliarity"));
+const VoiceAssistantFamiliarity = lazy(() => import("./pages/VoiceAssistantFamiliarity"));
 const NotEligible = lazy(() => import("./pages/NotEligible"));
 const PracticeConversation = lazy(() => import("./pages/PracticeConversation"));
 const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
@@ -78,7 +78,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<ProlificId />} />
             <Route path="/demographics" element={<Demographics />} />
-            <Route path="/chatbot-familiarity" element={<ChatbotFamiliarity />} />
+            <Route path="/chatbot-familiarity" element={<VoiceAssistantFamiliarity />} />
             <Route path="/not-eligible" element={<NotEligible />} />
             <Route path="/practice" element={<PracticeConversation />} />
                 <Route path="/conversation" element={<VoiceConversation />} />
