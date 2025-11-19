@@ -47,6 +47,36 @@ export type Database = {
         }
         Relationships: []
       }
+      feedback_responses: {
+        Row: {
+          call_id: string
+          created_at: string
+          experiment_feedback: string
+          formality: number
+          id: string
+          prolific_id: string
+          voice_assistant_feedback: string
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          experiment_feedback: string
+          formality: number
+          id?: string
+          prolific_id: string
+          voice_assistant_feedback: string
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          experiment_feedback?: string
+          formality?: number
+          id?: string
+          prolific_id?: string
+          voice_assistant_feedback?: string
+        }
+        Relationships: []
+      }
       participant_calls: {
         Row: {
           call_id: string

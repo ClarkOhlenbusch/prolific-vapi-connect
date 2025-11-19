@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Validation schema matching the client-side schema
+// Validation schema for PETS and TIAS data
 const petsResponseSchema = z.object({
   // PETS items (0-100 scale)
   e1: z.number().min(0).max(100).int(),
@@ -45,6 +45,15 @@ const petsResponseSchema = z.object({
   call_id: z.string().min(1).max(100),
 });
 
+// Validation schema for feedback data
+const feedbackResponseSchema = z.object({
+  prolific_id: z.string().min(1).max(100),
+  call_id: z.string().min(1).max(100),
+  formality: z.number().min(1).max(7).int(),
+  voice_assistant_feedback: z.string().min(1).max(1000),
+  experiment_feedback: z.string().min(1).max(1000),
+});
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -52,7 +61,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { sessionToken, questionnaireData } = await req.json();
+    const { sessionToken, questionnaireData, feedbackData } = await req.json();
 
     // Validate inputs
     if (!sessionToken || typeof sessionToken !== 'string') {
@@ -74,14 +83,29 @@ Deno.serve(async (req) => {
     }
 
     // Validate questionnaire data against schema
-    let validatedData;
+    let validatedPetsData;
     try {
-      validatedData = petsResponseSchema.parse(questionnaireData);
+      validatedPetsData = petsResponseSchema.parse(questionnaireData);
     } catch (validationError) {
       console.error('Questionnaire data validation failed:', validationError);
       return new Response(
         JSON.stringify({ 
           error: 'Invalid questionnaire data',
+          details: validationError instanceof z.ZodError ? validationError.errors : undefined
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate feedback data against schema
+    let validatedFeedbackData;
+    try {
+      validatedFeedbackData = feedbackResponseSchema.parse(feedbackData);
+    } catch (validationError) {
+      console.error('Feedback data validation failed:', validationError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid feedback data',
           details: validationError instanceof z.ZodError ? validationError.errors : undefined
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -123,8 +147,8 @@ Deno.serve(async (req) => {
     const { data: existingResponse, error: existingError } = await supabase
       .from('pets_responses')
       .select('id')
-      .eq('prolific_id', validatedData.prolific_id)
-      .eq('call_id', validatedData.call_id)
+      .eq('prolific_id', validatedPetsData.prolific_id)
+      .eq('call_id', validatedPetsData.call_id)
       .maybeSingle();
 
     if (existingError) {
@@ -143,15 +167,28 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Insert questionnaire response
-    const { error: insertError } = await supabase
+    // Insert PETS/TIAS questionnaire response
+    const { error: insertPetsError } = await supabase
       .from('pets_responses')
-      .insert([validatedData]);
+      .insert([validatedPetsData]);
 
-    if (insertError) {
-      console.error('Failed to insert questionnaire response:', insertError);
+    if (insertPetsError) {
+      console.error('Failed to insert questionnaire response:', insertPetsError);
       return new Response(
         JSON.stringify({ error: 'Failed to save questionnaire' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Insert feedback response
+    const { error: insertFeedbackError } = await supabase
+      .from('feedback_responses')
+      .insert([validatedFeedbackData]);
+
+    if (insertFeedbackError) {
+      console.error('Failed to insert feedback response:', insertFeedbackError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to save feedback' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -168,7 +205,7 @@ Deno.serve(async (req) => {
       // but log the token update failure
     }
 
-    console.log('Questionnaire submitted successfully for prolific_id:', validatedData.prolific_id);
+    console.log('Questionnaire and feedback submitted successfully for prolific_id:', validatedPetsData.prolific_id);
 
     return new Response(
       JSON.stringify({ 
