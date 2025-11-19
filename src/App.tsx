@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
 const Demographics = lazy(() => import("./pages/Demographics"));
+const ChatbotFamiliarity = lazy(() => import("./pages/ChatbotFamiliarity"));
 const NotEligible = lazy(() => import("./pages/NotEligible"));
 const PracticeConversation = lazy(() => import("./pages/PracticeConversation"));
 const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
@@ -27,8 +28,8 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const validateSession = async () => {
-      // Skip validation on landing page, demographics, practice page, and complete page
-      if (location.pathname === '/' || location.pathname === '/demographics' || location.pathname === '/practice' || location.pathname === '/complete') return;
+      // Skip validation on landing page, demographics, chatbot familiarity, practice page, and complete page
+      if (location.pathname === '/' || location.pathname === '/demographics' || location.pathname === '/chatbot-familiarity' || location.pathname === '/practice' || location.pathname === '/complete') return;
 
       const sessionToken = localStorage.getItem('sessionToken');
       
@@ -77,6 +78,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<ProlificId />} />
             <Route path="/demographics" element={<Demographics />} />
+            <Route path="/chatbot-familiarity" element={<ChatbotFamiliarity />} />
             <Route path="/not-eligible" element={<NotEligible />} />
             <Route path="/practice" element={<PracticeConversation />} />
                 <Route path="/conversation" element={<VoiceConversation />} />
