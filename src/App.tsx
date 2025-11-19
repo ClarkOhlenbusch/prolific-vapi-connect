@@ -28,8 +28,8 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const validateSession = async () => {
-      // Skip validation on landing page, demographics, chatbot familiarity, practice page, and complete page
-      if (location.pathname === '/' || location.pathname === '/demographics' || location.pathname === '/chatbot-familiarity' || location.pathname === '/practice' || location.pathname === '/complete') return;
+      // Skip validation on landing page, demographics, voice assistant familiarity, practice page, and complete page
+      if (location.pathname === '/' || location.pathname === '/demographics' || location.pathname === '/voiceassistant-familiarity' || location.pathname === '/practice' || location.pathname === '/complete') return;
 
       const sessionToken = localStorage.getItem('sessionToken');
       
@@ -78,11 +78,10 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<ProlificId />} />
             <Route path="/demographics" element={<Demographics />} />
-            <Route path="/chatbot-familiarity" element={<VoiceAssistantFamiliarity />} />
+            <Route path="/voiceassistant-familiarity" element={<VoiceAssistantFamiliarity />} />
             <Route path="/not-eligible" element={<NotEligible />} />
             <Route path="/practice" element={<PracticeConversation />} />
                 <Route path="/conversation" element={<VoiceConversation />} />
-                <Route path="/questionnaire" element={<Questionnaire />} />
                 <Route path="/questionnaire/pets" element={<SessionValidator><Questionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/tias" element={<SessionValidator><TiasQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/formality" element={<SessionValidator><FormalityQuestionnaire /></SessionValidator>} />
