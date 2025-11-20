@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { ResearcherModeProvider } from "@/contexts/ResearcherModeContext";
+import { ResearcherModeProvider, useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { ResearcherModeToggle } from "@/components/ResearcherModeToggle";
 
 // Lazy load route components for code splitting
@@ -29,9 +29,13 @@ const queryClient = new QueryClient();
 const SessionValidator = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isResearcherMode } = useResearcherMode();
 
   useEffect(() => {
     const validateSession = async () => {
+      // Skip validation if researcher mode is active
+      if (isResearcherMode) return;
+      
       // Skip validation on landing page, consent, demographics, voice assistant familiarity, practice page, debriefing, and complete page
       if (location.pathname === '/' || location.pathname === '/consent' || location.pathname === '/demographics' || location.pathname === '/voiceassistant-familiarity' || location.pathname === '/practice' || location.pathname === '/debriefing' || location.pathname === '/complete') return;
 
@@ -65,7 +69,7 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
   };
 
     validateSession();
-  }, [location.pathname, navigate]);
+  }, [location.pathname, navigate, isResearcherMode]);
 
   return <>{children}</>;
 };
