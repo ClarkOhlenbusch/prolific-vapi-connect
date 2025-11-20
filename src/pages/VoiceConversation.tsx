@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { EndCallDialog } from '@/components/EndCallDialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Mic, Phone, Clock } from 'lucide-react';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const VoiceConversation = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
@@ -26,6 +27,7 @@ const VoiceConversation = () => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isResearcherMode } = useResearcherMode();
 
   useEffect(() => {
     // Enforce flow: must be at step 2
@@ -421,14 +423,16 @@ const VoiceConversation = () => {
                   >
                     Restart Call
                   </Button>
-                  <Button
-                    onClick={handleEndCallClick}
-                    size="lg"
-                    variant="destructive"
-                    className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform"
-                  >
-                    <Phone className="w-12 h-12 rotate-135" />
-                  </Button>
+                  {isResearcherMode && (
+                    <Button
+                      onClick={handleEndCallClick}
+                      size="lg"
+                      variant="destructive"
+                      className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform"
+                    >
+                      <Phone className="w-12 h-12 rotate-135" />
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
