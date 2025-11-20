@@ -76,8 +76,8 @@ const FormalityQuestionnaire = () => {
         return;
       }
       
-      // Enforce flow: must be at step 4
-      if (currentStep !== '4') {
+      // Enforce flow: must be at step 4 (only for non-researcher mode)
+      if (!isResearcherMode && currentStep !== '4') {
         navigate('/');
         return;
       }

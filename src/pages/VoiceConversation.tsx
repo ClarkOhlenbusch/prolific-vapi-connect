@@ -36,7 +36,7 @@ const VoiceConversation = () => {
     // Check if researcher mode is active and data is missing
     if (isResearcherMode && (!storedId || currentStep !== '2')) {
       // Use default values for researcher mode
-      const defaultProlificId = 'RESEARCHER_MODE';
+      const defaultProlificId = storedId || 'RESEARCHER_MODE';
       setProlificId(defaultProlificId);
       sessionStorage.setItem('prolificId', defaultProlificId);
       sessionStorage.setItem('flowStep', '2');
@@ -48,8 +48,8 @@ const VoiceConversation = () => {
       return;
     }
     
-    // Enforce flow: must be at step 2
-    if (currentStep !== '2') {
+    // Enforce flow: must be at step 2 (only for non-researcher mode)
+    if (!isResearcherMode && currentStep !== '2') {
       navigate('/');
       return;
     }
