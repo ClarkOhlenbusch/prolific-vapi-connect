@@ -100,16 +100,29 @@ const Questionnaire = () => {
 
   useEffect(() => {
     const checkAccess = async () => {
-      // Enforce flow: must be at step 3
       const currentStep = sessionStorage.getItem('flowStep');
+      const stateCallId = location.state?.callId;
+      const storedId = sessionStorage.getItem('prolificId');
+      
+      // Check if researcher mode is active and data is missing
+      if (isResearcherMode && (!storedId || currentStep !== '3' || !stateCallId)) {
+        // Use default values for researcher mode
+        const defaultProlificId = storedId || 'RESEARCHER_MODE';
+        const defaultCallId = stateCallId || 'researcher-call-id';
+        
+        setProlificId(defaultProlificId);
+        setCallId(defaultCallId);
+        sessionStorage.setItem('prolificId', defaultProlificId);
+        sessionStorage.setItem('flowStep', '3');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Enforce flow: must be at step 3
       if (currentStep !== '3') {
         navigate('/');
         return;
       }
-
-      // Get state from location or sessionStorage
-      const stateCallId = location.state?.callId;
-      const storedId = sessionStorage.getItem('prolificId');
       
       if (!storedId) {
         toast({

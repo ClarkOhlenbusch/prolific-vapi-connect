@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Mic, Phone } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const PracticeConversation = () => {
   const [searchParams] = useSearchParams();
@@ -19,18 +20,32 @@ const PracticeConversation = () => {
   const vapiRef = useRef<Vapi | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isResearcherMode } = useResearcherMode();
 
   useEffect(() => {
-    // Enforce flow: must be at step 1
+    // Get Prolific ID from URL params
+    const prolificIdFromUrl = searchParams.get('prolificId');
+    const sessionToken = searchParams.get('sessionToken');
     const currentStep = sessionStorage.getItem('flowStep');
+    
+    // Check if researcher mode is active and data is missing
+    if (isResearcherMode && (!prolificIdFromUrl || !sessionToken)) {
+      // Use default values for researcher mode
+      const defaultProlificId = 'RESEARCHER_MODE';
+      const defaultSessionToken = '00000000-0000-0000-0000-000000000000';
+      
+      setProlificId(defaultProlificId);
+      sessionStorage.setItem('prolificId', defaultProlificId);
+      localStorage.setItem('sessionToken', defaultSessionToken);
+      sessionStorage.setItem('flowStep', '1');
+      return;
+    }
+    
+    // Enforce flow: must be at step 1
     if (currentStep !== '1') {
       navigate('/');
       return;
     }
-
-    // Get Prolific ID from URL params
-    const prolificIdFromUrl = searchParams.get('prolificId');
-    const sessionToken = searchParams.get('sessionToken');
     
     if (!prolificIdFromUrl || !sessionToken) {
       toast({
@@ -45,7 +60,7 @@ const PracticeConversation = () => {
     setProlificId(prolificIdFromUrl);
     sessionStorage.setItem('prolificId', prolificIdFromUrl);
     localStorage.setItem('sessionToken', sessionToken);
-  }, [navigate, toast, searchParams]);
+  }, [navigate, toast, searchParams, isResearcherMode]);
 
   // Initialize Vapi SDK
   useEffect(() => {

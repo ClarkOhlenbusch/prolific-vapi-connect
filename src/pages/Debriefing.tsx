@@ -5,25 +5,38 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const Debriefing = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isResearcherMode } = useResearcherMode();
   const [isWithdrawing, setIsWithdrawing] = useState(false);
 
   useEffect(() => {
-    // Enforce flow: must be at step 5
     const currentStep = sessionStorage.getItem('flowStep');
+    const storedId = sessionStorage.getItem('prolificId');
+    
+    // Check if researcher mode is active and data is missing
+    if (isResearcherMode && (!storedId || currentStep !== '5')) {
+      // Use default values for researcher mode
+      if (!storedId) {
+        sessionStorage.setItem('prolificId', 'RESEARCHER_MODE');
+      }
+      sessionStorage.setItem('flowStep', '5');
+      return;
+    }
+    
+    // Enforce flow: must be at step 5
     if (currentStep !== '5') {
       navigate('/');
       return;
     }
 
-    const storedId = sessionStorage.getItem('prolificId');
     if (!storedId) {
       navigate('/');
     }
-  }, [navigate]);
+  }, [navigate, isResearcherMode]);
 
   const handleWithdraw = async () => {
     const prolificId = sessionStorage.getItem('prolificId');
