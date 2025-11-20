@@ -115,30 +115,40 @@ const FormalityQuestionnaire = () => {
               </label>
               
               <div className="bg-accent/50 rounded-lg p-6">
-                <div className="flex justify-between items-start gap-4">
+                <RadioGroup
+                  value={formalityRating?.toString()}
+                  onValueChange={(value) => setFormalityRating(parseInt(value))}
+                  className="flex justify-between items-center gap-4 mb-2"
+                >
                   {SCALE_LABELS.map(label => (
-                    <div key={label.value} className="flex flex-col items-center gap-2 flex-1">
-                      <RadioGroup
-                        value={formalityRating?.toString()}
-                        onValueChange={(value) => setFormalityRating(parseInt(value))}
-                      >
-                        <RadioGroupItem 
-                          value={label.value.toString()} 
-                          id={`formality-${label.value}`}
-                          className="w-6 h-6"
-                        />
-                      </RadioGroup>
-                      <Label 
-                        htmlFor={`formality-${label.value}`}
-                        className="text-sm font-semibold cursor-pointer text-center text-foreground"
-                      >
-                        {label.value}
-                      </Label>
-                      <div className="h-5 flex items-center">
-                        <span className="text-xs font-medium text-foreground text-center">
-                          {label.label}
-                        </span>
-                      </div>
+                    <RadioGroupItem 
+                      key={label.value}
+                      value={label.value.toString()} 
+                      id={`formality-${label.value}`}
+                      className="w-6 h-6"
+                    />
+                  ))}
+                </RadioGroup>
+                
+                <div className="flex justify-between items-center gap-4 mb-1">
+                  {SCALE_LABELS.map(label => (
+                    <Label 
+                      key={label.value}
+                      htmlFor={`formality-${label.value}`}
+                      className="text-sm font-semibold cursor-pointer text-center text-foreground flex-1"
+                    >
+                      {label.value}
+                    </Label>
+                  ))}
+                </div>
+                
+                <div className="flex justify-between items-center gap-4">
+                  {SCALE_LABELS.map(label => (
+                    <div 
+                      key={label.value}
+                      className="text-xs font-medium text-foreground text-center flex-1"
+                    >
+                      {label.label}
                     </div>
                   ))}
                 </div>
