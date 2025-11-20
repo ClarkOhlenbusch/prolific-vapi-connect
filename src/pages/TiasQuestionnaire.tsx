@@ -285,7 +285,7 @@ const TiasQuestionnaire = () => {
               className="flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
-              Back to PETS
+              Back
             </Button>
             <Button
               onClick={handleNext}
