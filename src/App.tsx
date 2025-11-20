@@ -10,6 +10,7 @@ import { ResearcherModeToggle } from "@/components/ResearcherModeToggle";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
+const Consent = lazy(() => import("./pages/Consent"));
 const Demographics = lazy(() => import("./pages/Demographics"));
 const VoiceAssistantFamiliarity = lazy(() => import("./pages/VoiceAssistantFamiliarity"));
 const NotEligible = lazy(() => import("./pages/NotEligible"));
@@ -30,8 +31,8 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const validateSession = async () => {
-      // Skip validation on landing page, demographics, voice assistant familiarity, practice page, and complete page
-      if (location.pathname === '/' || location.pathname === '/demographics' || location.pathname === '/voiceassistant-familiarity' || location.pathname === '/practice' || location.pathname === '/complete') return;
+      // Skip validation on landing page, consent, demographics, voice assistant familiarity, practice page, and complete page
+      if (location.pathname === '/' || location.pathname === '/consent' || location.pathname === '/demographics' || location.pathname === '/voiceassistant-familiarity' || location.pathname === '/practice' || location.pathname === '/complete') return;
 
       const sessionToken = localStorage.getItem('sessionToken');
       
@@ -79,6 +80,7 @@ const App = () => (
           <Suspense fallback={<div>Loading...</div>}>
             <Routes>
               <Route path="/" element={<ProlificId />} />
+              <Route path="/consent" element={<Consent />} />
               <Route path="/not-eligible" element={<NotEligible />} />
               <Route
                 path="/demographics"

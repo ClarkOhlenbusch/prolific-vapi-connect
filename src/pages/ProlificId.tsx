@@ -84,8 +84,8 @@ const ProlificId = () => {
       // Advance to next step
       sessionStorage.setItem('flowStep', '1');
       
-      // Navigate to demographics questionnaire
-      navigate(`/demographics?sessionToken=${sessionToken}&prolificId=${validatedId}`);
+      // Navigate to consent form
+      navigate(`/consent?sessionToken=${sessionToken}&prolificId=${validatedId}`);
     } catch (error) {
       toast({
         title: "Error",
