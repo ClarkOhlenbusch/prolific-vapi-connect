@@ -8,12 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const Demographics = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const { isResearcherMode } = useResearcherMode();
   
   const sessionToken = searchParams.get('sessionToken');
   const prolificId = searchParams.get('prolificId');
@@ -38,28 +40,31 @@ const Demographics = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.age || !formData.gender || formData.ethnicity.length === 0 || !formData.native_english) {
-      toast({
-        title: "Missing Information",
-        description: "Please answer all required questions.",
-        variant: "destructive"
-      });
-      return;
-    }
+    // Skip validation if researcher mode is enabled
+    if (!isResearcherMode) {
+      if (!formData.age || !formData.gender || formData.ethnicity.length === 0 || !formData.native_english) {
+        toast({
+          title: "Missing Information",
+          description: "Please answer all required questions.",
+          variant: "destructive"
+        });
+        return;
+      }
 
-    // Check age eligibility
-    if (formData.age !== '60+') {
-      navigate('/not-eligible');
-      return;
-    }
+      // Check age eligibility
+      if (formData.age !== '60+') {
+        navigate('/not-eligible');
+        return;
+      }
 
-    if (formData.ethnicity.includes('Other') && !formData.ethnicityOther.trim()) {
-      toast({
-        title: "Missing Information",
-        description: "Please specify 'Other' for ethnicity.",
-        variant: "destructive"
-      });
-      return;
+      if (formData.ethnicity.includes('Other') && !formData.ethnicityOther.trim()) {
+        toast({
+          title: "Missing Information",
+          description: "Please specify 'Other' for ethnicity.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -74,10 +79,10 @@ const Demographics = () => {
         .insert({
           session_token: sessionToken,
           prolific_id: prolificId,
-          age: formData.age,
-          gender: formData.gender,
-          ethnicity: ethnicityData,
-          native_english: formData.native_english
+          age: formData.age || 'Not provided',
+          gender: formData.gender || 'Not provided',
+          ethnicity: ethnicityData.length > 0 ? ethnicityData : ['Not provided'],
+          native_english: formData.native_english || 'Not provided'
         });
 
       if (error) throw error;

@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { ResearcherModeProvider } from "@/contexts/ResearcherModeContext";
+import { ResearcherModeToggle } from "@/components/ResearcherModeToggle";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
@@ -68,33 +70,45 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <SessionValidator>
-          <main>
-            <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
-              <Routes>
-                <Route path="/" element={<ProlificId />} />
-            <Route path="/demographics" element={<Demographics />} />
-            <Route path="/voiceassistant-familiarity" element={<VoiceAssistantFamiliarity />} />
-            <Route path="/not-eligible" element={<NotEligible />} />
-            <Route path="/practice" element={<PracticeConversation />} />
-                <Route path="/conversation" element={<VoiceConversation />} />
-                <Route path="/questionnaire/pets" element={<SessionValidator><Questionnaire /></SessionValidator>} />
-                <Route path="/questionnaire/tias" element={<SessionValidator><TiasQuestionnaire /></SessionValidator>} />
-                <Route path="/questionnaire/formality" element={<SessionValidator><FormalityQuestionnaire /></SessionValidator>} />
-                <Route path="/questionnaire/feedback" element={<SessionValidator><FeedbackQuestionnaire /></SessionValidator>} />
-                <Route path="/complete" element={<SessionValidator><Complete /></SessionValidator>} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-          </main>
-        </SessionValidator>
-      </BrowserRouter>
-    </TooltipProvider>
+    <ResearcherModeProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <ResearcherModeToggle />
+          <Suspense fallback={<div>Loading...</div>}>
+            <Routes>
+              <Route path="/" element={<ProlificId />} />
+              <Route path="/not-eligible" element={<NotEligible />} />
+              <Route
+                path="/demographics"
+                element={
+                  <SessionValidator>
+                    <Demographics />
+                  </SessionValidator>
+                }
+              />
+              <Route
+                path="/voiceassistant-familiarity"
+                element={
+                  <SessionValidator>
+                    <VoiceAssistantFamiliarity />
+                  </SessionValidator>
+                }
+              />
+              <Route path="/practice" element={<PracticeConversation />} />
+              <Route path="/voice-conversation" element={<VoiceConversation />} />
+              <Route path="/questionnaire/pets" element={<Questionnaire />} />
+              <Route path="/questionnaire/tias" element={<TiasQuestionnaire />} />
+              <Route path="/questionnaire/formality" element={<FormalityQuestionnaire />} />
+              <Route path="/questionnaire/feedback" element={<FeedbackQuestionnaire />} />
+              <Route path="/complete" element={<Complete />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </TooltipProvider>
+    </ResearcherModeProvider>
   </QueryClientProvider>
 );
 
