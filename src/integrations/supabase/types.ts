@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      data_withdrawal_requests: {
+        Row: {
+          call_id: string
+          created_at: string
+          id: string
+          prolific_id: string
+          session_token: string
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          id?: string
+          prolific_id: string
+          session_token: string
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          id?: string
+          prolific_id?: string
+          session_token?: string
+        }
+        Relationships: []
+      }
       demographics: {
         Row: {
           age: string

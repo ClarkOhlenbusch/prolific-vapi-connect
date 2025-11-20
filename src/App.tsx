@@ -20,6 +20,7 @@ const Questionnaire = lazy(() => import("./pages/Questionnaire"));
 const TiasQuestionnaire = lazy(() => import("./pages/TiasQuestionnaire"));
 const FormalityQuestionnaire = lazy(() => import("./pages/FormalityQuestionnaire"));
 const FeedbackQuestionnaire = lazy(() => import("./pages/FeedbackQuestionnaire"));
+const Debriefing = lazy(() => import("./pages/Debriefing"));
 const Complete = lazy(() => import("./pages/Complete"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -31,8 +32,8 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const validateSession = async () => {
-      // Skip validation on landing page, consent, demographics, voice assistant familiarity, practice page, and complete page
-      if (location.pathname === '/' || location.pathname === '/consent' || location.pathname === '/demographics' || location.pathname === '/voiceassistant-familiarity' || location.pathname === '/practice' || location.pathname === '/complete') return;
+      // Skip validation on landing page, consent, demographics, voice assistant familiarity, practice page, debriefing, and complete page
+      if (location.pathname === '/' || location.pathname === '/consent' || location.pathname === '/demographics' || location.pathname === '/voiceassistant-familiarity' || location.pathname === '/practice' || location.pathname === '/debriefing' || location.pathname === '/complete') return;
 
       const sessionToken = localStorage.getItem('sessionToken');
       
@@ -104,6 +105,7 @@ const App = () => (
               <Route path="/questionnaire/tias" element={<TiasQuestionnaire />} />
               <Route path="/questionnaire/formality" element={<FormalityQuestionnaire />} />
               <Route path="/questionnaire/feedback" element={<FeedbackQuestionnaire />} />
+              <Route path="/debriefing" element={<Debriefing />} />
               <Route path="/complete" element={<Complete />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
