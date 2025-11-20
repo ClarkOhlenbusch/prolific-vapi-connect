@@ -141,7 +141,7 @@ const PracticeConversation = () => {
     // Mark step complete and proceed to actual conversation
     sessionStorage.setItem('flowStep', '2');
     const sessionToken = localStorage.getItem('sessionToken');
-    navigate(`/conversation?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+    navigate(`/voice-conversation?sessionToken=${sessionToken}&prolificId=${prolificId}`);
   };
 
   if (!prolificId) {
