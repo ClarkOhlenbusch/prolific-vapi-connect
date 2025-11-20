@@ -141,10 +141,6 @@ const FormalityQuestionnaire = () => {
                     </div>
                   ))}
                 </RadioGroup>
-                <div className="flex justify-between mt-4 text-sm font-medium text-foreground">
-                  <span>Informal (1)</span>
-                  <span>Formal (7)</span>
-                </div>
               </div>
             </div>
           </div>
