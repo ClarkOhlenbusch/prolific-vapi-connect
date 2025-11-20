@@ -118,8 +118,8 @@ const Questionnaire = () => {
         return;
       }
       
-      // Enforce flow: must be at step 3
-      if (currentStep !== '3') {
+      // Enforce flow: must be at step 3 (only for non-researcher mode)
+      if (!isResearcherMode && currentStep !== '3') {
         navigate('/');
         return;
       }
