@@ -353,7 +353,7 @@ const Questionnaire = () => {
               className="flex-1"
               size="lg"
             >
-              Next: Trust Scale
+              Next
             </Button>
           </div>
         </CardContent>
