@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 interface TIASItem {
   id: string;
@@ -73,6 +74,7 @@ const TiasQuestionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { isResearcherMode } = useResearcherMode();
   
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
@@ -160,21 +162,24 @@ const TiasQuestionnaire = () => {
   };
 
   const handleNext = () => {
-    // Check all questions have been answered (including attention checks)
-    const allAnswered = randomizedItems.every(item => responses[item.key] !== undefined && responses[item.key] > 0);
-    
-    if (!allAnswered) {
-      toast({
-        title: "Incomplete",
-        description: "Please answer all questions before continuing.",
-        variant: "destructive"
-      });
-      return;
+    // Skip validation if researcher mode is enabled
+    if (!isResearcherMode) {
+      // Check all questions have been answered (including attention checks)
+      const allAnswered = randomizedItems.every(item => responses[item.key] !== undefined && responses[item.key] > 0);
+      
+      if (!allAnswered) {
+        toast({
+          title: "Incomplete",
+          description: "Please answer all questions before continuing.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     // Calculate TIAS score with reverse scoring for items 1-5 (excluding attention checks)
     const tiasScores = TIAS_ITEMS.map(item => {
-      const score = responses[item.key];
+      const score = responses[item.key] || 4; // Default to 4 if not answered (researcher mode)
       return item.isReversed ? (8 - score) : score;
     });
     
@@ -187,11 +192,11 @@ const TiasQuestionnaire = () => {
     
     for (let i = 1; i <= 12; i++) {
       const key = `tias_${i}`;
-      tiasData[key] = responses[key];
+      tiasData[key] = responses[key] || 4; // Default to 4 if not answered
     }
 
     // Add attention check data
-    tiasData.tias_attention_check_1 = responses.tias_ac1;
+    tiasData.tias_attention_check_1 = responses.tias_ac1 || 4;
     tiasData.tias_attention_check_1_expected = attentionCheck.expectedValue;
 
     // Validate TIAS data
