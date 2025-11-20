@@ -29,10 +29,10 @@ const PracticeConversation = () => {
     const currentStep = sessionStorage.getItem('flowStep');
     
     // Check if researcher mode is active and data is missing
-    if (isResearcherMode && (!prolificIdFromUrl || !sessionToken)) {
+    if (isResearcherMode && (!prolificIdFromUrl || !sessionToken || currentStep !== '1')) {
       // Use default values for researcher mode
-      const defaultProlificId = 'RESEARCHER_MODE';
-      const defaultSessionToken = '00000000-0000-0000-0000-000000000000';
+      const defaultProlificId = prolificIdFromUrl || 'RESEARCHER_MODE';
+      const defaultSessionToken = sessionToken || '00000000-0000-0000-0000-000000000000';
       
       setProlificId(defaultProlificId);
       sessionStorage.setItem('prolificId', defaultProlificId);
@@ -41,8 +41,8 @@ const PracticeConversation = () => {
       return;
     }
     
-    // Enforce flow: must be at step 1
-    if (currentStep !== '1') {
+    // Enforce flow: must be at step 1 (only for non-researcher mode)
+    if (!isResearcherMode && currentStep !== '1') {
       navigate('/');
       return;
     }
