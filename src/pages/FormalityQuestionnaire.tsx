@@ -129,14 +129,19 @@ const FormalityQuestionnaire = () => {
                       />
                       <Label 
                         htmlFor={`formality-${label.value}`}
-                        className="text-sm font-semibold cursor-pointer text-center"
+                        className="text-sm font-semibold cursor-pointer text-center text-foreground"
                       >
                         {label.value}
                       </Label>
+                      {label.label && (
+                        <span className="text-xs font-medium text-foreground">
+                          {label.label}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </RadioGroup>
-                <div className="flex justify-between mt-4 text-sm font-medium text-muted-foreground">
+                <div className="flex justify-between mt-4 text-sm font-medium text-foreground">
                   <span>Informal (1)</span>
                   <span>Formal (7)</span>
                 </div>
