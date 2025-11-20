@@ -62,7 +62,7 @@ const Consent = () => {
               <div>
                 <h2 className="text-xl font-semibold mb-2">What will you be asked to do?</h2>
                 <p>
-                  You will have a short conversation with a voice based assistant for about 5 minutes and then complete demographic questions and other questionnaires. Total participation time is about 10 minutes.
+                  You will answer demographic questions. Then, you will have a short conversation with a voice based assistant for 5 minutes and then answer several short questionnaires. Total participation time is about 10 minutes.
                 </p>
               </div>
 
@@ -81,8 +81,11 @@ const Consent = () => {
                 <p className="mb-2">
                   Participation is voluntary. You can stop at any time by closing the study page. If you stop during the study, all data collected up to that point will be deleted.
                 </p>
-                <p>
+                <p className="mb-2">
                   If you withdraw after completing the study, you may request deletion of identifiable data by contacting the researcher at o.f.e.vroom@students.uu.nl. Pseudonymized data already included in analyses may be retained.
+                </p>
+                <p>
+                  You will only be compensated if you fully complete the experiment.
                 </p>
               </div>
 
