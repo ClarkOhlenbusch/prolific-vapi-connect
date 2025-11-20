@@ -294,7 +294,7 @@ const TiasQuestionnaire = () => {
             </Button>
             <Button
               onClick={handleNext}
-              disabled={!allAnswered}
+              disabled={!isResearcherMode && !allAnswered}
               className="flex-1"
               size="lg"
             >
