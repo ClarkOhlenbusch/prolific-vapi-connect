@@ -27,8 +27,8 @@ const Debriefing = () => {
       return;
     }
     
-    // Enforce flow: must be at step 5
-    if (currentStep !== '5') {
+    // Enforce flow: must be at step 5 (only for non-researcher mode)
+    if (!isResearcherMode && currentStep !== '5') {
       navigate('/');
       return;
     }
