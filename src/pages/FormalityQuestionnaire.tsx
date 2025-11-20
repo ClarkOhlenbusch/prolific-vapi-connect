@@ -118,7 +118,7 @@ const FormalityQuestionnaire = () => {
                 <RadioGroup
                   value={formalityRating?.toString()}
                   onValueChange={(value) => setFormalityRating(parseInt(value))}
-                  className="flex justify-between items-center gap-4 mb-2"
+                  className="grid grid-cols-7 place-items-center mb-2"
                 >
                   {SCALE_LABELS.map(label => (
                     <RadioGroupItem 
@@ -130,23 +130,23 @@ const FormalityQuestionnaire = () => {
                   ))}
                 </RadioGroup>
                 
-                <div className="flex justify-between items-center gap-4 mb-1">
+                <div className="grid grid-cols-7 gap-4 mb-1 text-center">
                   {SCALE_LABELS.map(label => (
                     <Label 
                       key={label.value}
                       htmlFor={`formality-${label.value}`}
-                      className="text-sm font-semibold cursor-pointer text-center text-foreground flex-1"
+                      className="text-sm font-semibold cursor-pointer text-foreground"
                     >
                       {label.value}
                     </Label>
                   ))}
                 </div>
                 
-                <div className="flex justify-between items-center gap-4">
+                <div className="grid grid-cols-7 gap-4 text-center">
                   {SCALE_LABELS.map(label => (
                     <div 
                       key={label.value}
-                      className="text-xs font-medium text-foreground text-center flex-1"
+                      className="text-xs font-medium text-foreground h-4 flex items-center justify-center"
                     >
                       {label.label}
                     </div>
