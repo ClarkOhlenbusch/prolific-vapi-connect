@@ -17,7 +17,7 @@ export const ResearcherModeToggle = () => {
       
       // Check if both spacebar and 'r' are pressed
       if (spacePressed && e.key.toLowerCase() === 'r') {
-        setShowButton(true);
+        setShowButton(prev => !prev);
       }
     };
 
