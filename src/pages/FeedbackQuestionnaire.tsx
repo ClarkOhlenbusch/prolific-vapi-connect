@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const FeedbackQuestionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { isResearcherMode } = useResearcherMode();
   
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
@@ -57,14 +59,17 @@ const FeedbackQuestionnaire = () => {
   }, [navigate, location, toast]);
 
   const handleSubmit = async () => {
-    // Validate that both feedback fields are filled
-    if (!voiceAssistantFeedback.trim() || !experimentFeedback.trim()) {
-      toast({
-        title: "Incomplete",
-        description: "Please answer both feedback questions before submitting.",
-        variant: "destructive"
-      });
-      return;
+    // Skip validation if researcher mode is enabled
+    if (!isResearcherMode) {
+      // Validate that both feedback fields are filled
+      if (!voiceAssistantFeedback.trim() || !experimentFeedback.trim()) {
+        toast({
+          title: "Incomplete",
+          description: "Please answer both feedback questions before submitting.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     if (!prolificId || !callId) {
@@ -122,8 +127,8 @@ const FeedbackQuestionnaire = () => {
         prolific_id: prolificId,
         call_id: callId,
         formality: formalityData.formality,
-        voice_assistant_feedback: voiceAssistantFeedback,
-        experiment_feedback: experimentFeedback,
+        voice_assistant_feedback: voiceAssistantFeedback || 'Not provided',
+        experiment_feedback: experimentFeedback || 'Not provided',
       };
 
       // Submit via secure edge function
@@ -270,7 +275,7 @@ const FeedbackQuestionnaire = () => {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || !voiceAssistantFeedback.trim() || !experimentFeedback.trim()}
+              disabled={isSubmitting || (!isResearcherMode && (!voiceAssistantFeedback.trim() || !experimentFeedback.trim()))}
               className="flex-1"
               size="lg"
             >

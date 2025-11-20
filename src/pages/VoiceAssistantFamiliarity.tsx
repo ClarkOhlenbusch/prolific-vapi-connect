@@ -6,12 +6,14 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const VoiceAssistantFamiliarity = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const { isResearcherMode } = useResearcherMode();
   
   const sessionToken = searchParams.get('sessionToken');
   const prolificId = searchParams.get('prolificId');
@@ -24,13 +26,16 @@ const VoiceAssistantFamiliarity = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.familiarity || !formData.usage_frequency) {
-      toast({
-        title: "Missing Information",
-        description: "Please answer all required questions.",
-        variant: "destructive"
-      });
-      return;
+    // Skip validation if researcher mode is enabled
+    if (!isResearcherMode) {
+      if (!formData.familiarity || !formData.usage_frequency) {
+        toast({
+          title: "Missing Information",
+          description: "Please answer all required questions.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -39,8 +44,8 @@ const VoiceAssistantFamiliarity = () => {
       const { error } = await supabase
         .from('demographics')
         .update({
-          voice_assistant_familiarity: parseInt(formData.familiarity),
-          voice_assistant_usage_frequency: parseInt(formData.usage_frequency)
+          voice_assistant_familiarity: formData.familiarity ? parseInt(formData.familiarity) : null,
+          voice_assistant_usage_frequency: formData.usage_frequency ? parseInt(formData.usage_frequency) : null
         })
         .eq('session_token', sessionToken)
         .eq('prolific_id', prolificId);
