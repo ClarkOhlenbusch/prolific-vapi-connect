@@ -155,7 +155,7 @@ const FormalityQuestionnaire = () => {
             </Button>
             <Button
               onClick={handleContinue}
-              disabled={formalityRating === null}
+              disabled={!isResearcherMode && formalityRating === null}
               className="flex-1"
               size="lg"
             >
