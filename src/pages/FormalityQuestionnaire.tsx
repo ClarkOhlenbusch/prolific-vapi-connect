@@ -115,30 +115,33 @@ const FormalityQuestionnaire = () => {
               </label>
               
               <div className="bg-accent/50 rounded-lg p-6">
-                <RadioGroup
-                  value={formalityRating?.toString()}
-                  onValueChange={(value) => setFormalityRating(parseInt(value))}
-                  className="flex justify-between items-center gap-4"
-                >
+                <div className="flex justify-between items-start gap-4">
                   {SCALE_LABELS.map(label => (
-                    <div key={label.value} className="flex flex-col items-center space-y-2">
-                      <RadioGroupItem 
-                        value={label.value.toString()} 
-                        id={`formality-${label.value}`}
-                        className="w-6 h-6"
-                      />
+                    <div key={label.value} className="flex flex-col items-center gap-2 flex-1">
+                      <RadioGroup
+                        value={formalityRating?.toString()}
+                        onValueChange={(value) => setFormalityRating(parseInt(value))}
+                      >
+                        <RadioGroupItem 
+                          value={label.value.toString()} 
+                          id={`formality-${label.value}`}
+                          className="w-6 h-6"
+                        />
+                      </RadioGroup>
                       <Label 
                         htmlFor={`formality-${label.value}`}
                         className="text-sm font-semibold cursor-pointer text-center text-foreground"
                       >
                         {label.value}
                       </Label>
-                      <span className="text-xs font-medium text-foreground h-4">
-                        {label.label}
-                      </span>
+                      <div className="h-5 flex items-center">
+                        <span className="text-xs font-medium text-foreground text-center">
+                          {label.label}
+                        </span>
+                      </div>
                     </div>
                   ))}
-                </RadioGroup>
+                </div>
               </div>
             </div>
           </div>
