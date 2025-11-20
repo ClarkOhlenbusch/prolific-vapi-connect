@@ -185,7 +185,7 @@ const FeedbackQuestionnaire = () => {
       // Advance to final step
       sessionStorage.setItem('flowStep', '5');
 
-      navigate('/complete');
+      navigate('/debriefing');
     } catch (err) {
       console.error('Unexpected error submitting questionnaire:', err);
       toast({
