@@ -127,7 +127,7 @@ const Questionnaire = () => {
           description: "Please complete the conversation first.",
           variant: "destructive"
         });
-        navigate('/conversation');
+        navigate('/voice-conversation');
         return;
       }
 
@@ -346,7 +346,7 @@ const Questionnaire = () => {
           <div className="flex gap-4">
             <Button
               variant="outline"
-              onClick={() => navigate('/conversation')}
+              onClick={() => navigate('/voice-conversation')}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
