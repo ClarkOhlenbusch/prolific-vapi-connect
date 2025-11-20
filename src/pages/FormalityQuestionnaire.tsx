@@ -7,6 +7,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const SCALE_LABELS = [
   { value: 1, label: 'Informal' },
@@ -22,6 +23,7 @@ const FormalityQuestionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { isResearcherMode } = useResearcherMode();
   
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
@@ -64,17 +66,20 @@ const FormalityQuestionnaire = () => {
   }, [navigate, location, toast]);
 
   const handleContinue = () => {
-    if (formalityRating === null) {
-      toast({
-        title: "Incomplete",
-        description: "Please select a rating before continuing.",
-        variant: "destructive"
-      });
-      return;
+    // Skip validation if researcher mode is enabled
+    if (!isResearcherMode) {
+      if (formalityRating === null) {
+        toast({
+          title: "Incomplete",
+          description: "Please select a rating before continuing.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     // Store formality data in sessionStorage
-    const formalityData = { formality: formalityRating };
+    const formalityData = { formality: formalityRating || 4 };
     sessionStorage.setItem('formalityData', JSON.stringify(formalityData));
 
     // Navigate to feedback page

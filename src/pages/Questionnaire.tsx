@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 interface PETSItem {
   id: string;
@@ -62,6 +63,7 @@ const Questionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { isResearcherMode } = useResearcherMode();
   
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
@@ -195,16 +197,19 @@ const Questionnaire = () => {
   };
 
   const handleNext = () => {
-    // Check all questions have been interacted with
-    const allAnswered = Object.values(interacted).every(val => val === true);
-    
-    if (!allAnswered) {
-      toast({
-        title: "Incomplete",
-        description: "Please answer all questions before continuing.",
-        variant: "destructive"
-      });
-      return;
+    // Skip validation if researcher mode is enabled
+    if (!isResearcherMode) {
+      // Check all questions have been interacted with
+      const allAnswered = Object.values(interacted).every(val => val === true);
+      
+      if (!allAnswered) {
+        toast({
+          title: "Incomplete",
+          description: "Please answer all questions before continuing.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     if (!prolificId || !callId) {
