@@ -249,49 +249,38 @@ const TiasQuestionnaire = () => {
             </p>
           </div>
 
-          <div className="overflow-x-auto">
-            <div className="min-w-full">
-              {/* Header Row */}
-              <div className="grid grid-cols-[1fr_repeat(7,minmax(80px,1fr))] gap-2 pb-4 border-b-2 border-border mb-6">
-                <div></div>
-                {SCALE_LABELS.map(label => (
-                  <div key={label.value} className="text-center">
-                    <div className="text-xs font-semibold text-foreground">{label.value}.</div>
-                    <div className="text-xs text-muted-foreground">{label.label}</div>
+          <div className="space-y-6">
+            {randomizedItems.map((item, index) => {
+              return (
+                <div key={item.key} className="space-y-3 pb-6 border-b border-border last:border-b-0">
+                  <div className="flex items-start gap-3">
+                    <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
+                    <label className="text-sm flex-1 font-medium text-foreground">
+                      {item.text}
+                    </label>
                   </div>
-                ))}
+                <div className="pl-6">
+                  <RadioGroup
+                    value={responses[item.key]?.toString()}
+                    onValueChange={(value) => handleRadioChange(item.key, value)}
+                    className="flex flex-col gap-2"
+                  >
+                    {SCALE_LABELS.map(label => (
+                      <div key={label.value} className="flex items-center space-x-2">
+                        <RadioGroupItem value={label.value.toString()} id={`${item.key}-${label.value}`} />
+                        <Label 
+                          htmlFor={`${item.key}-${label.value}`}
+                          className="text-sm font-normal cursor-pointer"
+                        >
+                          {label.value} - {label.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
               </div>
-
-              {/* Question Rows */}
-              <div className="space-y-4">
-                {randomizedItems.map((item, index) => (
-                  <div key={item.key} className="grid grid-cols-[1fr_repeat(7,minmax(80px,1fr))] gap-2 items-center pb-4 border-b border-border/50 last:border-b-0">
-                    <div className="flex items-start gap-2 pr-4">
-                      <span className="text-sm font-semibold text-muted-foreground flex-shrink-0">{index + 1}.</span>
-                      <label className="text-sm font-medium text-foreground">
-                        {item.text}
-                      </label>
-                    </div>
-                    
-                    <RadioGroup
-                      value={responses[item.key]?.toString()}
-                      onValueChange={(value) => handleRadioChange(item.key, value)}
-                      className="contents"
-                    >
-                      {SCALE_LABELS.map(label => (
-                        <div key={label.value} className="flex items-center justify-center">
-                          <RadioGroupItem 
-                            value={label.value.toString()} 
-                            id={`${item.key}-${label.value}`}
-                            className="mx-auto"
-                          />
-                        </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
-                ))}
-              </div>
-            </div>
+              );
+            })}
           </div>
 
           <div className="flex gap-4">
