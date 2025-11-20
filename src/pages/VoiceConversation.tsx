@@ -30,15 +30,29 @@ const VoiceConversation = () => {
   const { isResearcherMode } = useResearcherMode();
 
   useEffect(() => {
-    // Enforce flow: must be at step 2
     const currentStep = sessionStorage.getItem('flowStep');
+    const storedId = sessionStorage.getItem('prolificId');
+    
+    // Check if researcher mode is active and data is missing
+    if (isResearcherMode && (!storedId || currentStep !== '2')) {
+      // Use default values for researcher mode
+      const defaultProlificId = 'RESEARCHER_MODE';
+      setProlificId(defaultProlificId);
+      sessionStorage.setItem('prolificId', defaultProlificId);
+      sessionStorage.setItem('flowStep', '2');
+      
+      // Set default session token if missing
+      if (!localStorage.getItem('sessionToken')) {
+        localStorage.setItem('sessionToken', '00000000-0000-0000-0000-000000000000');
+      }
+      return;
+    }
+    
+    // Enforce flow: must be at step 2
     if (currentStep !== '2') {
       navigate('/');
       return;
     }
-
-    // Retrieve the Prolific ID from sessionStorage
-    const storedId = sessionStorage.getItem('prolificId');
     
     if (!storedId) {
       toast({
@@ -51,7 +65,7 @@ const VoiceConversation = () => {
     }
     
     setProlificId(storedId);
-  }, [navigate, toast]);
+  }, [navigate, toast, isResearcherMode]);
 
   // Initialize Vapi SDK - only once when component mounts
   useEffect(() => {
