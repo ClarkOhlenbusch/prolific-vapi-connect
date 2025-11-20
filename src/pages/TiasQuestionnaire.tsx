@@ -263,14 +263,14 @@ const TiasQuestionnaire = () => {
                   <RadioGroup
                     value={responses[item.key]?.toString()}
                     onValueChange={(value) => handleRadioChange(item.key, value)}
-                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+                    className="flex flex-col gap-2"
                   >
                     {SCALE_LABELS.map(label => (
                       <div key={label.value} className="flex items-center space-x-2">
                         <RadioGroupItem value={label.value.toString()} id={`${item.key}-${label.value}`} />
                         <Label 
                           htmlFor={`${item.key}-${label.value}`}
-                          className="text-xs sm:text-sm font-normal cursor-pointer whitespace-nowrap"
+                          className="text-sm font-normal cursor-pointer"
                         >
                           {label.value} - {label.label}
                         </Label>
