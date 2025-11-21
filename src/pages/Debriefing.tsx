@@ -185,7 +185,7 @@ const Debriefing = () => {
               size="lg"
               className="w-full"
             >
-              Continue to Prolific
+              Finish Study
             </Button>
           </div>
         </CardContent>
