@@ -38,13 +38,13 @@ const Complete = () => {
           <div className="bg-accent/50 rounded-lg p-6 space-y-4 text-center">
             <p className="text-foreground font-semibold">Please use one of the options below to complete your submission:</p>
             
-            <Button
-              onClick={() => window.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH'}
-              className="w-full"
-              size="lg"
+            <a
+              href="https://app.prolific.com/submissions/complete?cc=CWJF4IWH"
+              target="_top"
+              className="inline-flex items-center justify-center w-full h-11 px-8 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
             >
               Click here to complete on Prolific
-            </Button>
+            </a>
 
             <div className="pt-4 border-t border-border">
               <p className="text-sm text-muted-foreground mb-2">Or copy and paste this completion code:</p>
