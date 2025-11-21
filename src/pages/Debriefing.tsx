@@ -80,7 +80,7 @@ const Debriefing = () => {
 
       // Redirect to Prolific after a brief delay
       setTimeout(() => {
-        window.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH';
+        window.top.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH';
       }, 2000);
 
     } catch (err) {
@@ -96,7 +96,7 @@ const Debriefing = () => {
   };
 
   const handleContinue = () => {
-    window.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH';
+    window.top.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH';
   };
 
   return (
