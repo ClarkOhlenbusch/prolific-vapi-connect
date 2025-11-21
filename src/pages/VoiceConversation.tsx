@@ -54,7 +54,7 @@ const VoiceConversation = () => {
       return;
     }
     
-    if (!storedId) {
+    if (!isResearcherMode && !storedId) {
       toast({
         title: "Error",
         description: "No Prolific ID found. Redirecting...",

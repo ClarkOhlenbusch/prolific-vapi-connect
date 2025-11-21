@@ -124,7 +124,7 @@ const Questionnaire = () => {
         return;
       }
       
-      if (!storedId) {
+      if (!isResearcherMode && !storedId) {
         toast({
           title: "Access Denied",
           description: "Please start from the beginning.",
@@ -134,7 +134,7 @@ const Questionnaire = () => {
         return;
       }
 
-      if (!stateCallId) {
+      if (!isResearcherMode && !stateCallId) {
         toast({
           title: "Access Denied",
           description: "Please complete the conversation first.",
