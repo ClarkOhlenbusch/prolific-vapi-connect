@@ -80,7 +80,7 @@ const FeedbackQuestionnaire = () => {
         return;
       }
       
-      if (!storedId || !stateCallId || !petsDataString || !tiasDataString || !formalityDataString) {
+      if (!isResearcherMode && (!storedId || !stateCallId || !petsDataString || !tiasDataString || !formalityDataString)) {
         toast({
           title: "Access Denied",
           description: "Please complete the previous questionnaires first.",
