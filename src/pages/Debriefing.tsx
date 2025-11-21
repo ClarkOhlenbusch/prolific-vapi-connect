@@ -43,13 +43,14 @@ const Debriefing = () => {
     const sessionToken = localStorage.getItem('sessionToken');
     const callId = localStorage.getItem('callId');
 
-    console.log('Withdrawal data check:', { prolificId, sessionToken, callId });
+    console.log('Withdrawal data check:', { prolificId, sessionToken, callId, isResearcherMode });
 
-    if (!prolificId || !sessionToken || !callId) {
+    // In researcher mode, allow withdrawal even without callId
+    if (!prolificId || !sessionToken || (!callId && !isResearcherMode)) {
       const missing = [];
       if (!prolificId) missing.push('Prolific ID');
       if (!sessionToken) missing.push('Session Token');
-      if (!callId) missing.push('Call ID');
+      if (!callId && !isResearcherMode) missing.push('Call ID');
       
       toast({
         title: "Error",
@@ -67,7 +68,7 @@ const Debriefing = () => {
         .insert({
           prolific_id: prolificId,
           session_token: sessionToken,
-          call_id: callId
+          call_id: callId || 'RESEARCHER_MODE_NO_CALL'
         });
 
       if (error) {
