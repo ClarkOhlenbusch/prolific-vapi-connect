@@ -33,7 +33,7 @@ const Debriefing = () => {
       return;
     }
 
-    if (!storedId) {
+    if (!isResearcherMode && !storedId) {
       navigate('/');
     }
   }, [navigate, isResearcherMode]);

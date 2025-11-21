@@ -144,7 +144,7 @@ const TiasQuestionnaire = () => {
         return;
       }
       
-      if (!storedId || !stateCallId || !petsDataString) {
+      if (!isResearcherMode && (!storedId || !stateCallId || !petsDataString)) {
         toast({
           title: "Access Denied",
           description: "Please complete the PETS questionnaire first.",

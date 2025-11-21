@@ -82,7 +82,7 @@ const FormalityQuestionnaire = () => {
         return;
       }
       
-      if (!storedId || !stateCallId || !petsDataString || !tiasDataString) {
+      if (!isResearcherMode && (!storedId || !stateCallId || !petsDataString || !tiasDataString)) {
         toast({
           title: "Access Denied",
           description: "Please complete the previous questionnaires first.",
