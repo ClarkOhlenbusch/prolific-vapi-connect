@@ -78,9 +78,9 @@ const Debriefing = () => {
         description: "Your data withdrawal request has been recorded.",
       });
 
-      // Redirect to Prolific after a brief delay
+      // Redirect to Complete page after a brief delay
       setTimeout(() => {
-        window.top.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH';
+        navigate('/complete');
       }, 2000);
 
     } catch (err) {
@@ -96,7 +96,7 @@ const Debriefing = () => {
   };
 
   const handleContinue = () => {
-    window.top.location.href = 'https://app.prolific.com/submissions/complete?cc=CWJF4IWH';
+    navigate('/complete');
   };
 
   return (
