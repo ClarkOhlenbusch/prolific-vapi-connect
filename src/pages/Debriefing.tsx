@@ -43,10 +43,17 @@ const Debriefing = () => {
     const sessionToken = localStorage.getItem('sessionToken');
     const callId = localStorage.getItem('callId');
 
+    console.log('Withdrawal data check:', { prolificId, sessionToken, callId });
+
     if (!prolificId || !sessionToken || !callId) {
+      const missing = [];
+      if (!prolificId) missing.push('Prolific ID');
+      if (!sessionToken) missing.push('Session Token');
+      if (!callId) missing.push('Call ID');
+      
       toast({
         title: "Error",
-        description: "Missing required data for withdrawal.",
+        description: `Missing required data: ${missing.join(', ')}. Please complete the study flow before withdrawing.`,
         variant: "destructive"
       });
       return;
