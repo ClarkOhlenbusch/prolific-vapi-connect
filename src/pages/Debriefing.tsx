@@ -183,7 +183,7 @@ const Debriefing = () => {
               onClick={handleContinue}
               disabled={isWithdrawing}
               size="lg"
-              className="w-full"
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
             >
               Finish Study
             </Button>
