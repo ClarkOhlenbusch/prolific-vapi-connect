@@ -82,7 +82,7 @@ const Consent = () => {
                   Participation is voluntary. You can stop at any time by closing the study page. If you stop during the study, all data collected up to that point will be deleted.
                 </p>
                 <p className="mb-2">
-                  If you withdraw after completing the study, you may request deletion of identifiable data by contacting the researcher at o.f.e.vroom@students.uu.nl. Pseudonymized data already included in analyses may be retained.
+                  At the end of the study, you will be given the option to withdraw and delete your data.
                 </p>
                 <p>
                   You will only be compensated if you fully complete the experiment.
