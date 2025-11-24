@@ -10,13 +10,13 @@ import { ArrowLeft } from 'lucide-react';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const SCALE_LABELS = [
-  { value: 1, label: 'Informal' },
-  { value: 2, label: '' },
-  { value: 3, label: '' },
+  { value: 1, label: 'Extremely Informal' },
+  { value: 2, label: 'Very Informal' },
+  { value: 3, label: 'Mostly Informal' },
   { value: 4, label: 'Neutral' },
-  { value: 5, label: '' },
-  { value: 6, label: '' },
-  { value: 7, label: 'Formal' },
+  { value: 5, label: 'Mostly Formal' },
+  { value: 6, label: 'Very Formal' },
+  { value: 7, label: 'Extremely Formal' },
 ];
 
 const FormalityQuestionnaire = () => {
