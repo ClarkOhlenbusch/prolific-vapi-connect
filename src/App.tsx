@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-ro
 import { supabase } from "@/integrations/supabase/client";
 import { ResearcherModeProvider, useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { ResearcherModeToggle } from "@/components/ResearcherModeToggle";
+import { ScreenSizeWarning } from "@/components/ScreenSizeWarning";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
@@ -80,6 +81,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <ScreenSizeWarning />
         <BrowserRouter>
           <ResearcherModeToggle />
           <Suspense fallback={<div>Loading...</div>}>
