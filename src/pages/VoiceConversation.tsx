@@ -80,6 +80,26 @@ const VoiceConversation = () => {
       setIsConnecting(false);
     });
 
+    vapi.on('message', (message) => {
+      // Listen for end-of-call-report to get the actual end reason
+      if (message.type === 'end-of-call-report') {
+        const endedReason = message.endedReason;
+        
+        if (endedReason === 'assistant-ended-call') {
+          toast({
+            title: "Call Completed Successfully",
+            description: "All questions have been answered. Please proceed to the questionnaire.",
+          });
+        } else if (endedReason === 'pipeline-error' || endedReason === 'assistant-error') {
+          toast({
+            title: "Call Error",
+            description: "The call ended due to an error. Please proceed to the questionnaire or restart if needed.",
+            variant: "destructive"
+          });
+        }
+      }
+    });
+
     vapi.on('call-end', () => {
       setIsCallActive(false);
       setCallTracked(false);
@@ -87,8 +107,6 @@ const VoiceConversation = () => {
       // If we're restarting, don't show "ended" state
       if (!isRestarting) {
         setCallEnded(true);
-        // VAPI ended the call - this is expected behavior
-        // No error message needed, user can proceed to questionnaire
       }
     });
 
@@ -101,13 +119,8 @@ const VoiceConversation = () => {
     });
 
     vapi.on('error', (error) => {
-      // Only show errors that are actual problems, not expected call endings
+      // Log errors but don't show toast - end-of-call-report handles messaging
       console.error('Vapi error:', error);
-      toast({
-        title: "Call Error",
-        description: error?.message || "An error occurred during the call.",
-        variant: "destructive"
-      });
     });
 
     return () => {
