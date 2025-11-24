@@ -22,6 +22,7 @@ const VoiceConversation = () => {
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes in seconds
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [callEndReason, setCallEndReason] = useState<'timeout' | 'user' | 'assistant' | 'error' | null>(null);
   
   const vapiRef = useRef<Vapi | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -87,6 +88,21 @@ const VoiceConversation = () => {
       // If we're restarting, don't show "ended" state
       if (!isRestarting) {
         setCallEnded(true);
+        
+        // Show appropriate message based on how the call ended
+        if (callEndReason === 'assistant') {
+          toast({
+            title: "Call Completed Successfully",
+            description: "All questions have been answered. Please proceed to the questionnaire.",
+          });
+        } else if (callEndReason === 'error') {
+          toast({
+            title: "Call Ended",
+            description: "The call ended unexpectedly. Please proceed to the questionnaire or restart if needed.",
+            variant: "destructive"
+          });
+        }
+        // For timeout and user-ended calls, message was already shown or not needed
       }
     });
 
@@ -99,11 +115,15 @@ const VoiceConversation = () => {
     });
 
     vapi.on('error', (error) => {
-      toast({
-        title: "Call Error",
-        description: error?.message || "An error occurred during the call.",
-        variant: "destructive"
-      });
+      // Only show error if it's not a timeout-related end
+      if (callEndReason !== 'timeout') {
+        console.error('Vapi error:', error);
+        toast({
+          title: "Call Error",
+          description: error?.message || "An error occurred during the call.",
+          variant: "destructive"
+        });
+      }
     });
 
     return () => {
@@ -121,6 +141,7 @@ const VoiceConversation = () => {
         setTimeRemaining((prev) => {
           if (prev <= 1) {
             // Time's up - force end the call
+            setCallEndReason('timeout');
             if (vapiRef.current) {
               vapiRef.current.stop();
             }
@@ -129,7 +150,7 @@ const VoiceConversation = () => {
             }
             toast({
               title: "Time's Up",
-              description: "The 5-minute conversation has ended.",
+              description: "The 5-minute conversation has ended. Please proceed to the questionnaire.",
             });
             return 0;
           }
@@ -258,6 +279,7 @@ const VoiceConversation = () => {
   };
 
   const handleConfirmEndCall = () => {
+    setCallEndReason('user');
     if (vapiRef.current) {
       vapiRef.current.stop();
     }
@@ -266,6 +288,7 @@ const VoiceConversation = () => {
 
   const handleRestartCall = async () => {
     setIsRestarting(true);
+    setCallEndReason('user');
     
     // Stop the call first
     if (vapiRef.current) {
