@@ -108,7 +108,7 @@ const IntentionQuestionnaire = () => {
     };
 
     sessionStorage.setItem("intentionData", JSON.stringify(intentionData));
-    navigate("/questionnaire/formality", {
+    navigate("/questionnaire/feedback", {
       state: { prolificId, callId },
     });
   };

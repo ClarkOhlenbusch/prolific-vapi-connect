@@ -270,7 +270,7 @@ const VoiceConversation = () => {
     }
     // Advance to next step
     sessionStorage.setItem("flowStep", "3");
-    navigate("/questionnaire/pets", {
+    navigate("/questionnaire/formality", {
       state: {
         callId,
       },

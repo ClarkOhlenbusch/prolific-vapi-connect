@@ -322,7 +322,7 @@ const FeedbackQuestionnaire = () => {
             <Button
               variant="outline"
               onClick={() =>
-                navigate("/questionnaire/formality", {
+                navigate("/questionnaire/intention", {
                   state: {
                     callId,
                   },
