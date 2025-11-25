@@ -6,17 +6,19 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
-
 const Debriefing = () => {
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const { isResearcherMode } = useResearcherMode();
+  const {
+    toast
+  } = useToast();
+  const {
+    isResearcherMode
+  } = useResearcherMode();
   const [isWithdrawing, setIsWithdrawing] = useState(false);
-
   useEffect(() => {
     const currentStep = sessionStorage.getItem('flowStep');
     const storedId = sessionStorage.getItem('prolificId');
-    
+
     // Check if researcher mode is active and data is missing
     if (isResearcherMode && (!storedId || currentStep !== '5')) {
       // Use default values for researcher mode
@@ -26,32 +28,33 @@ const Debriefing = () => {
       sessionStorage.setItem('flowStep', '5');
       return;
     }
-    
+
     // Enforce flow: must be at step 5 (only for non-researcher mode)
     if (!isResearcherMode && currentStep !== '5') {
       navigate('/');
       return;
     }
-
     if (!isResearcherMode && !storedId) {
       navigate('/');
     }
   }, [navigate, isResearcherMode]);
-
   const handleWithdraw = async () => {
     const prolificId = sessionStorage.getItem('prolificId');
     const sessionToken = localStorage.getItem('sessionToken');
     const callId = localStorage.getItem('callId');
-
-    console.log('Withdrawal data check:', { prolificId, sessionToken, callId, isResearcherMode });
+    console.log('Withdrawal data check:', {
+      prolificId,
+      sessionToken,
+      callId,
+      isResearcherMode
+    });
 
     // In researcher mode, allow withdrawal even without callId
-    if (!prolificId || !sessionToken || (!callId && !isResearcherMode)) {
+    if (!prolificId || !sessionToken || !callId && !isResearcherMode) {
       const missing = [];
       if (!prolificId) missing.push('Prolific ID');
       if (!sessionToken) missing.push('Session Token');
       if (!callId && !isResearcherMode) missing.push('Call ID');
-      
       toast({
         title: "Error",
         description: `Missing required data: ${missing.join(', ')}. Please complete the study flow before withdrawing.`,
@@ -59,18 +62,15 @@ const Debriefing = () => {
       });
       return;
     }
-
     setIsWithdrawing(true);
-
     try {
-      const { error } = await supabase
-        .from('data_withdrawal_requests')
-        .insert({
-          prolific_id: prolificId,
-          session_token: sessionToken,
-          call_id: callId || 'RESEARCHER_MODE_NO_CALL'
-        });
-
+      const {
+        error
+      } = await supabase.from('data_withdrawal_requests').insert({
+        prolific_id: prolificId,
+        session_token: sessionToken,
+        call_id: callId || 'RESEARCHER_MODE_NO_CALL'
+      });
       if (error) {
         console.error('Error submitting withdrawal request:', error);
         toast({
@@ -80,17 +80,15 @@ const Debriefing = () => {
         });
         return;
       }
-
       toast({
         title: "Withdrawal Request Submitted",
-        description: "Your data withdrawal request has been recorded.",
+        description: "Your data withdrawal request has been recorded."
       });
 
       // Redirect to Complete page after a brief delay
       setTimeout(() => {
         navigate('/complete');
       }, 2000);
-
     } catch (err) {
       console.error('Unexpected error submitting withdrawal:', err);
       toast({
@@ -102,13 +100,10 @@ const Debriefing = () => {
       setIsWithdrawing(false);
     }
   };
-
   const handleContinue = () => {
     navigate('/complete');
   };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
+  return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-3xl shadow-xl border-border">
         <CardHeader className="space-y-3">
           <CardTitle className="text-3xl text-center">Debriefing</CardTitle>
@@ -146,9 +141,7 @@ const Debriefing = () => {
               <div className="space-y-3">
                 <h2 className="text-xl font-semibold">Your right to withdraw your data</h2>
                 <p>
-                  Now that you know the full purpose of the study, you may choose to withdraw all your data.
-                  If you decide to withdraw, all data associated with you will be permanently deleted, including audio recordings, 
-                  transcripts, and questionnaire responses.
+                  Now that you know the full purpose of the study, you may choose to withdraw all your data by sending an email to o.f.e.vroom@students.uu.nl. If you decide to withdraw, all data associated with you will be permanently deleted, including audio recordings, transcripts, and questionnaire responses.                                                     
                 </p>
               </div>
 
@@ -178,12 +171,7 @@ const Debriefing = () => {
                 <h2 className="text-xl font-semibold">Support resources</h2>
                 <p>
                   If you are experiencing any form of distress or emotional difficulty, please know that support is available. You can visit the CDC's mental health resources at:{' '}
-                  <a 
-                    href="https://www.cdc.gov/mental-health/caring/index.html" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline font-medium"
-                  >
+                  <a href="https://www.cdc.gov/mental-health/caring/index.html" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
                     https://www.cdc.gov/mental-health/caring/index.html
                   </a>.
                 </p>
@@ -192,29 +180,16 @@ const Debriefing = () => {
           </ScrollArea>
 
           <div className="flex flex-col gap-4 pt-4 border-t border-border">
-            <Button
-              onClick={handleWithdraw}
-              disabled={isWithdrawing}
-              variant="destructive"
-              size="lg"
-              className="w-full"
-            >
+            <Button onClick={handleWithdraw} disabled={isWithdrawing} variant="destructive" size="lg" className="w-full">
               {isWithdrawing ? 'Submitting Request...' : 'Withdraw my data'}
             </Button>
             
-            <Button
-              onClick={handleContinue}
-              disabled={isWithdrawing}
-              size="lg"
-              className="w-full bg-green-600 hover:bg-green-700 text-white"
-            >
+            <Button onClick={handleContinue} disabled={isWithdrawing} size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white">
               Finish Study
             </Button>
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
+    </div>;
 };
-
 export default Debriefing;
