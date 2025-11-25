@@ -272,11 +272,16 @@ const FeedbackQuestionnaire = () => {
               <Textarea 
                 value={voiceAssistantFeedback} 
                 onChange={(e) => {
-                  const newValue = e.target.value;
-                  if (newValue.length <= MAX_CHARS) {
-                    setVoiceAssistantFeedback(newValue);
+                  if (e.target.value.length <= MAX_CHARS) {
+                    setVoiceAssistantFeedback(e.target.value);
                   }
                 }} 
+                onKeyDown={(e) => {
+                  // Ensure spaces work
+                  if (e.key === ' ') {
+                    e.stopPropagation();
+                  }
+                }}
                 className="min-h-[120px] resize-none bg-background" 
                 placeholder="Share your thoughts about Robin..." 
               />
@@ -295,11 +300,16 @@ const FeedbackQuestionnaire = () => {
               <Textarea 
                 value={experimentFeedback} 
                 onChange={(e) => {
-                  const newValue = e.target.value;
-                  if (newValue.length <= MAX_CHARS) {
-                    setExperimentFeedback(newValue);
+                  if (e.target.value.length <= MAX_CHARS) {
+                    setExperimentFeedback(e.target.value);
                   }
                 }} 
+                onKeyDown={(e) => {
+                  // Ensure spaces work
+                  if (e.key === ' ') {
+                    e.stopPropagation();
+                  }
+                }}
                 placeholder="Share your thoughts about the experiment..." 
                 className="min-h-[120px] resize-none bg-background" 
               />
