@@ -147,8 +147,9 @@ const FeedbackQuestionnaire = () => {
     // Get all previous data from sessionStorage
     const petsDataString = sessionStorage.getItem('petsData');
     const tiasDataString = sessionStorage.getItem('tiasData');
+    const intentionDataString = sessionStorage.getItem('intentionData');
     const formalityDataString = sessionStorage.getItem('formalityData');
-    if (!petsDataString || !tiasDataString || !formalityDataString) {
+    if (!petsDataString || !tiasDataString || !intentionDataString || !formalityDataString) {
       toast({
         title: "Error",
         description: "Previous questionnaire data not found.",
@@ -161,6 +162,7 @@ const FeedbackQuestionnaire = () => {
     try {
       const petsData = JSON.parse(petsDataString);
       const tiasData = JSON.parse(tiasDataString);
+      const intentionData = JSON.parse(intentionDataString);
       const formalityData = JSON.parse(formalityDataString);
 
       // Combine PETS and TIAS questionnaire data
@@ -188,6 +190,7 @@ const FeedbackQuestionnaire = () => {
         body: {
           sessionToken,
           questionnaireData,
+          intentionData,
           feedbackData: feedbackPayload
         }
       });
