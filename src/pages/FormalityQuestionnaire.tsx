@@ -53,9 +53,6 @@ const FormalityQuestionnaire = () => {
       // Load IDs from sessionStorage/state, no validation/redirects
       const storedId = sessionStorage.getItem("prolificId");
       const stateCallId = location.state?.callId;
-      const petsDataString = sessionStorage.getItem("petsData");
-      const tiasDataString = sessionStorage.getItem("tiasData");
-      const intentionDataString = sessionStorage.getItem("intentionData");
 
       const finalProlificId = storedId || "RESEARCHER_MODE";
       const finalCallId = stateCallId || "researcher-call-id";
@@ -63,64 +60,8 @@ const FormalityQuestionnaire = () => {
       setProlificId(finalProlificId);
       setCallId(finalCallId);
       sessionStorage.setItem("prolificId", finalProlificId);
-      sessionStorage.setItem("flowStep", "4");
+      sessionStorage.setItem("flowStep", "3");
 
-      // Set default PETS data if missing
-      if (!petsDataString) {
-        sessionStorage.setItem(
-          "petsData",
-          JSON.stringify({
-            e1: 50,
-            e2: 50,
-            e3: 50,
-            e4: 50,
-            e5: 50,
-            e6: 50,
-            u1: 50,
-            u2: 50,
-            u3: 50,
-            u4: 50,
-            prolific_id: finalProlificId,
-            call_id: finalCallId,
-            pets_er: 50,
-            pets_ut: 50,
-            pets_total: 50,
-          }),
-        );
-      }
-
-      // Set default TIAS data if missing
-      if (!tiasDataString) {
-        sessionStorage.setItem(
-          "tiasData",
-          JSON.stringify({
-            tias_1: 4,
-            tias_2: 4,
-            tias_3: 4,
-            tias_4: 4,
-            tias_5: 4,
-            tias_6: 4,
-            tias_7: 4,
-            tias_8: 4,
-            tias_9: 4,
-            tias_10: 4,
-            tias_11: 4,
-            tias_12: 4,
-            tias_total: 4,
-          }),
-        );
-      }
-
-      // Set default intention data if missing
-      if (!intentionDataString) {
-        sessionStorage.setItem(
-          "intentionData",
-          JSON.stringify({
-            intention_1: 4,
-            intention_2: 4,
-          }),
-        );
-      }
       setIsLoading(false);
     };
     checkAccess();
@@ -144,8 +85,8 @@ const FormalityQuestionnaire = () => {
     };
     sessionStorage.setItem("formalityData", JSON.stringify(formalityData));
 
-    // Navigate to feedback page
-    navigate("/questionnaire/feedback", {
+    // Navigate to PETS questionnaire
+    navigate("/questionnaire/pets", {
       state: {
         callId,
       },
@@ -166,7 +107,7 @@ const FormalityQuestionnaire = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-2xl shadow-xl border-border">
         <CardHeader className="space-y-3">
-          <CardTitle className="text-2xl text-center">Formality Assessment</CardTitle>
+          <CardTitle className="text-2xl text-center">Questionnaire 1</CardTitle>
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>
@@ -224,7 +165,7 @@ const FormalityQuestionnaire = () => {
             <Button
               variant="outline"
               onClick={() =>
-                navigate("/questionnaire/intention", {
+                navigate("/voice-conversation", {
                   state: {
                     callId,
                   },
