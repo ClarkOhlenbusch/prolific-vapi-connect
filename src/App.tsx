@@ -37,8 +37,17 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
       // Skip validation if researcher mode is active
       if (isResearcherMode) return;
       
-      // Skip validation on landing page, consent, demographics, voice assistant familiarity, practice page, debriefing, and complete page
-      if (location.pathname === '/' || location.pathname === '/consent' || location.pathname === '/demographics' || location.pathname === '/voiceassistant-familiarity' || location.pathname === '/practice' || location.pathname === '/debriefing' || location.pathname === '/complete') return;
+      // Skip validation on landing page, consent, not-eligible, demographics, voice assistant familiarity, practice page, debriefing, and complete page
+      if (
+        location.pathname === '/' || 
+        location.pathname === '/consent' || 
+        location.pathname === '/not-eligible' ||
+        location.pathname === '/demographics' || 
+        location.pathname === '/voiceassistant-familiarity' || 
+        location.pathname === '/practice' || 
+        location.pathname === '/debriefing' || 
+        location.pathname === '/complete'
+      ) return;
 
       const sessionToken = localStorage.getItem('sessionToken');
       
@@ -104,13 +113,62 @@ const App = () => (
                   </SessionValidator>
                 }
               />
-              <Route path="/practice" element={<PracticeConversation />} />
-              <Route path="/voice-conversation" element={<VoiceConversation />} />
-          <Route path="/questionnaire/pets" element={<Questionnaire />} />
-          <Route path="/questionnaire/tias" element={<TiasQuestionnaire />} />
-          <Route path="/questionnaire/intention" element={<IntentionQuestionnaire />} />
-          <Route path="/questionnaire/formality" element={<FormalityQuestionnaire />} />
-              <Route path="/questionnaire/feedback" element={<FeedbackQuestionnaire />} />
+              <Route 
+                path="/practice" 
+                element={
+                  <SessionValidator>
+                    <PracticeConversation />
+                  </SessionValidator>
+                } 
+              />
+              <Route 
+                path="/voice-conversation" 
+                element={
+                  <SessionValidator>
+                    <VoiceConversation />
+                  </SessionValidator>
+                } 
+              />
+              <Route 
+                path="/questionnaire/pets" 
+                element={
+                  <SessionValidator>
+                    <Questionnaire />
+                  </SessionValidator>
+                } 
+              />
+              <Route 
+                path="/questionnaire/tias" 
+                element={
+                  <SessionValidator>
+                    <TiasQuestionnaire />
+                  </SessionValidator>
+                } 
+              />
+              <Route 
+                path="/questionnaire/intention" 
+                element={
+                  <SessionValidator>
+                    <IntentionQuestionnaire />
+                  </SessionValidator>
+                } 
+              />
+              <Route 
+                path="/questionnaire/formality" 
+                element={
+                  <SessionValidator>
+                    <FormalityQuestionnaire />
+                  </SessionValidator>
+                } 
+              />
+              <Route 
+                path="/questionnaire/feedback" 
+                element={
+                  <SessionValidator>
+                    <FeedbackQuestionnaire />
+                  </SessionValidator>
+                } 
+              />
               <Route path="/debriefing" element={<Debriefing />} />
               <Route path="/complete" element={<Complete />} />
               <Route path="*" element={<NotFound />} />
