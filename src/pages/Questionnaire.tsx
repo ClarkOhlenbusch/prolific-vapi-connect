@@ -27,16 +27,16 @@ interface AttentionCheckItem {
 type QuestionItem = PETSItem | AttentionCheckItem;
 
 const PETS_ITEMS: PETSItem[] = [
-  { id: 'E1', text: 'The system considered my mental state.', key: 'e1' },
-  { id: 'E2', text: 'The system seemed emotionally intelligent.', key: 'e2' },
-  { id: 'E3', text: 'The system expressed emotions.', key: 'e3' },
-  { id: 'E4', text: 'The system sympathized with me.', key: 'e4' },
-  { id: 'E5', text: 'The system showed interest in me.', key: 'e5' },
-  { id: 'E6', text: 'The system supported me in coping with an emotional situation.', key: 'e6' },
-  { id: 'U1', text: 'The system understood my goals.', key: 'u1' },
-  { id: 'U2', text: 'The system understood my needs.', key: 'u2' },
-  { id: 'U3', text: 'I trusted the system.', key: 'u3' },
-  { id: 'U4', text: 'The system understood my intentions.', key: 'u4' },
+  { id: 'E1', text: 'Robin considered my mental state.', key: 'e1' },
+  { id: 'E2', text: 'Robin seemed emotionally intelligent.', key: 'e2' },
+  { id: 'E3', text: 'Robin expressed emotions.', key: 'e3' },
+  { id: 'E4', text: 'Robin sympathized with me.', key: 'e4' },
+  { id: 'E5', text: 'Robin showed interest in me.', key: 'e5' },
+  { id: 'E6', text: 'Robin supported me in coping with an emotional situation.', key: 'e6' },
+  { id: 'U1', text: 'Robin understood my goals.', key: 'u1' },
+  { id: 'U2', text: 'Robin understood my needs.', key: 'u2' },
+  { id: 'U3', text: 'I trusted Robin.', key: 'u3' },
+  { id: 'U4', text: 'Robin understood my intentions.', key: 'u4' },
 ];
 
 const petsResponseSchema = z.object({
