@@ -15,8 +15,8 @@ const VoiceAssistantFamiliarity = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { isResearcherMode } = useResearcherMode();
   
-  const sessionToken = searchParams.get('sessionToken');
-  const prolificId = searchParams.get('prolificId');
+  const sessionToken = searchParams.get('sessionToken') || (isResearcherMode ? '00000000-0000-0000-0000-000000000000' : null);
+  const prolificId = searchParams.get('prolificId') || (isResearcherMode ? 'RESEARCHER_MODE' : null);
 
   const [formData, setFormData] = useState({
     familiarity: '',
