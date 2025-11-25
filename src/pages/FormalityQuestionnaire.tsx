@@ -8,29 +8,42 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft } from 'lucide-react';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
-
-const SCALE_LABELS = [
-  { value: 1, label: 'Extremely Informal' },
-  { value: 2, label: 'Very Informal' },
-  { value: 3, label: 'Mostly Informal' },
-  { value: 4, label: 'Neutral' },
-  { value: 5, label: 'Mostly Formal' },
-  { value: 6, label: 'Very Formal' },
-  { value: 7, label: 'Extremely Formal' },
-];
-
+const SCALE_LABELS = [{
+  value: 1,
+  label: 'Extremely Informal'
+}, {
+  value: 2,
+  label: 'Very Informal'
+}, {
+  value: 3,
+  label: 'Mostly Informal'
+}, {
+  value: 4,
+  label: 'Neutral'
+}, {
+  value: 5,
+  label: 'Mostly Formal'
+}, {
+  value: 6,
+  label: 'Very Formal'
+}, {
+  value: 7,
+  label: 'Extremely Formal'
+}];
 const FormalityQuestionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { toast } = useToast();
-  const { isResearcherMode } = useResearcherMode();
-  
+  const {
+    toast
+  } = useToast();
+  const {
+    isResearcherMode
+  } = useResearcherMode();
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
   const [formalityRating, setFormalityRating] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-
   useEffect(() => {
     const checkAccess = async () => {
       const currentStep = sessionStorage.getItem('flowStep');
@@ -38,23 +51,30 @@ const FormalityQuestionnaire = () => {
       const stateCallId = location.state?.callId;
       const petsDataString = sessionStorage.getItem('petsData');
       const tiasDataString = sessionStorage.getItem('tiasData');
-      
+
       // Check if researcher mode is active and data is missing
       if (isResearcherMode && (!storedId || currentStep !== '4' || !stateCallId)) {
         // Use default values for researcher mode
         const defaultProlificId = storedId || 'RESEARCHER_MODE';
         const defaultCallId = stateCallId || 'researcher-call-id';
-        
         setProlificId(defaultProlificId);
         setCallId(defaultCallId);
         sessionStorage.setItem('prolificId', defaultProlificId);
         sessionStorage.setItem('flowStep', '4');
-        
+
         // Set default PETS data if missing
         if (!petsDataString) {
           sessionStorage.setItem('petsData', JSON.stringify({
-            e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
-            u1: 50, u2: 50, u3: 50, u4: 50,
+            e1: 50,
+            e2: 50,
+            e3: 50,
+            e4: 50,
+            e5: 50,
+            e6: 50,
+            u1: 50,
+            u2: 50,
+            u3: 50,
+            u4: 50,
             prolific_id: defaultProlificId,
             call_id: defaultCallId,
             pets_er: 50,
@@ -62,26 +82,34 @@ const FormalityQuestionnaire = () => {
             pets_total: 50
           }));
         }
-        
+
         // Set default TIAS data if missing
         if (!tiasDataString) {
           sessionStorage.setItem('tiasData', JSON.stringify({
-            tias_1: 4, tias_2: 4, tias_3: 4, tias_4: 4, tias_5: 4, tias_6: 4,
-            tias_7: 4, tias_8: 4, tias_9: 4, tias_10: 4, tias_11: 4, tias_12: 4,
+            tias_1: 4,
+            tias_2: 4,
+            tias_3: 4,
+            tias_4: 4,
+            tias_5: 4,
+            tias_6: 4,
+            tias_7: 4,
+            tias_8: 4,
+            tias_9: 4,
+            tias_10: 4,
+            tias_11: 4,
+            tias_12: 4,
             tias_total: 4
           }));
         }
-        
         setIsLoading(false);
         return;
       }
-      
+
       // Enforce flow: must be at step 4 (only for non-researcher mode)
       if (!isResearcherMode && currentStep !== '4') {
         navigate('/');
         return;
       }
-      
       if (!isResearcherMode && (!storedId || !stateCallId || !petsDataString || !tiasDataString)) {
         toast({
           title: "Access Denied",
@@ -91,15 +119,12 @@ const FormalityQuestionnaire = () => {
         navigate('/questionnaire/pets');
         return;
       }
-
       setProlificId(storedId);
       setCallId(stateCallId);
       setIsLoading(false);
     };
-
     checkAccess();
   }, [navigate, location, toast, isResearcherMode]);
-
   const handleContinue = () => {
     // Skip validation if researcher mode is enabled
     if (!isResearcherMode) {
@@ -114,27 +139,28 @@ const FormalityQuestionnaire = () => {
     }
 
     // Store formality data in sessionStorage
-    const formalityData = { formality: formalityRating || 4 };
+    const formalityData = {
+      formality: formalityRating || 4
+    };
     sessionStorage.setItem('formalityData', JSON.stringify(formalityData));
 
     // Navigate to feedback page
-    navigate('/questionnaire/feedback', { state: { callId } });
+    navigate('/questionnaire/feedback', {
+      state: {
+        callId
+      }
+    });
   };
-
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary">
+    return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">Loading...</p>
           </CardContent>
         </Card>
-      </div>
-    );
+      </div>;
   }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
+  return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-2xl shadow-xl border-border">
         <CardHeader className="space-y-3">
           <CardTitle className="text-2xl text-center">Formality Assessment</CardTitle>
@@ -145,74 +171,43 @@ const FormalityQuestionnaire = () => {
         <CardContent className="space-y-6">
           <div className="space-y-6">
             <div className="space-y-4">
-              <label className="text-lg font-medium text-foreground block text-center">
-                How formal did you find the voice assistant?
-              </label>
+              <label className="text-lg font-medium text-foreground block text-center">How formal did you find Robin?</label>
               
               <div className="bg-accent/50 rounded-lg p-6">
                 <div className="grid grid-cols-7 gap-4 mb-2 text-center">
-                  {SCALE_LABELS.map(label => (
-                    <div 
-                      key={label.value}
-                      className="text-xs font-medium text-foreground h-4 flex items-center justify-center"
-                    >
+                  {SCALE_LABELS.map(label => <div key={label.value} className="text-xs font-medium text-foreground h-4 flex items-center justify-center">
                       {label.label}
-                    </div>
-                  ))}
+                    </div>)}
                 </div>
                 
-                <RadioGroup
-                  value={formalityRating?.toString()}
-                  onValueChange={(value) => setFormalityRating(parseInt(value))}
-                  className="grid grid-cols-7 place-items-center mb-2"
-                >
-                  {SCALE_LABELS.map(label => (
-                    <RadioGroupItem 
-                      key={label.value}
-                      value={label.value.toString()} 
-                      id={`formality-${label.value}`}
-                      className="w-6 h-6"
-                    />
-                  ))}
+                <RadioGroup value={formalityRating?.toString()} onValueChange={value => setFormalityRating(parseInt(value))} className="grid grid-cols-7 place-items-center mb-2">
+                  {SCALE_LABELS.map(label => <RadioGroupItem key={label.value} value={label.value.toString()} id={`formality-${label.value}`} className="w-6 h-6" />)}
                 </RadioGroup>
                 
                 <div className="grid grid-cols-7 gap-4 text-center">
-                  {SCALE_LABELS.map(label => (
-                    <Label 
-                      key={label.value}
-                      htmlFor={`formality-${label.value}`}
-                      className="text-sm font-semibold cursor-pointer text-foreground"
-                    >
+                  {SCALE_LABELS.map(label => <Label key={label.value} htmlFor={`formality-${label.value}`} className="text-sm font-semibold cursor-pointer text-foreground">
                       {label.value}
-                    </Label>
-                  ))}
+                    </Label>)}
                 </div>
               </div>
             </div>
           </div>
 
           <div className="flex gap-4">
-            <Button
-              variant="outline"
-              onClick={() => navigate('/questionnaire/tias', { state: { callId } })}
-              className="flex items-center gap-2"
-            >
+            <Button variant="outline" onClick={() => navigate('/questionnaire/tias', {
+            state: {
+              callId
+            }
+          })} className="flex items-center gap-2">
               <ArrowLeft className="w-4 h-4" />
               Back
             </Button>
-            <Button
-              onClick={handleContinue}
-              disabled={!isResearcherMode && formalityRating === null}
-              className="flex-1"
-              size="lg"
-            >
+            <Button onClick={handleContinue} disabled={!isResearcherMode && formalityRating === null} className="flex-1" size="lg">
               Continue
             </Button>
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
+    </div>;
 };
-
 export default FormalityQuestionnaire;
