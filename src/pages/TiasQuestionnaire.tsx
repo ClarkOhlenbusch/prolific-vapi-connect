@@ -332,7 +332,7 @@ const TiasQuestionnaire = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-4xl shadow-xl border-border">
         <CardHeader className="space-y-3">
-          <CardTitle className="text-2xl text-center">Questionnaire 2</CardTitle>
+          <CardTitle className="text-2xl text-center">Questionnaire 3</CardTitle>
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>

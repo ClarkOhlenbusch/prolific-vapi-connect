@@ -324,7 +324,7 @@ const Questionnaire = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-3xl shadow-xl border-border">
         <CardHeader className="space-y-3">
-          <CardTitle className="text-2xl text-center">Questionnaire 1</CardTitle>
+          <CardTitle className="text-2xl text-center">Questionnaire 2</CardTitle>
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>
@@ -380,11 +380,15 @@ const Questionnaire = () => {
           <div className="flex gap-4">
             <Button
               variant="outline"
-              onClick={() => navigate("/voice-conversation")}
+              onClick={() => navigate("/questionnaire/formality", {
+                state: {
+                  callId,
+                },
+              })}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
-              Back to Conversation
+              Back
             </Button>
             <Button onClick={handleNext} disabled={!isResearcherMode && !allAnswered} className="flex-1" size="lg">
               Next
