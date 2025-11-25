@@ -262,6 +262,9 @@ const FeedbackQuestionnaire = () => {
         <CardContent className="space-y-6">
           {/* Voice Assistant Experience */}
           <div className="space-y-3">
+            <p className="text-base text-foreground mb-2">
+              During this experiment, you had a conversation with Robin.
+            </p>
             <label className="text-lg font-medium text-foreground block">
               Please describe your experience when talking to the voice assistant.
             </label>
