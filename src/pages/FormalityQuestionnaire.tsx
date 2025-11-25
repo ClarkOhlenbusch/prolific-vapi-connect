@@ -171,7 +171,9 @@ const FormalityQuestionnaire = () => {
         <CardContent className="space-y-6">
           <div className="space-y-6">
             <div className="space-y-4">
-              <label className="text-lg font-medium text-foreground block text-center">How formal did you find Robin?</label>
+              <label className="text-lg font-medium text-foreground block text-center">During this experiment, you had a conversation with Robin.
+How formal did you find Robin?
+            </label>
               
               <div className="bg-accent/50 rounded-lg p-6">
                 <div className="grid grid-cols-7 gap-4 mb-2 text-center">
