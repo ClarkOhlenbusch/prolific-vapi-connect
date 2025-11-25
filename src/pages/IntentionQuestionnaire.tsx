@@ -75,12 +75,17 @@ const IntentionQuestionnaire = () => {
       }));
     }
     
-    // Load existing data if available
+    // Load existing data if available (no defaults)
     const existingData = sessionStorage.getItem('intentionData');
     if (existingData) {
-      const data: IntentionData = JSON.parse(existingData);
-      setIntention1(data.intention_1);
-      setIntention2(data.intention_2);
+      try {
+        const data: IntentionData = JSON.parse(existingData);
+        setIntention1(data.intention_1);
+        setIntention2(data.intention_2);
+      } catch (e) {
+        // Invalid data, keep null defaults
+        console.error('Failed to parse intention data:', e);
+      }
     }
 
     setIsLoading(false);
