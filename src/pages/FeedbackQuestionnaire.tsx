@@ -25,84 +25,55 @@ const FeedbackQuestionnaire = () => {
   const MAX_CHARS = 1000;
   useEffect(() => {
     const checkAccess = async () => {
-      // RESEARCHER MODE BYPASS - CHECK FIRST
-      if (isResearcherMode) {
-        const storedId = sessionStorage.getItem('prolificId');
-        const stateCallId = location.state?.callId;
-        const petsDataString = sessionStorage.getItem('petsData');
-        const tiasDataString = sessionStorage.getItem('tiasData');
-        const intentionDataString = sessionStorage.getItem('intentionData');
-        const formalityDataString = sessionStorage.getItem('formalityData');
-        
-        // Set defaults
-        const defaultProlificId = storedId || 'RESEARCHER_MODE';
-        const defaultCallId = stateCallId || 'researcher-call-id';
-        setProlificId(defaultProlificId);
-        setCallId(defaultCallId);
-        sessionStorage.setItem('prolificId', defaultProlificId);
-        sessionStorage.setItem('flowStep', '4');
-
-        // Set default PETS data if missing
-        if (!petsDataString) {
-          sessionStorage.setItem('petsData', JSON.stringify({
-            e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
-            u1: 50, u2: 50, u3: 50, u4: 50,
-            prolific_id: defaultProlificId,
-            call_id: defaultCallId,
-            pets_er: 50, pets_ut: 50, pets_total: 50
-          }));
-        }
-
-        // Set default TIAS data if missing
-        if (!tiasDataString) {
-          sessionStorage.setItem('tiasData', JSON.stringify({
-            tias_1: 4, tias_2: 4, tias_3: 4, tias_4: 4, tias_5: 4, tias_6: 4,
-            tias_7: 4, tias_8: 4, tias_9: 4, tias_10: 4, tias_11: 4, tias_12: 4,
-            tias_total: 4
-          }));
-        }
-
-        // Set default intention data if missing
-        if (!intentionDataString) {
-          sessionStorage.setItem('intentionData', JSON.stringify({
-            intention_1: 4, intention_2: 4
-          }));
-        }
-
-        // Set default formality data if missing
-        if (!formalityDataString) {
-          sessionStorage.setItem('formalityData', JSON.stringify({
-            formality: 4
-          }));
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      // Regular validation for non-researcher mode
-      const currentStep = sessionStorage.getItem('flowStep');
+      // Load IDs from sessionStorage/state, no validation/redirects
       const storedId = sessionStorage.getItem('prolificId');
       const stateCallId = location.state?.callId;
       const petsDataString = sessionStorage.getItem('petsData');
       const tiasDataString = sessionStorage.getItem('tiasData');
       const intentionDataString = sessionStorage.getItem('intentionData');
       const formalityDataString = sessionStorage.getItem('formalityData');
+      
+      const finalProlificId = storedId || 'RESEARCHER_MODE';
+      const finalCallId = stateCallId || 'researcher-call-id';
+      
+      setProlificId(finalProlificId);
+      setCallId(finalCallId);
+      sessionStorage.setItem('prolificId', finalProlificId);
+      sessionStorage.setItem('flowStep', '4');
 
-      if (currentStep !== '4') {
-        navigate('/');
-        return;
+      // Set default PETS data if missing
+      if (!petsDataString) {
+        sessionStorage.setItem('petsData', JSON.stringify({
+          e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
+          u1: 50, u2: 50, u3: 50, u4: 50,
+          prolific_id: finalProlificId,
+          call_id: finalCallId,
+          pets_er: 50, pets_ut: 50, pets_total: 50
+        }));
       }
-      if (!storedId || !stateCallId || !petsDataString || !tiasDataString || !intentionDataString || !formalityDataString) {
-        toast({
-          title: "Access Denied",
-          description: "Please complete the previous questionnaires first.",
-          variant: "destructive"
-        });
-        navigate('/questionnaire/pets');
-        return;
+
+      // Set default TIAS data if missing
+      if (!tiasDataString) {
+        sessionStorage.setItem('tiasData', JSON.stringify({
+          tias_1: 4, tias_2: 4, tias_3: 4, tias_4: 4, tias_5: 4, tias_6: 4,
+          tias_7: 4, tias_8: 4, tias_9: 4, tias_10: 4, tias_11: 4, tias_12: 4,
+          tias_total: 4
+        }));
       }
-      setProlificId(storedId);
-      setCallId(stateCallId);
+
+      // Set default intention data if missing
+      if (!intentionDataString) {
+        sessionStorage.setItem('intentionData', JSON.stringify({
+          intention_1: 4, intention_2: 4
+        }));
+      }
+
+      // Set default formality data if missing
+      if (!formalityDataString) {
+        sessionStorage.setItem('formalityData', JSON.stringify({
+          formality: 4
+        }));
+      }
       setIsLoading(false);
     };
     checkAccess();

@@ -145,51 +145,17 @@ const Questionnaire = () => {
   }, [attentionCheck]);
   useEffect(() => {
     const checkAccess = async () => {
-      // RESEARCHER MODE BYPASS - CHECK FIRST
-      if (isResearcherMode) {
-        const storedId = sessionStorage.getItem('prolificId');
-        const stateCallId = location.state?.callId;
-        
-        // Set defaults
-        const defaultProlificId = storedId || 'RESEARCHER_MODE';
-        const defaultCallId = stateCallId || 'researcher-call-id';
-        setProlificId(defaultProlificId);
-        setCallId(defaultCallId);
-        sessionStorage.setItem('prolificId', defaultProlificId);
-        sessionStorage.setItem('flowStep', '3');
-        setIsLoading(false);
-        return;
-      }
-
-      // Regular validation for non-researcher mode
-      const currentStep = sessionStorage.getItem('flowStep');
-      const stateCallId = location.state?.callId;
+      // Load IDs from sessionStorage/state, no validation/redirects
       const storedId = sessionStorage.getItem('prolificId');
-
-      if (currentStep !== '3') {
-        navigate('/');
-        return;
-      }
-      if (!storedId) {
-        toast({
-          title: "Access Denied",
-          description: "Please start from the beginning.",
-          variant: "destructive"
-        });
-        navigate('/');
-        return;
-      }
-      if (!stateCallId) {
-        toast({
-          title: "Access Denied",
-          description: "Please complete the conversation first.",
-          variant: "destructive"
-        });
-        navigate('/voice-conversation');
-        return;
-      }
-      setProlificId(storedId);
-      setCallId(stateCallId);
+      const stateCallId = location.state?.callId;
+      
+      const finalProlificId = storedId || 'RESEARCHER_MODE';
+      const finalCallId = stateCallId || 'researcher-call-id';
+      
+      setProlificId(finalProlificId);
+      setCallId(finalCallId);
+      sessionStorage.setItem('prolificId', finalProlificId);
+      sessionStorage.setItem('flowStep', '3');
 
       // Check if already submitted
       const {

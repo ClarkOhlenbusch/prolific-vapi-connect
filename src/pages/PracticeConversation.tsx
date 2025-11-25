@@ -23,46 +23,19 @@ const PracticeConversation = () => {
   const { isResearcherMode } = useResearcherMode();
 
   useEffect(() => {
-    // RESEARCHER MODE BYPASS - CHECK FIRST
-    if (isResearcherMode) {
-      const prolificIdFromUrl = searchParams.get('prolificId');
-      const sessionToken = searchParams.get('sessionToken');
-      
-      // Set defaults
-      const defaultProlificId = prolificIdFromUrl || 'RESEARCHER_MODE';
-      const defaultSessionToken = sessionToken || '00000000-0000-0000-0000-000000000000';
-      
-      setProlificId(defaultProlificId);
-      sessionStorage.setItem('prolificId', defaultProlificId);
-      localStorage.setItem('sessionToken', defaultSessionToken);
-      sessionStorage.setItem('flowStep', '1');
-      return;
-    }
-    
-    // Regular validation for non-researcher mode
+    // Load IDs from URL or sessionStorage, no validation/redirects
     const prolificIdFromUrl = searchParams.get('prolificId');
     const sessionToken = searchParams.get('sessionToken');
-    const currentStep = sessionStorage.getItem('flowStep');
+    const storedProlificId = sessionStorage.getItem('prolificId');
     
-    if (currentStep !== '1') {
-      navigate('/');
-      return;
-    }
+    const finalProlificId = prolificIdFromUrl || storedProlificId || 'RESEARCHER_MODE';
+    const finalSessionToken = sessionToken || localStorage.getItem('sessionToken') || '00000000-0000-0000-0000-000000000000';
     
-    if (!prolificIdFromUrl || !sessionToken) {
-      toast({
-        title: "Error",
-        description: "Missing required parameters. Redirecting...",
-        variant: "destructive"
-      });
-      navigate('/');
-      return;
-    }
-    
-    setProlificId(prolificIdFromUrl);
-    sessionStorage.setItem('prolificId', prolificIdFromUrl);
-    localStorage.setItem('sessionToken', sessionToken);
-  }, [navigate, toast, searchParams, isResearcherMode]);
+    setProlificId(finalProlificId);
+    sessionStorage.setItem('prolificId', finalProlificId);
+    localStorage.setItem('sessionToken', finalSessionToken);
+    sessionStorage.setItem('flowStep', '1');
+  }, [searchParams]);
 
   // Initialize Vapi SDK
   useEffect(() => {
