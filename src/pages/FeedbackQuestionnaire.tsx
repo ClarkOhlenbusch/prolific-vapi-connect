@@ -269,11 +269,17 @@ const FeedbackQuestionnaire = () => {
               Please describe your experience when talking to Robin. 
             </label>
             <div className="bg-accent/50 rounded-lg p-4">
-              <Textarea value={voiceAssistantFeedback} onChange={e => {
-              if (e.target.value.length <= MAX_CHARS) {
-                setVoiceAssistantFeedback(e.target.value);
-              }
-            }} className="min-h-[120px] resize-none bg-background" placeholder="Share your thoughts about Robin..." />
+              <Textarea 
+                value={voiceAssistantFeedback} 
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  if (newValue.length <= MAX_CHARS) {
+                    setVoiceAssistantFeedback(newValue);
+                  }
+                }} 
+                className="min-h-[120px] resize-none bg-background" 
+                placeholder="Share your thoughts about Robin..." 
+              />
               <div className="mt-2 text-sm text-muted-foreground text-right">
                 {voiceAssistantFeedback.length} / {MAX_CHARS} characters
               </div>
@@ -286,11 +292,17 @@ const FeedbackQuestionnaire = () => {
               How was your overall experience doing the experiment? Any feedback, comments, or questions on the experiment?
             </label>
             <div className="bg-accent/50 rounded-lg p-4">
-              <Textarea value={experimentFeedback} onChange={e => {
-              if (e.target.value.length <= MAX_CHARS) {
-                setExperimentFeedback(e.target.value);
-              }
-            }} placeholder="Share your thoughts about the experiment..." className="min-h-[120px] resize-none bg-background" />
+              <Textarea 
+                value={experimentFeedback} 
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  if (newValue.length <= MAX_CHARS) {
+                    setExperimentFeedback(newValue);
+                  }
+                }} 
+                placeholder="Share your thoughts about the experiment..." 
+                className="min-h-[120px] resize-none bg-background" 
+              />
               <div className="mt-2 text-sm text-muted-foreground text-right">
                 {experimentFeedback.length} / {MAX_CHARS} characters
               </div>
