@@ -84,8 +84,19 @@ const Consent = () => {
                 <p className="mb-2">
                   At the end of the study, you will be given the option to withdraw and delete your data.
                 </p>
-                <p>
+                <p className="mb-2">
                   You will only be compensated if you fully complete the experiment.
+                </p>
+                <p>
+                  For more information, see the{' '}
+                  <a 
+                    href="https://www.uu.nl/en/organisation/practical-matters/privacy/privacy-statements-utrecht-university/privacy-statement-participants-scientific-research"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline hover:text-primary/80"
+                  >
+                    privacy policy page
+                  </a>.
                 </p>
               </div>
 
