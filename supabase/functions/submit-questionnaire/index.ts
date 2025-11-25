@@ -6,6 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Validation schema for intention data
+const intentionResponseSchema = z.object({
+  intention_1: z.number().min(1).max(7).int(),
+  intention_2: z.number().min(1).max(7).int(),
+});
+
 // Validation schema for PETS and TIAS data
 const petsResponseSchema = z.object({
   // PETS items (0-100 scale)
@@ -61,7 +67,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { sessionToken, questionnaireData, feedbackData } = await req.json();
+    const { sessionToken, questionnaireData, intentionData, feedbackData } = await req.json();
 
     // Validate inputs
     if (!sessionToken || typeof sessionToken !== 'string') {
@@ -91,6 +97,21 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           error: 'Invalid questionnaire data',
+          details: validationError instanceof z.ZodError ? validationError.errors : undefined
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate intention data against schema
+    let validatedIntentionData;
+    try {
+      validatedIntentionData = intentionResponseSchema.parse(intentionData);
+    } catch (validationError) {
+      console.error('Intention data validation failed:', validationError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid intention data',
           details: validationError instanceof z.ZodError ? validationError.errors : undefined
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -176,6 +197,23 @@ Deno.serve(async (req) => {
       console.error('Failed to insert questionnaire response:', insertPetsError);
       return new Response(
         JSON.stringify({ error: 'Failed to save questionnaire' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Insert intention response
+    const { error: insertIntentionError } = await supabase
+      .from('intention')
+      .insert([{
+        prolific_id: validatedPetsData.prolific_id,
+        call_id: validatedPetsData.call_id,
+        ...validatedIntentionData
+      }]);
+
+    if (insertIntentionError) {
+      console.error('Failed to insert intention response:', insertIntentionError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to save intention data' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

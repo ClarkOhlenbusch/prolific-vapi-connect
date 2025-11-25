@@ -18,6 +18,7 @@ const PracticeConversation = lazy(() => import("./pages/PracticeConversation"));
 const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
 const Questionnaire = lazy(() => import("./pages/Questionnaire"));
 const TiasQuestionnaire = lazy(() => import("./pages/TiasQuestionnaire"));
+const IntentionQuestionnaire = lazy(() => import("./pages/IntentionQuestionnaire"));
 const FormalityQuestionnaire = lazy(() => import("./pages/FormalityQuestionnaire"));
 const FeedbackQuestionnaire = lazy(() => import("./pages/FeedbackQuestionnaire"));
 const Debriefing = lazy(() => import("./pages/Debriefing"));
@@ -105,9 +106,10 @@ const App = () => (
               />
               <Route path="/practice" element={<PracticeConversation />} />
               <Route path="/voice-conversation" element={<VoiceConversation />} />
-              <Route path="/questionnaire/pets" element={<Questionnaire />} />
-              <Route path="/questionnaire/tias" element={<TiasQuestionnaire />} />
-              <Route path="/questionnaire/formality" element={<FormalityQuestionnaire />} />
+          <Route path="/questionnaire/pets" element={<Questionnaire />} />
+          <Route path="/questionnaire/tias" element={<TiasQuestionnaire />} />
+          <Route path="/questionnaire/intention" element={<IntentionQuestionnaire />} />
+          <Route path="/questionnaire/formality" element={<FormalityQuestionnaire />} />
               <Route path="/questionnaire/feedback" element={<FeedbackQuestionnaire />} />
               <Route path="/debriefing" element={<Debriefing />} />
               <Route path="/complete" element={<Complete />} />
