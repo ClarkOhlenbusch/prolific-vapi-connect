@@ -31,42 +31,19 @@ const VoiceConversation = () => {
     isResearcherMode
   } = useResearcherMode();
   useEffect(() => {
-    // RESEARCHER MODE BYPASS - CHECK FIRST
-    if (isResearcherMode) {
-      const storedId = sessionStorage.getItem('prolificId');
-      
-      // Set defaults
-      const defaultProlificId = storedId || 'RESEARCHER_MODE';
-      setProlificId(defaultProlificId);
-      sessionStorage.setItem('prolificId', defaultProlificId);
-      sessionStorage.setItem('flowStep', '2');
-
-      // Set default session token if missing
-      if (!localStorage.getItem('sessionToken')) {
-        localStorage.setItem('sessionToken', '00000000-0000-0000-0000-000000000000');
-      }
-      return;
-    }
-
-    // Regular validation for non-researcher mode
-    const currentStep = sessionStorage.getItem('flowStep');
+    // Load IDs from sessionStorage, no validation/redirects
     const storedId = sessionStorage.getItem('prolificId');
+    const finalProlificId = storedId || 'RESEARCHER_MODE';
+    
+    setProlificId(finalProlificId);
+    sessionStorage.setItem('prolificId', finalProlificId);
+    sessionStorage.setItem('flowStep', '2');
 
-    if (currentStep !== '2') {
-      navigate('/');
-      return;
+    // Set default session token if missing
+    if (!localStorage.getItem('sessionToken')) {
+      localStorage.setItem('sessionToken', '00000000-0000-0000-0000-000000000000');
     }
-    if (!storedId) {
-      toast({
-        title: "Error",
-        description: "No Prolific ID found. Redirecting...",
-        variant: "destructive"
-      });
-      navigate('/');
-      return;
-    }
-    setProlificId(storedId);
-  }, [navigate, toast, isResearcherMode]);
+  }, []);
 
   // Initialize Vapi SDK - only once when component mounts
   useEffect(() => {
