@@ -41,6 +41,46 @@ const IntentionQuestionnaire = () => {
 
   useEffect(() => {
     const checkAccess = () => {
+      // RESEARCHER MODE BYPASS - CHECK FIRST
+      if (isResearcherMode) {
+        const storedId = sessionStorage.getItem('prolificId') || location.state?.prolificId;
+        const stateCallId = location.state?.callId;
+        const petsDataString = sessionStorage.getItem('petsData');
+        const tiasDataString = sessionStorage.getItem('tiasData');
+        
+        // Set defaults
+        const defaultProlificId = storedId || 'RESEARCHER_MODE';
+        const defaultCallId = stateCallId || 'researcher-call-id';
+        setProlificId(defaultProlificId);
+        setCallId(defaultCallId);
+        sessionStorage.setItem('prolificId', defaultProlificId);
+        sessionStorage.setItem('flowStep', '4');
+
+        // Set default PETS data if missing
+        if (!petsDataString) {
+          sessionStorage.setItem('petsData', JSON.stringify({
+            e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
+            u1: 50, u2: 50, u3: 50, u4: 50,
+            prolific_id: defaultProlificId,
+            call_id: defaultCallId,
+            pets_er: 50, pets_ut: 50, pets_total: 50
+          }));
+        }
+
+        // Set default TIAS data if missing
+        if (!tiasDataString) {
+          sessionStorage.setItem('tiasData', JSON.stringify({
+            tias_1: 4, tias_2: 4, tias_3: 4, tias_4: 4, tias_5: 4, tias_6: 4,
+            tias_7: 4, tias_8: 4, tias_9: 4, tias_10: 4, tias_11: 4, tias_12: 4,
+            tias_total: 4
+          }));
+        }
+        
+        setIsLoading(false);
+        return;
+      }
+
+      // Regular validation for non-researcher mode
       const storedProlificId = sessionStorage.getItem('prolificId') || location.state?.prolificId;
       const storedCallId = sessionStorage.getItem('callId') || location.state?.callId;
       const tiasCompleted = sessionStorage.getItem('tiasData');

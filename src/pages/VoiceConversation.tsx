@@ -31,12 +31,11 @@ const VoiceConversation = () => {
     isResearcherMode
   } = useResearcherMode();
   useEffect(() => {
-    const currentStep = sessionStorage.getItem('flowStep');
-    const storedId = sessionStorage.getItem('prolificId');
-
-    // Check if researcher mode is active and data is missing
-    if (isResearcherMode && (!storedId || currentStep !== '2')) {
-      // Use default values for researcher mode
+    // RESEARCHER MODE BYPASS - CHECK FIRST
+    if (isResearcherMode) {
+      const storedId = sessionStorage.getItem('prolificId');
+      
+      // Set defaults
       const defaultProlificId = storedId || 'RESEARCHER_MODE';
       setProlificId(defaultProlificId);
       sessionStorage.setItem('prolificId', defaultProlificId);
@@ -49,12 +48,15 @@ const VoiceConversation = () => {
       return;
     }
 
-    // Enforce flow: must be at step 2 (only for non-researcher mode)
-    if (!isResearcherMode && currentStep !== '2') {
+    // Regular validation for non-researcher mode
+    const currentStep = sessionStorage.getItem('flowStep');
+    const storedId = sessionStorage.getItem('prolificId');
+
+    if (currentStep !== '2') {
       navigate('/');
       return;
     }
-    if (!isResearcherMode && !storedId) {
+    if (!storedId) {
       toast({
         title: "Error",
         description: "No Prolific ID found. Redirecting...",
