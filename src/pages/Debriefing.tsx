@@ -180,9 +180,7 @@ const Debriefing = () => {
           </ScrollArea>
 
           <div className="flex flex-col gap-4 pt-4 border-t border-border">
-            <Button onClick={handleWithdraw} disabled={isWithdrawing} variant="destructive" size="lg" className="w-full">
-              {isWithdrawing ? 'Submitting Request...' : 'Withdraw my data'}
-            </Button>
+            
             
             <Button onClick={handleContinue} disabled={isWithdrawing} size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white">
               Finish Study
