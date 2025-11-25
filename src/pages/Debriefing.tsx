@@ -16,12 +16,11 @@ const Debriefing = () => {
   } = useResearcherMode();
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   useEffect(() => {
-    const currentStep = sessionStorage.getItem('flowStep');
-    const storedId = sessionStorage.getItem('prolificId');
-
-    // Check if researcher mode is active and data is missing
-    if (isResearcherMode && (!storedId || currentStep !== '5')) {
-      // Use default values for researcher mode
+    // RESEARCHER MODE BYPASS - CHECK FIRST
+    if (isResearcherMode) {
+      const storedId = sessionStorage.getItem('prolificId');
+      
+      // Set defaults
       if (!storedId) {
         sessionStorage.setItem('prolificId', 'RESEARCHER_MODE');
       }
@@ -29,12 +28,15 @@ const Debriefing = () => {
       return;
     }
 
-    // Enforce flow: must be at step 5 (only for non-researcher mode)
-    if (!isResearcherMode && currentStep !== '5') {
+    // Regular validation for non-researcher mode
+    const currentStep = sessionStorage.getItem('flowStep');
+    const storedId = sessionStorage.getItem('prolificId');
+
+    if (currentStep !== '5') {
       navigate('/');
       return;
     }
-    if (!isResearcherMode && !storedId) {
+    if (!storedId) {
       navigate('/');
     }
   }, [navigate, isResearcherMode]);

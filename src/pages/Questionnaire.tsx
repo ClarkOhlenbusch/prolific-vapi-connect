@@ -145,13 +145,12 @@ const Questionnaire = () => {
   }, [attentionCheck]);
   useEffect(() => {
     const checkAccess = async () => {
-      const currentStep = sessionStorage.getItem('flowStep');
-      const stateCallId = location.state?.callId;
-      const storedId = sessionStorage.getItem('prolificId');
-
-      // Check if researcher mode is active and data is missing
-      if (isResearcherMode && (!storedId || currentStep !== '3' || !stateCallId)) {
-        // Use default values for researcher mode
+      // RESEARCHER MODE BYPASS - CHECK FIRST
+      if (isResearcherMode) {
+        const storedId = sessionStorage.getItem('prolificId');
+        const stateCallId = location.state?.callId;
+        
+        // Set defaults
         const defaultProlificId = storedId || 'RESEARCHER_MODE';
         const defaultCallId = stateCallId || 'researcher-call-id';
         setProlificId(defaultProlificId);
@@ -162,12 +161,16 @@ const Questionnaire = () => {
         return;
       }
 
-      // Enforce flow: must be at step 3 (only for non-researcher mode)
-      if (!isResearcherMode && currentStep !== '3') {
+      // Regular validation for non-researcher mode
+      const currentStep = sessionStorage.getItem('flowStep');
+      const stateCallId = location.state?.callId;
+      const storedId = sessionStorage.getItem('prolificId');
+
+      if (currentStep !== '3') {
         navigate('/');
         return;
       }
-      if (!isResearcherMode && !storedId) {
+      if (!storedId) {
         toast({
           title: "Access Denied",
           description: "Please start from the beginning.",
@@ -176,7 +179,7 @@ const Questionnaire = () => {
         navigate('/');
         return;
       }
-      if (!isResearcherMode && !stateCallId) {
+      if (!stateCallId) {
         toast({
           title: "Access Denied",
           description: "Please complete the conversation first.",

@@ -23,14 +23,12 @@ const PracticeConversation = () => {
   const { isResearcherMode } = useResearcherMode();
 
   useEffect(() => {
-    // Get Prolific ID from URL params
-    const prolificIdFromUrl = searchParams.get('prolificId');
-    const sessionToken = searchParams.get('sessionToken');
-    const currentStep = sessionStorage.getItem('flowStep');
-    
-    // Check if researcher mode is active and data is missing
-    if (isResearcherMode && (!prolificIdFromUrl || !sessionToken || currentStep !== '1')) {
-      // Use default values for researcher mode
+    // RESEARCHER MODE BYPASS - CHECK FIRST
+    if (isResearcherMode) {
+      const prolificIdFromUrl = searchParams.get('prolificId');
+      const sessionToken = searchParams.get('sessionToken');
+      
+      // Set defaults
       const defaultProlificId = prolificIdFromUrl || 'RESEARCHER_MODE';
       const defaultSessionToken = sessionToken || '00000000-0000-0000-0000-000000000000';
       
@@ -41,8 +39,12 @@ const PracticeConversation = () => {
       return;
     }
     
-    // Enforce flow: must be at step 1 (only for non-researcher mode)
-    if (!isResearcherMode && currentStep !== '1') {
+    // Regular validation for non-researcher mode
+    const prolificIdFromUrl = searchParams.get('prolificId');
+    const sessionToken = searchParams.get('sessionToken');
+    const currentStep = sessionStorage.getItem('flowStep');
+    
+    if (currentStep !== '1') {
       navigate('/');
       return;
     }
