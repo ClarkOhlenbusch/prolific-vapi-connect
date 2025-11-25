@@ -266,7 +266,7 @@ const FeedbackQuestionnaire = () => {
               During this experiment, you had a conversation with Robin.
             </p>
             <label className="text-lg font-medium text-foreground block">
-              Please describe your experience when talking to the voice assistant.
+              Please describe your experience when talking to Robin. 
             </label>
             <div className="bg-accent/50 rounded-lg p-4">
               <Textarea value={voiceAssistantFeedback} onChange={e => {
