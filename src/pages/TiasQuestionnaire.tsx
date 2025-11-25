@@ -28,18 +28,18 @@ interface TIASAttentionCheckItem {
 type TIASQuestionItem = TIASItem | TIASAttentionCheckItem;
 
 const TIAS_ITEMS: TIASItem[] = [
-  { id: 'T1', text: 'The system is deceptive.', key: 'tias_1', isReversed: true },
-  { id: 'T2', text: 'The system behaves in an underhanded manner.', key: 'tias_2', isReversed: true },
-  { id: 'T3', text: 'I am suspicious of the system\'s intent, action, or output.', key: 'tias_3', isReversed: true },
-  { id: 'T4', text: 'I am wary of the system.', key: 'tias_4', isReversed: true },
-  { id: 'T5', text: 'The system\'s action will have a harmful or injurious outcome.', key: 'tias_5', isReversed: true },
-  { id: 'T6', text: 'I am confident in the system.', key: 'tias_6', isReversed: false },
-  { id: 'T7', text: 'The system provides security.', key: 'tias_7', isReversed: false },
-  { id: 'T8', text: 'The system has integrity.', key: 'tias_8', isReversed: false },
-  { id: 'T9', text: 'The system is dependable.', key: 'tias_9', isReversed: false },
-  { id: 'T10', text: 'The system is reliable.', key: 'tias_10', isReversed: false },
-  { id: 'T11', text: 'I can trust the system.', key: 'tias_11', isReversed: false },
-  { id: 'T12', text: 'I am familiar with the system.', key: 'tias_12', isReversed: false },
+  { id: 'T1', text: 'Robin is deceptive.', key: 'tias_1', isReversed: true },
+  { id: 'T2', text: 'Robin behaves in an underhanded manner.', key: 'tias_2', isReversed: true },
+  { id: 'T3', text: 'I am suspicious of Robin\'s intent, action, or output.', key: 'tias_3', isReversed: true },
+  { id: 'T4', text: 'I am wary of Robin.', key: 'tias_4', isReversed: true },
+  { id: 'T5', text: 'Robin\'s action will have a harmful or injurious outcome.', key: 'tias_5', isReversed: true },
+  { id: 'T6', text: 'I am confident in Robin.', key: 'tias_6', isReversed: false },
+  { id: 'T7', text: 'Robin provides security.', key: 'tias_7', isReversed: false },
+  { id: 'T8', text: 'Robin has integrity.', key: 'tias_8', isReversed: false },
+  { id: 'T9', text: 'Robin is dependable.', key: 'tias_9', isReversed: false },
+  { id: 'T10', text: 'Robin is reliable.', key: 'tias_10', isReversed: false },
+  { id: 'T11', text: 'I can trust Robin.', key: 'tias_11', isReversed: false },
+  { id: 'T12', text: 'I am familiar with Robin.', key: 'tias_12', isReversed: false },
 ];
 
 const SCALE_LABELS = [
