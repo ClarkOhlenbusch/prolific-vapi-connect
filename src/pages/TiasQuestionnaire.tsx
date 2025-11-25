@@ -324,7 +324,8 @@ const TiasQuestionnaire = () => {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="bg-accent/50 rounded-lg p-6">
-            <p className="text-sm text-foreground leading-relaxed">You recently had a conversation with Robin. Please indicate the extent to which you agree with each of the following statements using the scale provided (1 = Not at all, 7 = Extremely).</p>
+            <p className="text-sm text-foreground leading-relaxed">During this experiment, you had a conversation with Robin. Please indicate the extent to which you agree with each of the following statements using the scale provided (1 = Not at all, 7 = Extremely).
+          </p>
           </div>
 
           <div className="space-y-6">
