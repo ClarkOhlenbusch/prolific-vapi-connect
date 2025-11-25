@@ -30,13 +30,13 @@ const IntentionQuestionnaire = () => {
   ];
 
   const scaleLabels = [
-    "Strongly Disagree",
-    "Disagree",
-    "Somewhat Disagree",
-    "Neither Agree nor Disagree",
-    "Somewhat Agree",
-    "Agree",
-    "Strongly Agree"
+    "Not at all",
+    "Slightly",
+    "Somewhat",
+    "Moderately",
+    "Quite a bit",
+    "Very",
+    "Extremely"
   ];
 
   useEffect(() => {
@@ -116,68 +116,87 @@ const IntentionQuestionnaire = () => {
   const allAnswered = intention1 !== null && intention2 !== null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted flex items-center justify-center p-4">
-      <Card className="w-full max-w-4xl p-8 space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Behavioral Intention</h1>
-          <p className="text-muted-foreground">
-            Please indicate your level of agreement with the following statements:
-          </p>
-        </div>
-
-        <div className="space-y-8">
-          {/* Question 1 */}
-          <div className="space-y-4 p-4 rounded-lg bg-muted/30">
-            <p className="font-medium">{questions[0]}</p>
-            <RadioGroup
-              value={intention1?.toString() || ''}
-              onValueChange={(value) => setIntention1(parseInt(value))}
-              className="space-y-2"
-            >
-              {scaleLabels.map((label, index) => (
-                <div key={index} className="flex items-center space-x-2">
-                  <RadioGroupItem value={(index + 1).toString()} id={`intention1-${index + 1}`} />
-                  <Label htmlFor={`intention1-${index + 1}`} className="font-normal cursor-pointer">
-                    {index + 1}. {label}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
+      <Card className="w-full max-w-4xl shadow-xl border-border">
+        <div className="p-8 space-y-6">
+          <div className="space-y-3">
+            <h1 className="text-2xl font-bold text-center">Questionnaire 4</h1>
           </div>
 
-          {/* Question 2 */}
-          <div className="space-y-4 p-4 rounded-lg bg-muted/30">
-            <p className="font-medium">{questions[1]}</p>
-            <RadioGroup
-              value={intention2?.toString() || ''}
-              onValueChange={(value) => setIntention2(parseInt(value))}
-              className="space-y-2"
-            >
-              {scaleLabels.map((label, index) => (
-                <div key={index} className="flex items-center space-x-2">
-                  <RadioGroupItem value={(index + 1).toString()} id={`intention2-${index + 1}`} />
-                  <Label htmlFor={`intention2-${index + 1}`} className="font-normal cursor-pointer">
-                    {index + 1}. {label}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
+          <div className="bg-accent/50 rounded-lg p-6">
+            <p className="text-sm text-foreground leading-relaxed">
+              During this experiment, you had a conversation with Robin. Please indicate the extent to which you agree with each of the following statements using the scale provided (1 = Not at all, 7 = Extremely).
+            </p>
           </div>
-        </div>
 
-        <div className="flex justify-between pt-4">
-          <Button
-            variant="outline"
-            onClick={handleBack}
-          >
-            Back
-          </Button>
-          <Button
-            onClick={handleNext}
-            disabled={!isResearcherMode && !allAnswered}
-          >
-            Next
-          </Button>
+          <div className="space-y-6">
+            {/* Question 1 */}
+            <div className="space-y-3 pb-6 border-b border-border">
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-semibold text-muted-foreground mt-1">1.</span>
+                <label className="text-sm flex-1 font-medium text-foreground">
+                  {questions[0]}
+                </label>
+              </div>
+              <div className="pl-6">
+                <RadioGroup
+                  value={intention1?.toString() || ''}
+                  onValueChange={(value) => setIntention1(parseInt(value))}
+                  className="flex flex-col gap-2"
+                >
+                  {scaleLabels.map((label, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <RadioGroupItem value={(index + 1).toString()} id={`intention1-${index + 1}`} />
+                      <Label htmlFor={`intention1-${index + 1}`} className="text-sm font-normal cursor-pointer">
+                        {index + 1} - {label}
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+            </div>
+
+            {/* Question 2 */}
+            <div className="space-y-3 pb-6">
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-semibold text-muted-foreground mt-1">2.</span>
+                <label className="text-sm flex-1 font-medium text-foreground">
+                  {questions[1]}
+                </label>
+              </div>
+              <div className="pl-6">
+                <RadioGroup
+                  value={intention2?.toString() || ''}
+                  onValueChange={(value) => setIntention2(parseInt(value))}
+                  className="flex flex-col gap-2"
+                >
+                  {scaleLabels.map((label, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <RadioGroupItem value={(index + 1).toString()} id={`intention2-${index + 1}`} />
+                      <Label htmlFor={`intention2-${index + 1}`} className="text-sm font-normal cursor-pointer">
+                        {index + 1} - {label}
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-between pt-4">
+            <Button
+              variant="outline"
+              onClick={handleBack}
+            >
+              Back
+            </Button>
+            <Button
+              onClick={handleNext}
+              disabled={!isResearcherMode && !allAnswered}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       </Card>
     </div>
