@@ -1,20 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useToast } from '@/hooks/use-toast';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 const Debriefing = () => {
   const navigate = useNavigate();
-  const {
-    toast
-  } = useToast();
-  const {
-    isResearcherMode
-  } = useResearcherMode();
-  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const { isResearcherMode } = useResearcherMode();
   useEffect(() => {
     // Load IDs from sessionStorage, no validation/redirects
     const storedId = sessionStorage.getItem('prolificId');
@@ -24,68 +16,6 @@ const Debriefing = () => {
     }
     sessionStorage.setItem('flowStep', '5');
   }, []);
-  const handleWithdraw = async () => {
-    const prolificId = sessionStorage.getItem('prolificId');
-    const sessionToken = localStorage.getItem('sessionToken');
-    const callId = localStorage.getItem('callId');
-    console.log('Withdrawal data check:', {
-      prolificId,
-      sessionToken,
-      callId,
-      isResearcherMode
-    });
-
-    // In researcher mode, allow withdrawal even without callId
-    if (!prolificId || !sessionToken || !callId && !isResearcherMode) {
-      const missing = [];
-      if (!prolificId) missing.push('Prolific ID');
-      if (!sessionToken) missing.push('Session Token');
-      if (!callId && !isResearcherMode) missing.push('Call ID');
-      toast({
-        title: "Error",
-        description: `Missing required data: ${missing.join(', ')}. Please complete the study flow before withdrawing.`,
-        variant: "destructive"
-      });
-      return;
-    }
-    setIsWithdrawing(true);
-    try {
-      const {
-        error
-      } = await supabase.from('data_withdrawal_requests').insert({
-        prolific_id: prolificId,
-        session_token: sessionToken,
-        call_id: callId || 'RESEARCHER_MODE_NO_CALL'
-      });
-      if (error) {
-        console.error('Error submitting withdrawal request:', error);
-        toast({
-          title: "Error",
-          description: "Failed to submit withdrawal request. Please contact the researcher.",
-          variant: "destructive"
-        });
-        return;
-      }
-      toast({
-        title: "Withdrawal Request Submitted",
-        description: "Your data withdrawal request has been recorded."
-      });
-
-      // Redirect to Complete page after a brief delay
-      setTimeout(() => {
-        navigate('/complete');
-      }, 2000);
-    } catch (err) {
-      console.error('Unexpected error submitting withdrawal:', err);
-      toast({
-        title: "Error",
-        description: "An error occurred. Please contact the researcher.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsWithdrawing(false);
-    }
-  };
   const handleContinue = () => {
     navigate('/complete');
   };
@@ -166,11 +96,7 @@ const Debriefing = () => {
           </ScrollArea>
 
           <div className="flex flex-col gap-4 pt-4 border-t border-border">
-            <Button onClick={handleWithdraw} disabled={isWithdrawing} variant="destructive" size="lg" className="w-full">
-              {isWithdrawing ? "Processing..." : "Withdraw My Data"}
-            </Button>
-            
-            <Button onClick={handleContinue} disabled={isWithdrawing} size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white">
+            <Button onClick={handleContinue} size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white">
               Finish Study
             </Button>
           </div>
