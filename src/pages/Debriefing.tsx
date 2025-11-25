@@ -177,8 +177,7 @@ const Debriefing = () => {
               <div className="space-y-3">
                 <h2 className="text-xl font-semibold">Support resources</h2>
                 <p>
-                  If you are experiencing any form of distress or emotional difficulty as a result of participating in this study, 
-                  please know that support is available. You can visit the CDC's mental health resources at:{' '}
+                  If you are experiencing any form of distress or emotional difficulty, please know that support is available. You can visit the CDC's mental health resources at:{' '}
                   <a 
                     href="https://www.cdc.gov/mental-health/caring/index.html" 
                     target="_blank" 
@@ -186,7 +185,7 @@ const Debriefing = () => {
                     className="text-primary hover:underline font-medium"
                   >
                     https://www.cdc.gov/mental-health/caring/index.html
-                  </a>
+                  </a>.
                 </p>
               </div>
             </div>
