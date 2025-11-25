@@ -66,10 +66,6 @@ const IntentionQuestionnaire = () => {
         const data: IntentionData = JSON.parse(existingData);
         setIntention1(data.intention_1);
         setIntention2(data.intention_2);
-      } else if (isResearcherMode) {
-        // Set default values for researcher mode
-        setIntention1(4);
-        setIntention2(4);
       }
 
       setIsLoading(false);
