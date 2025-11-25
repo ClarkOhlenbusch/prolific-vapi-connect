@@ -273,7 +273,7 @@ const FeedbackQuestionnaire = () => {
               if (e.target.value.length <= MAX_CHARS) {
                 setVoiceAssistantFeedback(e.target.value);
               }
-            }} placeholder="Share your thoughts about the voice assistant..." className="min-h-[120px] resize-none bg-background" />
+            }} className="min-h-[120px] resize-none bg-background" placeholder="Share your thoughts about Robin..." />
               <div className="mt-2 text-sm text-muted-foreground text-right">
                 {voiceAssistantFeedback.length} / {MAX_CHARS} characters
               </div>
