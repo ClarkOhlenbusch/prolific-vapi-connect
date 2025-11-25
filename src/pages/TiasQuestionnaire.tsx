@@ -297,8 +297,8 @@ const TiasQuestionnaire = () => {
     // Store TIAS data in sessionStorage
     sessionStorage.setItem('tiasData', JSON.stringify(validationResult.data));
 
-    // Navigate to formality questionnaire
-    navigate('/questionnaire/formality', {
+    // Navigate to intention questionnaire
+    navigate('/questionnaire/intention', {
       state: {
         callId
       }

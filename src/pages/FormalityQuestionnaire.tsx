@@ -51,6 +51,7 @@ const FormalityQuestionnaire = () => {
       const stateCallId = location.state?.callId;
       const petsDataString = sessionStorage.getItem('petsData');
       const tiasDataString = sessionStorage.getItem('tiasData');
+      const intentionDataString = sessionStorage.getItem('intentionData');
 
       // Check if researcher mode is active and data is missing
       if (isResearcherMode && (!storedId || currentStep !== '4' || !stateCallId)) {
@@ -101,6 +102,14 @@ const FormalityQuestionnaire = () => {
             tias_total: 4
           }));
         }
+
+        // Set default intention data if missing
+        if (!intentionDataString) {
+          sessionStorage.setItem('intentionData', JSON.stringify({
+            intention_1: 4,
+            intention_2: 4
+          }));
+        }
         setIsLoading(false);
         return;
       }
@@ -110,13 +119,13 @@ const FormalityQuestionnaire = () => {
         navigate('/');
         return;
       }
-      if (!isResearcherMode && (!storedId || !stateCallId || !petsDataString || !tiasDataString)) {
+      if (!isResearcherMode && (!storedId || !stateCallId || !petsDataString || !tiasDataString || !intentionDataString)) {
         toast({
           title: "Access Denied",
           description: "Please complete the previous questionnaires first.",
           variant: "destructive"
         });
-        navigate('/questionnaire/pets');
+        navigate('/questionnaire/intention');
         return;
       }
       setProlificId(storedId);
@@ -196,7 +205,7 @@ How formal did you find Robin?
           </div>
 
           <div className="flex gap-4">
-            <Button variant="outline" onClick={() => navigate('/questionnaire/tias', {
+            <Button variant="outline" onClick={() => navigate('/questionnaire/intention', {
             state: {
               callId
             }

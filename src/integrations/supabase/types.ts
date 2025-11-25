@@ -107,6 +107,33 @@ export type Database = {
         }
         Relationships: []
       }
+      intention: {
+        Row: {
+          call_id: string
+          created_at: string
+          id: string
+          intention_1: number
+          intention_2: number
+          prolific_id: string
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          id?: string
+          intention_1: number
+          intention_2: number
+          prolific_id: string
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          id?: string
+          intention_1?: number
+          intention_2?: number
+          prolific_id?: string
+        }
+        Relationships: []
+      }
       participant_calls: {
         Row: {
           call_id: string
