@@ -162,14 +162,13 @@ const TiasQuestionnaire = () => {
   }, [attentionCheck]);
   useEffect(() => {
     const checkAccess = async () => {
-      const currentStep = sessionStorage.getItem('flowStep');
-      const storedId = sessionStorage.getItem('prolificId');
-      const stateCallId = location.state?.callId;
-      const petsDataString = sessionStorage.getItem('petsData');
-
-      // Check if researcher mode is active and data is missing
-      if (isResearcherMode && (!storedId || currentStep !== '4' || !stateCallId)) {
-        // Use default values for researcher mode
+      // RESEARCHER MODE BYPASS - CHECK FIRST
+      if (isResearcherMode) {
+        const storedId = sessionStorage.getItem('prolificId');
+        const stateCallId = location.state?.callId;
+        const petsDataString = sessionStorage.getItem('petsData');
+        
+        // Set defaults
         const defaultProlificId = storedId || 'RESEARCHER_MODE';
         const defaultCallId = stateCallId || 'researcher-call-id';
         setProlificId(defaultProlificId);
@@ -180,35 +179,29 @@ const TiasQuestionnaire = () => {
         // Set default PETS data if missing
         if (!petsDataString) {
           sessionStorage.setItem('petsData', JSON.stringify({
-            e1: 50,
-            e2: 50,
-            e3: 50,
-            e4: 50,
-            e5: 50,
-            e6: 50,
-            u1: 50,
-            u2: 50,
-            u3: 50,
-            u4: 50,
-            attention_check_1: 50,
-            attention_check_1_expected: 50,
+            e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
+            u1: 50, u2: 50, u3: 50, u4: 50,
+            attention_check_1: 50, attention_check_1_expected: 50,
             prolific_id: defaultProlificId,
             call_id: defaultCallId,
-            pets_er: 50,
-            pets_ut: 50,
-            pets_total: 50
+            pets_er: 50, pets_ut: 50, pets_total: 50
           }));
         }
         setIsLoading(false);
         return;
       }
 
-      // Enforce flow: must be at step 4 (only for non-researcher mode)
-      if (!isResearcherMode && currentStep !== '4') {
+      // Regular validation for non-researcher mode
+      const currentStep = sessionStorage.getItem('flowStep');
+      const storedId = sessionStorage.getItem('prolificId');
+      const stateCallId = location.state?.callId;
+      const petsDataString = sessionStorage.getItem('petsData');
+
+      if (currentStep !== '4') {
         navigate('/');
         return;
       }
-      if (!isResearcherMode && (!storedId || !stateCallId || !petsDataString)) {
+      if (!storedId || !stateCallId || !petsDataString) {
         toast({
           title: "Access Denied",
           description: "Please complete the PETS questionnaire first.",
