@@ -38,8 +38,11 @@ const Consent = () => {
 
               <div>
                 <h2 className="text-xl font-semibold mb-2">What is the purpose of this study?</h2>
-                <p>
+                <p className="mb-2">
                   This study looks at how people interact with a voice based digital assistant during a short conversation. The study is partially funded by CalicoCare (www.calico.care).
+                </p>
+                <p>
+                  The voice assistant will ask you questions about your well-being, which may feel personal.
                 </p>
               </div>
 
