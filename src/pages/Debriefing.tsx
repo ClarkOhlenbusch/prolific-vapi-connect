@@ -16,30 +16,14 @@ const Debriefing = () => {
   } = useResearcherMode();
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   useEffect(() => {
-    // RESEARCHER MODE BYPASS - CHECK FIRST
-    if (isResearcherMode) {
-      const storedId = sessionStorage.getItem('prolificId');
-      
-      // Set defaults
-      if (!storedId) {
-        sessionStorage.setItem('prolificId', 'RESEARCHER_MODE');
-      }
-      sessionStorage.setItem('flowStep', '5');
-      return;
-    }
-
-    // Regular validation for non-researcher mode
-    const currentStep = sessionStorage.getItem('flowStep');
+    // Load IDs from sessionStorage, no validation/redirects
     const storedId = sessionStorage.getItem('prolificId');
-
-    if (currentStep !== '5') {
-      navigate('/');
-      return;
-    }
+    
     if (!storedId) {
-      navigate('/');
+      sessionStorage.setItem('prolificId', 'RESEARCHER_MODE');
     }
-  }, [navigate, isResearcherMode]);
+    sessionStorage.setItem('flowStep', '5');
+  }, []);
   const handleWithdraw = async () => {
     const prolificId = sessionStorage.getItem('prolificId');
     const sessionToken = localStorage.getItem('sessionToken');
