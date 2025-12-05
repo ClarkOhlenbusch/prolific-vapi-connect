@@ -171,8 +171,9 @@ const PracticeConversation = () => {
 
           <div className="flex flex-col items-center justify-center py-8 gap-6">
             {!isCallActive && !isConnecting ? <div className="flex flex-col items-center gap-6">
-                <Button onClick={handleStartCallClick} size="lg" className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform">
-                  <Mic className="w-12 h-12" />
+                <Button onClick={handleStartCallClick} size="lg" className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform flex flex-col items-center justify-center gap-1 animate-pulse">
+                  <Mic className="w-10 h-10" />
+                  <span className="text-sm">Start</span>
                 </Button>
                 {hasCompletedPractice && <div className="w-full space-y-4">
                     <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-center">
@@ -196,8 +197,9 @@ const PracticeConversation = () => {
                     </p>
                   </div>
                 </div>
-                <Button onClick={handleEndCall} size="lg" variant="destructive" className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform">
-                  <Phone className="w-12 h-12 rotate-135" />
+                <Button onClick={handleEndCall} size="lg" variant="destructive" className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform flex flex-col items-center justify-center gap-1">
+                  <Phone className="w-10 h-10 rotate-135" />
+                  <span className="text-sm">Hang Up</span>
                 </Button>
                 <p className="text-base text-muted-foreground text-center max-w-md">
                   When you and the assistant can hear each other, hang up to continue.
