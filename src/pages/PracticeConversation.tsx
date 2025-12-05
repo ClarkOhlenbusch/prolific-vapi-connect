@@ -211,21 +211,14 @@ const PracticeConversation = () => {
                 <DialogTitle className="text-xl">Ready to Start?</DialogTitle>
                 <DialogDescription className="space-y-4 text-left pt-4">
                   <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-                    <p className="text-foreground font-semibold">
-                      Before you begin:
-                    </p>
                     <div className="space-y-2 text-sm">
                       <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
-                        <span>Make sure you're in a quiet environment</span>
+                        <span>Remember, this is just a practice conversation</span>
                       </p>
                       <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
-                        <span>Check that your microphone and speakers are working</span>
-                      </p>
-                      <p className="flex items-start gap-2">
-                        <span className="text-primary mt-0.5">•</span>
-                        <span>This is just practice - take your time to get comfortable</span>
+                        <span>If your browser asks for permission to use the microphone, click yes.</span>
                       </p>
                     </div>
                   </div>
