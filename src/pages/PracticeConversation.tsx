@@ -199,8 +199,8 @@ const PracticeConversation = () => {
                 <Button onClick={handleEndCall} size="lg" variant="destructive" className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform">
                   <Phone className="w-12 h-12 rotate-135" />
                 </Button>
-                <p className="text-xs text-muted-foreground text-center max-w-md">
-                  End the practice when you're confident your audio is working properly
+                <p className="text-base text-muted-foreground text-center max-w-md">
+                  When you're done practicing, press the red button to end the call
                 </p>
               </div>}
           </div>
