@@ -136,7 +136,8 @@ const PracticeConversation = () => {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="bg-primary/10 rounded-lg p-6">
-            <p className="text-foreground">Welcome! Before the main conversation, you will do a short practice to check that everything works. This allows you to:<span className="font-bold">Welcome!</span> Before starting the actual research conversation, you'll have a brief practice session with our AI assistant. This allows you to:
+            <p className="text-foreground">
+              <span className="font-bold">Welcome!</span> Before the main conversation, you will do a short practice to check that everything works. This allows you to:
             </p>
             <ul className="mt-3 space-y-2 text-sm text-foreground ml-4">
               <li className="flex items-start gap-2">
@@ -145,13 +146,8 @@ const PracticeConversation = () => {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">✓</span>
-                <span>Get used to speaking with the assistant
-
-
-
- </span>
+                <span>Get used to speaking with the assistant</span>
               </li>
-              
             </ul>
           </div>
 
