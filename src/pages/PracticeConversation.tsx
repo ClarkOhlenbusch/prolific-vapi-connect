@@ -14,7 +14,7 @@ const PracticeConversation = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [showPreCallModal, setShowPreCallModal] = useState(false);
-  const [hasCompletedPractice, setHasCompletedPractice] = useState(false);
+  const [showAudioConfirmModal, setShowAudioConfirmModal] = useState(false);
   const vapiRef = useRef<Vapi | null>(null);
   const navigate = useNavigate();
   const {
@@ -49,7 +49,7 @@ const PracticeConversation = () => {
     });
     vapi.on('call-end', () => {
       setIsCallActive(false);
-      setHasCompletedPractice(true);
+      setShowAudioConfirmModal(true);
     });
     vapi.on('speech-start', () => {
       setIsSpeaking(true);
@@ -112,11 +112,15 @@ const PracticeConversation = () => {
       vapiRef.current.stop();
     }
   };
-  const handleProceed = () => {
-    // Mark step complete and proceed to actual conversation
+  const handleAudioWorking = () => {
+    setShowAudioConfirmModal(false);
     sessionStorage.setItem('flowStep', '2');
     const sessionToken = localStorage.getItem('sessionToken');
     navigate(`/voice-conversation?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+  };
+
+  const handleAudioNotWorking = () => {
+    setShowAudioConfirmModal(false);
   };
   if (!prolificId) {
     return null;
@@ -175,16 +179,6 @@ const PracticeConversation = () => {
                   <Mic className="w-10 h-10" />
                   <span className="text-sm">Start</span>
                 </Button>
-                {hasCompletedPractice && <div className="w-full space-y-4">
-                    <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-center">
-                      <p className="text-sm text-foreground">
-                        ✓ Practice session completed
-                      </p>
-                    </div>
-                    <Button onClick={handleProceed} size="lg" className="w-full">
-                      Proceed to Research Conversation
-                    </Button>
-                  </div>}
               </div> : isConnecting ? <div className="flex flex-col items-center gap-3">
                 <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
                 <p className="text-sm text-muted-foreground">Connecting...</p>
@@ -232,6 +226,31 @@ const PracticeConversation = () => {
                 </Button>
                 <Button onClick={startCall}>
                   Start Practice Conversation
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={showAudioConfirmModal} onOpenChange={setShowAudioConfirmModal}>
+            <DialogContent className="sm:max-w-[450px]">
+              <DialogHeader>
+                <DialogTitle className="text-xl text-center">
+                  Can you hear the assistant clearly?
+                </DialogTitle>
+              </DialogHeader>
+              <DialogFooter className="flex-col sm:flex-row gap-3 pt-4">
+                <Button 
+                  variant="outline" 
+                  onClick={handleAudioNotWorking}
+                  className="w-full sm:w-auto"
+                >
+                  No, try again
+                </Button>
+                <Button 
+                  onClick={handleAudioWorking}
+                  className="w-full sm:w-auto"
+                >
+                  Yes, continue
                 </Button>
               </DialogFooter>
             </DialogContent>
