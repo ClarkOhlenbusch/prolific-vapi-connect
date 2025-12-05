@@ -200,7 +200,7 @@ const PracticeConversation = () => {
                   <Phone className="w-12 h-12 rotate-135" />
                 </Button>
                 <p className="text-base text-muted-foreground text-center max-w-md">
-                  When you're done practicing, press the red button to end the call
+                  When you and the assistant can hear each other, hang up to continue.
                 </p>
               </div>}
           </div>
