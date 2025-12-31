@@ -51,12 +51,6 @@ const Demographics = () => {
         return;
       }
 
-      // Check age eligibility
-      if (formData.age !== '60+') {
-        navigate('/not-eligible');
-        return;
-      }
-
       if (formData.ethnicity.includes('Other') && !formData.ethnicityOther.trim()) {
         toast({
           title: "Missing Information",
