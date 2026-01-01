@@ -25,7 +25,7 @@ const VoiceConversation = () => {
   const [showEndDialog, setShowEndDialog] = useState(false);
   const [callEnded, setCallEnded] = useState(false);
   const [showPreCallModal, setShowPreCallModal] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(300); // Display timer only
+  const [elapsedTime, setElapsedTime] = useState(0); // Display timer counting up
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
   const vapiRef = useRef<Vapi | null>(null);
@@ -104,24 +104,18 @@ const VoiceConversation = () => {
     };
   }, [prolificId]);
 
-  // Timer effect - display only, does NOT force-end the call
+  // Timer effect - counts up, display only
   useEffect(() => {
     if (isCallActive && !callEnded) {
       timerRef.current = setInterval(() => {
-        setTimeRemaining((prev) => {
-          // Just update the display, VAPI will end the call when ready
-          if (prev <= 1) {
-            return 0;
-          }
-          return prev - 1;
-        });
+        setElapsedTime((prev) => prev + 1);
       }, 1000);
     } else {
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
       if (!isCallActive && callEnded) {
-        setTimeRemaining(300); // Reset for next call
+        setElapsedTime(0); // Reset for next call
       }
     }
     return () => {
@@ -142,7 +136,7 @@ const VoiceConversation = () => {
     }
     setShowPreCallModal(false);
     setIsConnecting(true);
-    setTimeRemaining(300); // Reset timer to 5 minutes
+    setElapsedTime(0); // Reset timer
 
     try {
       const sessionToken = localStorage.getItem("sessionToken");
@@ -333,15 +327,11 @@ const VoiceConversation = () => {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">•</span>
-                <span>The conversation will automatically end after exactly 5 minutes.</span>
+                <span>The conversation will take approximately 7-8 minutes.</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">•</span>
-                <span>You must complete the entire 5-minute conversation before the questionnaire.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
-                <span>A timer shows the remaining time.</span>
+                <span>You must complete the entire conversation before proceeding to the questionnaire.</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">•</span>
@@ -394,7 +384,7 @@ const VoiceConversation = () => {
                 <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-center min-w-[200px] space-y-2">
                   <div className="flex items-center justify-center gap-2">
                     <Clock className="w-4 h-4 text-primary" />
-                    <p className="text-lg font-bold text-primary">{formatTime(timeRemaining)}</p>
+                    <p className="text-lg font-bold text-primary">{formatTime(elapsedTime)}</p>
                   </div>
                   <div className="flex items-center justify-center gap-2">
                     <div
@@ -437,13 +427,13 @@ const VoiceConversation = () => {
                       <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
                         <span>
-                          The conversation will automatically end after exactly <strong>5 minutes</strong>
+                          The conversation will take approximately <strong>7-8 minutes</strong>
                         </span>
                       </p>
                       <p className="flex items-start gap-2">
                         <span className="text-primary mt-0.5">•</span>
                         <span>
-                          You must complete the entire 5-minute conversation before proceeding to the questionnaire
+                          You must complete the entire conversation before proceeding to the questionnaire
                         </span>
                       </p>
                     </div>
