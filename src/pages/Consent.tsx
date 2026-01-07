@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,8 +8,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 const Consent = () => {
   const [consent, setConsent] = useState<string>('');
+  const [isScrolledToBottom, setIsScrolledToBottom] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLDivElement;
+    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 20;
+    setIsScrolledToBottom(isAtBottom);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +38,7 @@ const Consent = () => {
         </CardHeader>
         <CardContent>
           <div className="relative">
-            <ScrollArea className="h-[60vh] pr-4">
+            <ScrollArea className="h-[60vh] pr-4" onScrollCapture={handleScroll}>
               <div className="space-y-6 text-foreground pb-8">
               <p>
                 You are being invited to take part in scientific research. By participating, you will help us improve how voice assistants interact with people. Before you decide whether to participate, please read the information below.
@@ -124,8 +131,12 @@ const Consent = () => {
               </div>
               </div>
             </ScrollArea>
-            <div className="absolute bottom-0 left-0 right-4 h-12 bg-gradient-to-t from-card to-transparent pointer-events-none" />
-            <p className="absolute bottom-1 left-1/2 -translate-x-1/2 text-xs text-muted-foreground pointer-events-none">↓ Scroll for more</p>
+            {!isScrolledToBottom && (
+              <>
+                <div className="absolute bottom-0 left-0 right-4 h-12 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+                <p className="absolute bottom-1 left-1/2 -translate-x-1/2 text-xs text-muted-foreground pointer-events-none">↓ Scroll for more</p>
+              </>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
