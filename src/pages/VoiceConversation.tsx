@@ -364,9 +364,10 @@ const VoiceConversation = () => {
               <Button
                 onClick={handleStartCallClick}
                 size="lg"
-                className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform bg-orange-500 hover:bg-orange-600"
+                className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform bg-orange-500 hover:bg-orange-600 flex flex-col items-center justify-center gap-1"
               >
-                <Mic className="w-12 h-12" />
+                <Mic className="w-14 h-14" />
+                <span className="text-sm">Start</span>
               </Button>
             ) : isConnecting ? (
               <div className="flex flex-col items-center gap-3">
@@ -457,7 +458,7 @@ const VoiceConversation = () => {
 
           <div className="pt-4 border-t border-border">
             <Button variant="outline" onClick={handleGoBack} className="w-full">
-              Return to Start
+              Return to Mic Test
             </Button>
           </div>
         </CardContent>
