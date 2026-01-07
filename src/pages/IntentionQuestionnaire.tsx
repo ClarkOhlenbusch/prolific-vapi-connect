@@ -100,7 +100,10 @@ const IntentionQuestionnaire = () => {
   const handleNext = () => {
     if (!isResearcherMode && (intention1 === null || intention2 === null)) {
       setShowValidationErrors(true);
-      toast.error("Please answer all highlighted questions before continuing.");
+      toast.error("Please answer all highlighted questions before continuing.", {
+        duration: 3000,
+        dismissible: true,
+      });
       return;
     }
 
