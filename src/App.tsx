@@ -13,7 +13,7 @@ const ProlificId = lazy(() => import("./pages/ProlificId"));
 const Consent = lazy(() => import("./pages/Consent"));
 const Demographics = lazy(() => import("./pages/Demographics"));
 const VoiceAssistantFamiliarity = lazy(() => import("./pages/VoiceAssistantFamiliarity"));
-const NotEligible = lazy(() => import("./pages/NotEligible"));
+const NoConsent = lazy(() => import("./pages/NoConsent"));
 const PracticeConversation = lazy(() => import("./pages/PracticeConversation"));
 const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
 const Questionnaire = lazy(() => import("./pages/Questionnaire"));
@@ -41,7 +41,7 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
       if (
         location.pathname === '/' || 
         location.pathname === '/consent' || 
-        location.pathname === '/not-eligible' ||
+        location.pathname === '/no-consent' ||
         location.pathname === '/demographics' || 
         location.pathname === '/voiceassistant-familiarity' || 
         location.pathname === '/practice' || 
@@ -96,7 +96,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<ProlificId />} />
               <Route path="/consent" element={<Consent />} />
-              <Route path="/not-eligible" element={<NotEligible />} />
+              <Route path="/no-consent" element={<NoConsent />} />
               <Route
                 path="/demographics"
                 element={
