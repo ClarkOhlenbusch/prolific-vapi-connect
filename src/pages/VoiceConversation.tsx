@@ -289,12 +289,18 @@ const VoiceConversation = () => {
     return null;
   }
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
-      <Card className="w-full max-w-2xl shadow-xl border-border">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-background to-amber-50 p-4">
+      <Card className="w-full max-w-2xl shadow-xl border-orange-200">
         <CardHeader className="space-y-3">
-          <div className="w-16 h-16 mx-auto bg-primary rounded-full flex items-center justify-center">
+          <div className="flex justify-center">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-300">
+              <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+              Main Conversation
+            </span>
+          </div>
+          <div className="w-16 h-16 mx-auto bg-orange-500 rounded-full flex items-center justify-center">
             <svg
-              className="w-8 h-8 text-primary-foreground"
+              className="w-8 h-8 text-white"
               fill="none"
               strokeWidth="2"
               stroke="currentColor"
@@ -313,7 +319,7 @@ const VoiceConversation = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="bg-primary/10 rounded-lg p-6">
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
             <p className="text-foreground">
               ​<span className="font-bold">Scenario:</span> Your healthcare provider has introduced Cali, a new voice
               assistant powered by artificial intelligence (AI), to help conduct brief well-being check-ins. You will
@@ -322,33 +328,33 @@ const VoiceConversation = () => {
             </p>
           </div>
 
-          <div className="bg-accent/50 rounded-lg p-6 space-y-4">
+          <div className="bg-orange-50/50 border border-orange-100 rounded-lg p-6 space-y-4">
             <h3 className="font-semibold text-foreground">Please read carefully before starting:</h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
+                <span className="text-orange-500 mt-0.5">•</span>
                 <span>The conversation will take approximately 7-8 minutes.</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
+                <span className="text-orange-500 mt-0.5">•</span>
                 <span>You must complete the entire conversation before proceeding to the questionnaire.</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
+                <span className="text-orange-500 mt-0.5">•</span>
                 <span>
                   If you experience minor issues (e.g., a brief pause or repeated line), please continue the
                   conversation as normal.
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
+                <span className="text-orange-500 mt-0.5">•</span>
                 <span>
                   If your microphone or speakers do not work/stop working, please click the "Restart Call" button.
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
-                <span>Click the blue button below to begin the conversation.</span>
+                <span className="text-orange-500 mt-0.5">•</span>
+                <span>Click the button below to begin the conversation.</span>
               </li>
             </ul>
           </div>
@@ -358,7 +364,7 @@ const VoiceConversation = () => {
               <Button
                 onClick={handleStartCallClick}
                 size="lg"
-                className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform"
+                className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform bg-orange-500 hover:bg-orange-600"
               >
                 <Mic className="w-12 h-12" />
               </Button>
