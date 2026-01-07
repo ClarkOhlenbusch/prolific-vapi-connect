@@ -57,12 +57,30 @@ const PracticeConversation = () => {
     vapi.on('speech-end', () => {
       setIsSpeaking(false);
     });
+    // Listen for message events to catch call end reasons
+    vapi.on('message', (message: any) => {
+      if (message.type === 'end-of-call-report' && message.endedReason === 'exceeded-max-duration') {
+        toast({
+          title: "Call time limit reached",
+          description: "Proceed with next section.",
+        });
+      }
+    });
     vapi.on('error', error => {
-      toast({
-        title: "Connection Error",
-        description: error?.message || "An error occurred. Please try again.",
-        variant: "destructive"
-      });
+      // Check if it's a timeout-related error
+      const errorMessage = error?.message?.toLowerCase() || '';
+      if (errorMessage.includes('exceeded') || errorMessage.includes('max-duration') || errorMessage.includes('timeout')) {
+        toast({
+          title: "Call time limit reached",
+          description: "Proceed with next section.",
+        });
+      } else {
+        toast({
+          title: "Connection Error",
+          description: error?.message || "An error occurred. Please try again.",
+          variant: "destructive"
+        });
+      }
       setIsConnecting(false);
     });
     return () => {
