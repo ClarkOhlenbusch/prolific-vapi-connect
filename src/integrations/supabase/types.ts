@@ -134,6 +134,24 @@ export type Database = {
         }
         Relationships: []
       }
+      no_consent_feedback: {
+        Row: {
+          created_at: string
+          feedback: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          feedback?: string | null
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          feedback?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
       participant_calls: {
         Row: {
           call_id: string

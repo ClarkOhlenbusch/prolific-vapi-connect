@@ -43,7 +43,7 @@ const Consent = () => {
 
   const handleConfirmNoConsent = () => {
     setShowConfirmDialog(false);
-    navigate('/not-eligible');
+    navigate('/no-consent');
   };
 
   return (
