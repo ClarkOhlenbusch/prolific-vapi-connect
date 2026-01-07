@@ -18,6 +18,7 @@ const FeedbackQuestionnaire = () => {
   const [experimentFeedback, setExperimentFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
   const MAX_CHARS = 1000;
   useEffect(() => {
     const checkAccess = async () => {
@@ -112,10 +113,12 @@ const FeedbackQuestionnaire = () => {
     if (!isResearcherMode) {
       // Validate that both feedback fields are filled
       if (!voiceAssistantFeedback.trim() || !experimentFeedback.trim()) {
+        setShowValidationErrors(true);
         toast({
           title: "Incomplete",
-          description: "Please answer both feedback questions before submitting.",
+          description: "Please answer both highlighted feedback questions before submitting.",
           variant: "destructive",
+          duration: 3000,
         });
         return;
       }
@@ -259,12 +262,13 @@ const FeedbackQuestionnaire = () => {
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Voice Assistant Experience */}
-          <div className="space-y-3">
+          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !voiceAssistantFeedback.trim() ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
             <p className="text-base text-foreground mb-2 text-center">
               During this experiment, you had a conversation with Cali.
             </p>
-            <label className="text-lg font-medium text-foreground block">
+            <label className={`text-lg font-medium block ${showValidationErrors && !voiceAssistantFeedback.trim() ? 'text-destructive' : 'text-foreground'}`}>
               Please describe your experience when talking to Cali.
+              {showValidationErrors && !voiceAssistantFeedback.trim() && <span className="ml-2 text-xs font-normal">(Please answer this question)</span>}
             </label>
             <div className="bg-accent/50 rounded-lg p-4">
               <Textarea
@@ -280,7 +284,7 @@ const FeedbackQuestionnaire = () => {
                     e.stopPropagation();
                   }
                 }}
-                className="min-h-[120px] resize-none bg-background"
+                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !voiceAssistantFeedback.trim() ? 'border-destructive' : ''}`}
                 placeholder="Share your thoughts about Cali..."
               />
               <div className="mt-2 text-sm text-muted-foreground text-right">
@@ -290,10 +294,11 @@ const FeedbackQuestionnaire = () => {
           </div>
 
           {/* Overall Experiment Feedback */}
-          <div className="space-y-3">
-            <label className="text-lg font-medium text-foreground block">
+          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentFeedback.trim() ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
+            <label className={`text-lg font-medium block ${showValidationErrors && !experimentFeedback.trim() ? 'text-destructive' : 'text-foreground'}`}>
               How was your overall experience doing the experiment? Any feedback, comments, or questions on the
               experiment?
+              {showValidationErrors && !experimentFeedback.trim() && <span className="ml-2 text-xs font-normal">(Please answer this question)</span>}
             </label>
             <div className="bg-accent/50 rounded-lg p-4">
               <Textarea
@@ -310,7 +315,7 @@ const FeedbackQuestionnaire = () => {
                   }
                 }}
                 placeholder="Share your thoughts about the experiment..."
-                className="min-h-[120px] resize-none bg-background"
+                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !experimentFeedback.trim() ? 'border-destructive' : ''}`}
               />
               <div className="mt-2 text-sm text-muted-foreground text-right">
                 {experimentFeedback.length} / {MAX_CHARS} characters
@@ -335,9 +340,7 @@ const FeedbackQuestionnaire = () => {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={
-                isSubmitting || (!isResearcherMode && (!voiceAssistantFeedback.trim() || !experimentFeedback.trim()))
-              }
+              disabled={isSubmitting}
               className="flex-1"
               size="lg"
             >
