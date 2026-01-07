@@ -237,7 +237,7 @@ const VoiceConversation = () => {
   const handleRestartCall = async () => {
     setIsRestarting(true);
 
-    // Stop the call first
+    // Stop the current call first
     if (vapiRef.current) {
       vapiRef.current.stop();
     }
@@ -245,13 +245,16 @@ const VoiceConversation = () => {
     // Wait a moment for the call to fully end
     await new Promise((resolve) => setTimeout(resolve, 500));
 
-    // Set a flag in sessionStorage to indicate restart
-    sessionStorage.setItem("isRestarting", "true");
+    // Reset state for new call
+    setCallId(null);
+    setCallTracked(false);
+    setCallEnded(false);
+    setElapsedTime(0);
+    setIsRestarting(false);
 
-    // Reset flow and redirect
-    sessionStorage.setItem("flowStep", "1");
-    const sessionToken = localStorage.getItem("sessionToken");
-    navigate(`/practice?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+    // Set restart flag and start new call
+    sessionStorage.setItem("isRestarting", "true");
+    setShowPreCallModal(true);
   };
   const handleProceedToQuestionnaire = () => {
     if (!callId) {
