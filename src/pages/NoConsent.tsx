@@ -44,6 +44,9 @@ const NoConsent = () => {
             <Label htmlFor="feedback" className="text-muted-foreground">
               (Optional) Would you like to share why you chose not to participate?
             </Label>
+            <p className="text-xs text-muted-foreground italic">
+              Your response is completely anonymous.
+            </p>
             <Textarea
               id="feedback"
               placeholder="Your feedback helps us improve our research..."

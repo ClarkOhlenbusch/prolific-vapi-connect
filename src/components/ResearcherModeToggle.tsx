@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { FlaskConical } from 'lucide-react';
@@ -7,9 +8,13 @@ export const ResearcherModeToggle = () => {
   const [showButton, setShowButton] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
   const { isResearcherMode, toggleResearcherMode } = useResearcherMode();
+  const location = useLocation();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Disable on no-consent page to allow normal typing
+      if (location.pathname === '/no-consent') return;
+      
       if (e.code === 'Space') {
         e.preventDefault();
         setSpacePressed(true);
@@ -34,7 +39,7 @@ export const ResearcherModeToggle = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [spacePressed]);
+  }, [spacePressed, location.pathname]);
 
   if (!showButton) return null;
 
