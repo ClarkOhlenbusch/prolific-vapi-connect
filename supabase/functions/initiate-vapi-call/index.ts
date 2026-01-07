@@ -64,33 +64,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Rate limiting: check if session already has an active call
-    if (session.call_id && session.call_id !== '') {
-      // If restart flag is true, clear the old call_id
-      if (restart === true) {
-        console.log('Restart requested, clearing old call_id');
-        const { error: updateError } = await supabase
-          .from('participant_calls')
-          .update({ call_id: '' })
-          .eq('session_token', sessionToken)
-          .eq('prolific_id', prolificId);
-        
-        if (updateError) {
-          console.error('Failed to clear call_id:', updateError);
-          return new Response(
-            JSON.stringify({ error: 'Failed to restart session' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        console.log('Old call_id cleared successfully');
-      } else {
-        return new Response(
-          JSON.stringify({ error: 'Session already has an active call' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
     // Session is valid, allow client to proceed with VAPI call
     console.log('Session validated successfully');
 
