@@ -125,11 +125,17 @@ const PracticeConversation = () => {
   if (!prolificId) {
     return null;
   }
-  return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
-      <Card className="w-full max-w-2xl shadow-xl border-border">
+  return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cyan-50 via-background to-teal-50 p-4">
+      <Card className="w-full max-w-2xl shadow-xl border-teal-200">
         <CardHeader className="space-y-3">
-          <div className="w-16 h-16 mx-auto bg-primary rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-primary-foreground" fill="none" strokeWidth="2" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex justify-center">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700 border border-teal-300">
+              <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+              Practice Session
+            </span>
+          </div>
+          <div className="w-16 h-16 mx-auto bg-teal-500 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-white" fill="none" strokeWidth="2" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
           </div>
@@ -139,43 +145,39 @@ const PracticeConversation = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="bg-primary/10 rounded-lg p-6">
+          <div className="bg-teal-50 border border-teal-200 rounded-lg p-6">
             <p className="text-foreground">
               <span className="font-bold">Welcome!</span> Before the main conversation, you will do a short practice to check that everything works. This allows you to:
             </p>
             <ul className="mt-3 space-y-2 text-sm text-foreground ml-4">
               <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">✓</span>
+                <span className="text-teal-600 mt-0.5">✓</span>
                 <span>Test your microphone and speakers</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">✓</span>
+                <span className="text-teal-600 mt-0.5">✓</span>
                 <span>Get used to speaking with the assistant</span>
               </li>
             </ul>
           </div>
 
-          <div className="bg-accent/50 rounded-lg p-6 space-y-4">
+          <div className="bg-teal-50/50 border border-teal-100 rounded-lg p-6 space-y-4">
             <h3 className="font-semibold text-foreground">Instructions:</h3>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
+                <span className="text-teal-600 mt-0.5">•</span>
                 <span>Sit in a quiet place</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-primary mt-0.5">•</span>
+                <span className="text-teal-600 mt-0.5">•</span>
                 <span>Click the microphone to start</span>
               </li>
-              
-              
-              
-              
             </ul>
           </div>
 
           <div className="flex flex-col items-center justify-center py-8 gap-6">
             {!isCallActive && !isConnecting ? <div className="flex flex-col items-center gap-6">
-                <Button onClick={handleStartCallClick} size="lg" className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform flex flex-col items-center justify-center gap-1 animate-pulse">
+                <Button onClick={handleStartCallClick} size="lg" className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform flex flex-col items-center justify-center gap-1 animate-pulse bg-teal-500 hover:bg-teal-600">
                   <Mic className="w-10 h-10" />
                   <span className="text-sm">Start</span>
                 </Button>
