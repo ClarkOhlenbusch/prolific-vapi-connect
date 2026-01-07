@@ -166,6 +166,7 @@ const TiasQuestionnaire = () => {
   const [responses, setResponses] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
 
   // Generate attention check question with random target value (1-7)
   const attentionCheck = useMemo((): TIASAttentionCheckItem => {
@@ -265,9 +266,10 @@ const TiasQuestionnaire = () => {
       // Check all questions have been answered (including attention checks)
       const allAnswered = randomizedItems.every((item) => responses[item.key] !== undefined && responses[item.key] > 0);
       if (!allAnswered) {
+        setShowValidationErrors(true);
         toast({
           title: "Incomplete",
-          description: "Please answer all questions before continuing.",
+          description: "Please answer all highlighted questions before continuing.",
           variant: "destructive",
         });
         return;
@@ -347,11 +349,15 @@ const TiasQuestionnaire = () => {
 
           <div className="space-y-6">
             {randomizedItems.map((item, index) => {
+              const hasError = showValidationErrors && (!responses[item.key] || responses[item.key] === 0);
               return (
-                <div key={item.key} className="space-y-3 pb-6 border-b border-border last:border-b-0">
+                <div key={item.key} className={`space-y-3 pb-6 border-b border-border last:border-b-0 p-4 rounded-lg transition-colors ${hasError ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
                   <div className="flex items-start gap-3">
                     <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
-                    <label className="text-sm flex-1 font-medium text-foreground">{item.text}</label>
+                    <label className={`text-sm flex-1 font-medium ${hasError ? 'text-destructive' : 'text-foreground'}`}>
+                      {item.text}
+                      {hasError && <span className="ml-2 text-xs font-normal">(Please answer this question)</span>}
+                    </label>
                   </div>
                   <div className="pl-6">
                     <RadioGroup
@@ -389,7 +395,7 @@ const TiasQuestionnaire = () => {
               <ArrowLeft className="w-4 h-4" />
               Back
             </Button>
-            <Button onClick={handleNext} disabled={!isResearcherMode && !allAnswered} className="flex-1" size="lg">
+            <Button onClick={handleNext} className="flex-1" size="lg">
               Next
             </Button>
           </div>
