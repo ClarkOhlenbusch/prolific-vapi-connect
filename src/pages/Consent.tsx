@@ -33,13 +33,13 @@ const Consent = () => {
           <ScrollArea className="h-[60vh] pr-4">
             <div className="space-y-6 text-foreground">
               <p>
-                You are being invited to take part in scientific research. Before you decide whether to participate, please read the information below.
+                You are being invited to take part in scientific research. By participating, you will help us improve how voice assistants interact with people. Before you decide whether to participate, please read the information below.
               </p>
 
               <div>
                 <h2 className="text-xl font-semibold mb-2">What is the purpose of this study?</h2>
                 <p className="mb-2">
-                  This study looks at how people interact with a voice based digital assistant during a short conversation. The study is partially funded by CalicoCare (www.calico.care).
+                  This study looks at how people interact with a voice-based digital assistant during a short conversation. Our goal is to improve the design of voice assistants.
                 </p>
                 <p>
                   The voice assistant will ask you questions about your well-being, which may feel personal.
@@ -60,12 +60,18 @@ const Consent = () => {
                 <ul className="list-disc list-inside ml-4">
                   <li>Clark Ohlenbusch (clark.ohlenbusch001@umb.edu)</li>
                 </ul>
+                <p className="mt-2">
+                  This study is partially funded by CalicoCare (www.calico.care).
+                </p>
               </div>
 
               <div>
                 <h2 className="text-xl font-semibold mb-2">What will you be asked to do?</h2>
+                <p className="mb-2">
+                  You will answer demographic questions. Then, you will have a short conversation with a voice-based assistant for 5 minutes and then answer several short questionnaires. Total participation time is about 10 minutes.
+                </p>
                 <p>
-                  You will answer demographic questions. Then, you will have a short conversation with a voice based assistant for 5 minutes and then answer several short questionnaires. Total participation time is about 10 minutes.
+                  You will be compensated for your time upon completion.
                 </p>
               </div>
 
@@ -86,9 +92,6 @@ const Consent = () => {
                 </p>
                 <p className="mb-2">
                   At the end of the study, you will be given the option to withdraw and delete your data.
-                </p>
-                <p className="mb-2">
-                  You will only be compensated if you fully complete the experiment.
                 </p>
                 <p>
                   For more information, see the{' '}
