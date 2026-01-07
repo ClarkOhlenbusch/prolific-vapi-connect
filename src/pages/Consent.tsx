@@ -30,8 +30,9 @@ const Consent = () => {
           <CardTitle className="text-3xl text-center">Welcome to this research study</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[60vh] pr-4">
-            <div className="space-y-6 text-foreground">
+          <div className="relative">
+            <ScrollArea className="h-[60vh] pr-4">
+              <div className="space-y-6 text-foreground pb-8">
               <p>
                 You are being invited to take part in scientific research. By participating, you will help us improve how voice assistants interact with people. Before you decide whether to participate, please read the information below.
               </p>
@@ -121,8 +122,11 @@ const Consent = () => {
                   You may contact Olivier Vroom (o.f.e.vroom@students.uu.nl) or supervisor Chris Janssen (C.P.Janssen@uu.nl).
                 </p>
               </div>
-            </div>
-          </ScrollArea>
+              </div>
+            </ScrollArea>
+            <div className="absolute bottom-0 left-0 right-4 h-12 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+            <p className="absolute bottom-1 left-1/2 -translate-x-1/2 text-xs text-muted-foreground pointer-events-none">↓ Scroll for more</p>
+          </div>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
