@@ -170,7 +170,7 @@ const PracticeConversation = () => {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-teal-600 mt-0.5">•</span>
-                <span>Click the microphone to start</span>
+                <span>Click the "Start" button below to begin the conversation</span>
               </li>
             </ul>
           </div>
