@@ -1,14 +1,25 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const Consent = () => {
   const [consent, setConsent] = useState<string>('');
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -26,8 +37,13 @@ const Consent = () => {
       const prolificId = searchParams.get('prolificId');
       navigate(`/demographics?sessionToken=${sessionToken}&prolificId=${prolificId}`);
     } else if (consent === 'disagree') {
-      navigate('/not-eligible');
+      setShowConfirmDialog(true);
     }
+  };
+
+  const handleConfirmNoConsent = () => {
+    setShowConfirmDialog(false);
+    navigate('/not-eligible');
   };
 
   return (
@@ -169,6 +185,23 @@ const Consent = () => {
           </form>
         </CardContent>
       </Card>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you do not consent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              By confirming, you will withdraw from the experiment and will not be able to participate.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go Back</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmNoConsent}>
+              Yes, I do not consent
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
