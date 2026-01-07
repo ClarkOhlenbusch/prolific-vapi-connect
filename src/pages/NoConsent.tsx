@@ -3,9 +3,31 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
-const NotEligible = () => {
+const NoConsent = () => {
   const [feedback, setFeedback] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    
+    try {
+      const { error } = await supabase
+        .from('no_consent_feedback')
+        .insert({ feedback: feedback || null });
+
+      if (error) {
+        console.error('Error saving feedback:', error);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+    }
+    
+    // Redirect regardless of save success
+    window.location.href = 'https://www.prolific.com';
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
@@ -32,10 +54,8 @@ const NotEligible = () => {
           </div>
 
           <div className="text-center">
-            <Button asChild variant="outline">
-              <a href="https://www.prolific.com" target="_blank" rel="noopener noreferrer">
-                Return to Prolific
-              </a>
+            <Button onClick={handleSubmit} disabled={isSubmitting}>
+              {isSubmitting ? 'Submitting...' : 'Submit and return to Prolific'}
             </Button>
           </div>
         </CardContent>
@@ -44,4 +64,4 @@ const NotEligible = () => {
   );
 };
 
-export default NotEligible;
+export default NoConsent;
