@@ -23,6 +23,7 @@ const IntentionQuestionnaire = () => {
 
   const [intention1, setIntention1] = useState<number | null>(null);
   const [intention2, setIntention2] = useState<number | null>(null);
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
 
   const questions = [
     "If available, I intend to start using voice assistants like Cali within the next month.",
@@ -98,7 +99,8 @@ const IntentionQuestionnaire = () => {
 
   const handleNext = () => {
     if (!isResearcherMode && (intention1 === null || intention2 === null)) {
-      toast.error("Please answer all questions before continuing.");
+      setShowValidationErrors(true);
+      toast.error("Please answer all highlighted questions before continuing.");
       return;
     }
 
@@ -150,10 +152,13 @@ const IntentionQuestionnaire = () => {
 
           <div className="space-y-6">
             {/* Question 1 */}
-            <div className="space-y-3 pb-6 border-b border-border">
+            <div className={`space-y-3 pb-6 border-b border-border p-4 rounded-lg transition-colors ${showValidationErrors && intention1 === null ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
               <div className="flex items-start gap-3">
                 <span className="text-sm font-semibold text-muted-foreground mt-1">1.</span>
-                <label className="text-sm flex-1 font-medium text-foreground">{questions[0]}</label>
+                <label className={`text-sm flex-1 font-medium ${showValidationErrors && intention1 === null ? 'text-destructive' : 'text-foreground'}`}>
+                  {questions[0]}
+                  {showValidationErrors && intention1 === null && <span className="ml-2 text-xs font-normal">(Please answer this question)</span>}
+                </label>
               </div>
               <div className="pl-6">
                 <RadioGroup
@@ -174,10 +179,13 @@ const IntentionQuestionnaire = () => {
             </div>
 
             {/* Question 2 */}
-            <div className="space-y-3 pb-6">
+            <div className={`space-y-3 pb-6 p-4 rounded-lg transition-colors ${showValidationErrors && intention2 === null ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
               <div className="flex items-start gap-3">
                 <span className="text-sm font-semibold text-muted-foreground mt-1">2.</span>
-                <label className="text-sm flex-1 font-medium text-foreground">{questions[1]}</label>
+                <label className={`text-sm flex-1 font-medium ${showValidationErrors && intention2 === null ? 'text-destructive' : 'text-foreground'}`}>
+                  {questions[1]}
+                  {showValidationErrors && intention2 === null && <span className="ml-2 text-xs font-normal">(Please answer this question)</span>}
+                </label>
               </div>
               <div className="pl-6">
                 <RadioGroup
@@ -202,7 +210,7 @@ const IntentionQuestionnaire = () => {
             <Button variant="outline" onClick={handleBack}>
               Back
             </Button>
-            <Button onClick={handleNext} disabled={!isResearcherMode && !allAnswered}>
+            <Button onClick={handleNext}>
               Next
             </Button>
           </div>
