@@ -67,9 +67,16 @@ const PracticeConversation = () => {
       }
     });
     vapi.on('error', error => {
-      // Check if it's a timeout-related error
+      // Check if it's a timeout-related error (meeting ended due to time limit)
       const errorMessage = error?.message?.toLowerCase() || '';
-      if (errorMessage.includes('exceeded') || errorMessage.includes('max-duration') || errorMessage.includes('timeout')) {
+      if (
+        errorMessage.includes('exceeded') || 
+        errorMessage.includes('max-duration') || 
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('meeting ended') ||
+        errorMessage.includes('meeting has ended') ||
+        errorMessage.includes('ejection')
+      ) {
         toast({
           title: "Call time limit reached",
           description: "Proceed with next section.",
