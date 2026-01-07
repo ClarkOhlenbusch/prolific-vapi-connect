@@ -178,7 +178,7 @@ const PracticeConversation = () => {
           <div className="flex flex-col items-center justify-center py-8 gap-6">
             {!isCallActive && !isConnecting ? <div className="flex flex-col items-center gap-6">
                 <Button onClick={handleStartCallClick} size="lg" className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform flex flex-col items-center justify-center gap-1 animate-pulse bg-teal-500 hover:bg-teal-600">
-                  <Mic className="w-10 h-10" />
+                  <Mic className="w-14 h-14" />
                   <span className="text-sm">Start</span>
                 </Button>
               </div> : isConnecting ? <div className="flex flex-col items-center gap-3">
