@@ -37,6 +37,16 @@ const Consent = () => {
               </p>
 
               <div>
+                <h2 className="text-xl font-semibold mb-2">What will you be asked to do?</h2>
+                <p className="mb-2">
+                  You will answer demographic questions. Then, you will have a warm-up conversation to practice and test your mic and speakers, followed by a 7-8 minute conversation with a voice-based assistant. Afterwards, you will answer several short questionnaires. Total participation time is around 15 minutes.
+                </p>
+                <p>
+                  You will be compensated for your time upon completion.
+                </p>
+              </div>
+
+              <div>
                 <h2 className="text-xl font-semibold mb-2">What is the purpose of this study?</h2>
                 <p className="mb-2">
                   This study looks at how people interact with a voice-based digital assistant during a short conversation. Our goal is to improve the design of voice assistants.
@@ -62,16 +72,6 @@ const Consent = () => {
                 </ul>
                 <p className="mt-2">
                   This study is partially funded by CalicoCare (www.calico.care).
-                </p>
-              </div>
-
-              <div>
-                <h2 className="text-xl font-semibold mb-2">What will you be asked to do?</h2>
-                <p className="mb-2">
-                  You will answer demographic questions. Then, you will have a warm-up conversation to practice and test your mic and speakers, followed by a 7-8 minute conversation with a voice-based assistant. Afterwards, you will answer several short questionnaires. Total participation time is around 15 minutes.
-                </p>
-                <p>
-                  You will be compensated for your time upon completion.
                 </p>
               </div>
 
