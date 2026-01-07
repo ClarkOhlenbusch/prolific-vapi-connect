@@ -9,11 +9,13 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
 import { z } from "zod";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
+
 interface PETSItem {
   id: string;
   text: string;
   key: "e1" | "e2" | "e3" | "e4" | "e5" | "e6" | "u1" | "u2" | "u3" | "u4";
 }
+
 interface AttentionCheckItem {
   id: string;
   text: string;
@@ -21,59 +23,22 @@ interface AttentionCheckItem {
   expectedValue: number;
   isAttentionCheck: true;
 }
+
 type QuestionItem = PETSItem | AttentionCheckItem;
+
 const PETS_ITEMS: PETSItem[] = [
-  {
-    id: "E1",
-    text: "Cali considered my mental state.",
-    key: "e1",
-  },
-  {
-    id: "E2",
-    text: "Cali seemed emotionally intelligent.",
-    key: "e2",
-  },
-  {
-    id: "E3",
-    text: "Cali expressed emotions.",
-    key: "e3",
-  },
-  {
-    id: "E4",
-    text: "Cali sympathized with me.",
-    key: "e4",
-  },
-  {
-    id: "E5",
-    text: "Cali showed interest in me.",
-    key: "e5",
-  },
-  {
-    id: "E6",
-    text: "Cali supported me in coping with an emotional situation.",
-    key: "e6",
-  },
-  {
-    id: "U1",
-    text: "Cali understood my goals.",
-    key: "u1",
-  },
-  {
-    id: "U2",
-    text: "Cali understood my needs.",
-    key: "u2",
-  },
-  {
-    id: "U3",
-    text: "I trusted Cali.",
-    key: "u3",
-  },
-  {
-    id: "U4",
-    text: "Cali understood my intentions.",
-    key: "u4",
-  },
+  { id: "E1", text: "Cali considered my mental state.", key: "e1" },
+  { id: "E2", text: "Cali seemed emotionally intelligent.", key: "e2" },
+  { id: "E3", text: "Cali expressed emotions.", key: "e3" },
+  { id: "E4", text: "Cali sympathized with me.", key: "e4" },
+  { id: "E5", text: "Cali showed interest in me.", key: "e5" },
+  { id: "E6", text: "Cali supported me in coping with an emotional situation.", key: "e6" },
+  { id: "U1", text: "Cali understood my goals.", key: "u1" },
+  { id: "U2", text: "Cali understood my needs.", key: "u2" },
+  { id: "U3", text: "I trusted Cali.", key: "u3" },
+  { id: "U4", text: "Cali understood my intentions.", key: "u4" },
 ];
+
 const petsResponseSchema = z.object({
   e1: z.number().min(0).max(100).int(),
   e2: z.number().min(0).max(100).int(),
@@ -85,14 +50,27 @@ const petsResponseSchema = z.object({
   u2: z.number().min(0).max(100).int(),
   u3: z.number().min(0).max(100).int(),
   u4: z.number().min(0).max(100).int(),
+  // Position tracking (1-indexed display order)
+  e1_position: z.number().int(),
+  e2_position: z.number().int(),
+  e3_position: z.number().int(),
+  e4_position: z.number().int(),
+  e5_position: z.number().int(),
+  e6_position: z.number().int(),
+  u1_position: z.number().int(),
+  u2_position: z.number().int(),
+  u3_position: z.number().int(),
+  u4_position: z.number().int(),
   attention_check_1: z.number().min(0).max(100).int().optional(),
   attention_check_1_expected: z.number().min(0).max(100).int().optional(),
+  attention_check_1_position: z.number().int().optional(),
   prolific_id: z.string().trim().min(1).max(100),
   call_id: z.string().trim().min(1).max(255),
   pets_er: z.number(),
   pets_ut: z.number(),
   pets_total: z.number(),
 });
+
 const Questionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -101,30 +79,12 @@ const Questionnaire = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, number>>({
-    e1: 50,
-    e2: 50,
-    e3: 50,
-    e4: 50,
-    e5: 50,
-    e6: 50,
-    u1: 50,
-    u2: 50,
-    u3: 50,
-    u4: 50,
-    ac1: 50,
+    e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
+    u1: 50, u2: 50, u3: 50, u4: 50, ac1: 50,
   });
   const [interacted, setInteracted] = useState<Record<string, boolean>>({
-    e1: false,
-    e2: false,
-    e3: false,
-    e4: false,
-    e5: false,
-    e6: false,
-    u1: false,
-    u2: false,
-    u3: false,
-    u4: false,
-    ac1: false,
+    e1: false, e2: false, e3: false, e4: false, e5: false, e6: false,
+    u1: false, u2: false, u3: false, u4: false, ac1: false,
   });
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -142,18 +102,26 @@ const Questionnaire = () => {
   }, []);
 
   // Randomize items once and insert attention check randomly
-  const randomizedItems = useMemo(() => {
+  // Also capture position data for each item
+  const { randomizedItems, positionMap } = useMemo(() => {
     const allItems: QuestionItem[] = [...PETS_ITEMS];
     const shuffled = allItems.sort(() => Math.random() - 0.5);
 
     // Insert attention check at random position
-    const position = Math.floor(Math.random() * (shuffled.length + 1));
-    shuffled.splice(position, 0, attentionCheck);
-    return shuffled;
+    const acPosition = Math.floor(Math.random() * (shuffled.length + 1));
+    shuffled.splice(acPosition, 0, attentionCheck);
+
+    // Build position map (1-indexed)
+    const positions: Record<string, number> = {};
+    shuffled.forEach((item, index) => {
+      positions[item.key] = index + 1;
+    });
+
+    return { randomizedItems: shuffled, positionMap: positions };
   }, [attentionCheck]);
+
   useEffect(() => {
     const checkAccess = async () => {
-      // Load IDs from sessionStorage/state, no validation/redirects
       const storedId = sessionStorage.getItem("prolificId");
       const stateCallId = location.state?.callId;
 
@@ -165,79 +133,48 @@ const Questionnaire = () => {
       sessionStorage.setItem("prolificId", finalProlificId);
       sessionStorage.setItem("flowStep", "3");
 
-      // Check if already submitted
+      // Check if already submitted to new consolidated table
       const { data: existingResponse, error } = await supabase
-        .from("pets_responses")
-        .select("*")
+        .from("experiment_responses")
+        .select("prolific_id")
         .eq("prolific_id", storedId)
-        .eq("call_id", stateCallId)
-        .single();
+        .maybeSingle();
+
       if (error && error.code !== "PGRST116") {
         console.error("Error checking existing response:", error);
       }
-      if (existingResponse) {
-        // Load existing responses
-        const loadedResponses: Record<string, number> = {
-          e1: existingResponse.e1,
-          e2: existingResponse.e2,
-          e3: existingResponse.e3,
-          e4: existingResponse.e4,
-          e5: existingResponse.e5,
-          e6: existingResponse.e6,
-          u1: existingResponse.u1,
-          u2: existingResponse.u2,
-          u3: existingResponse.u3,
-          u4: existingResponse.u4,
-          ac1: existingResponse.attention_check_1 || 0,
-        };
-        setResponses(loadedResponses);
 
-        // Mark all as interacted since they have saved values
-        const loadedInteracted: Record<string, boolean> = {};
-        Object.keys(loadedResponses).forEach((key) => {
-          loadedInteracted[key] = true;
-        });
-        setInteracted(loadedInteracted);
+      if (existingResponse) {
+        // Already submitted - redirect to complete
+        navigate("/complete");
+        return;
       }
+      
       setIsLoading(false);
     };
     checkAccess();
   }, [navigate, location, toast]);
+
   const handleSliderChange = (key: string, value: number[]) => {
-    setResponses((prev) => ({
-      ...prev,
-      [key]: value[0],
-    }));
+    setResponses((prev) => ({ ...prev, [key]: value[0] }));
   };
+
   const handleInputChange = (key: string, value: string) => {
     const numValue = parseInt(value, 10);
     if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
-      setResponses((prev) => ({
-        ...prev,
-        [key]: numValue,
-      }));
-      setInteracted((prev) => ({
-        ...prev,
-        [key]: true,
-      }));
+      setResponses((prev) => ({ ...prev, [key]: numValue }));
+      setInteracted((prev) => ({ ...prev, [key]: true }));
     } else if (value === "") {
-      // Allow empty input during typing
-      setResponses((prev) => ({
-        ...prev,
-        [key]: 0,
-      }));
+      setResponses((prev) => ({ ...prev, [key]: 0 }));
     }
   };
+
   const handleInteract = (key: string) => {
-    setInteracted((prev) => ({
-      ...prev,
-      [key]: true,
-    }));
+    setInteracted((prev) => ({ ...prev, [key]: true }));
   };
+
   const handleNext = () => {
-    // Skip validation if researcher mode is enabled
     if (!isResearcherMode) {
-      // Check all questions have been interacted with
       const allAnswered = Object.values(interacted).every((val) => val === true);
       if (!allAnswered) {
         setShowValidationErrors(true);
@@ -249,6 +186,7 @@ const Questionnaire = () => {
         return;
       }
     }
+
     if (!prolificId || !callId) {
       toast({
         title: "Error",
@@ -265,7 +203,7 @@ const Questionnaire = () => {
     const pets_ut = utItems.reduce((a, b) => a + b, 0) / utItems.length;
     const pets_total = pets_er * 0.6 + pets_ut * 0.4;
 
-    // Prepare questionnaire data
+    // Prepare questionnaire data with positions
     const questionnaireData = {
       e1: responses.e1,
       e2: responses.e2,
@@ -277,8 +215,22 @@ const Questionnaire = () => {
       u2: responses.u2,
       u3: responses.u3,
       u4: responses.u4,
+      // Position data
+      e1_position: positionMap.e1,
+      e2_position: positionMap.e2,
+      e3_position: positionMap.e3,
+      e4_position: positionMap.e4,
+      e5_position: positionMap.e5,
+      e6_position: positionMap.e6,
+      u1_position: positionMap.u1,
+      u2_position: positionMap.u2,
+      u3_position: positionMap.u3,
+      u4_position: positionMap.u4,
+      // Attention check
       attention_check_1: responses.ac1,
       attention_check_1_expected: attentionCheck.expectedValue,
+      attention_check_1_position: positionMap.ac1,
+      // IDs and scores
       prolific_id: prolificId,
       call_id: callId,
       pets_er,
@@ -286,7 +238,6 @@ const Questionnaire = () => {
       pets_total,
     };
 
-    // Validate response data client-side
     const validationResult = petsResponseSchema.safeParse(questionnaireData);
     if (!validationResult.success) {
       toast({
@@ -299,17 +250,11 @@ const Questionnaire = () => {
 
     // Store PETS data in sessionStorage
     sessionStorage.setItem("petsData", JSON.stringify(validationResult.data));
-
-    // Advance to next step
     sessionStorage.setItem("flowStep", "4");
 
-    // Navigate to TIAS questionnaire
-    navigate("/questionnaire/tias", {
-      state: {
-        callId,
-      },
-    });
+    navigate("/questionnaire/tias", { state: { callId } });
   };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary">
@@ -321,7 +266,7 @@ const Questionnaire = () => {
       </div>
     );
   }
-  const allAnswered = Object.values(interacted).every((val) => val === true);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-3xl shadow-xl border-border">
@@ -334,7 +279,6 @@ const Questionnaire = () => {
         <CardContent className="space-y-6">
           <div className="bg-accent/50 rounded-lg p-6">
             <p className="text-sm text-foreground leading-relaxed">
-              {" "}
               During this experiment, you had a conversation with Cali. Please rate each statement on a scale from 0
               (strongly disagree) to 100 (strongly agree). Use the slider or type in the number to adjust your rating.
               There are no right or wrong answers.
@@ -386,11 +330,7 @@ const Questionnaire = () => {
           <div className="flex gap-4">
             <Button
               variant="outline"
-              onClick={() => navigate("/questionnaire/formality", {
-                state: {
-                  callId,
-                },
-              })}
+              onClick={() => navigate("/questionnaire/formality", { state: { callId } })}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -405,4 +345,5 @@ const Questionnaire = () => {
     </div>
   );
 };
+
 export default Questionnaire;

@@ -9,24 +9,14 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
 import { z } from "zod";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
+
 interface TIASItem {
   id: string;
   text: string;
-  key:
-    | "tias_1"
-    | "tias_2"
-    | "tias_3"
-    | "tias_4"
-    | "tias_5"
-    | "tias_6"
-    | "tias_7"
-    | "tias_8"
-    | "tias_9"
-    | "tias_10"
-    | "tias_11"
-    | "tias_12";
+  key: "tias_1" | "tias_2" | "tias_3" | "tias_4" | "tias_5" | "tias_6" | "tias_7" | "tias_8" | "tias_9" | "tias_10" | "tias_11" | "tias_12";
   isReversed: boolean;
 }
+
 interface TIASAttentionCheckItem {
   id: string;
   text: string;
@@ -34,111 +24,34 @@ interface TIASAttentionCheckItem {
   expectedValue: number;
   isAttentionCheck: true;
 }
+
 type TIASQuestionItem = TIASItem | TIASAttentionCheckItem;
+
 const TIAS_ITEMS: TIASItem[] = [
-  {
-    id: "T1",
-    text: "Cali is deceptive.",
-    key: "tias_1",
-    isReversed: true,
-  },
-  {
-    id: "T2",
-    text: "Cali behaves in an underhanded manner.",
-    key: "tias_2",
-    isReversed: true,
-  },
-  {
-    id: "T3",
-    text: "I am suspicious of Cali's intent, action, or output.",
-    key: "tias_3",
-    isReversed: true,
-  },
-  {
-    id: "T4",
-    text: "I am wary of Cali.",
-    key: "tias_4",
-    isReversed: true,
-  },
-  {
-    id: "T5",
-    text: "Cali's action will have a harmful or injurious outcome.",
-    key: "tias_5",
-    isReversed: true,
-  },
-  {
-    id: "T6",
-    text: "I am confident in Cali.",
-    key: "tias_6",
-    isReversed: false,
-  },
-  {
-    id: "T7",
-    text: "Cali provides security.",
-    key: "tias_7",
-    isReversed: false,
-  },
-  {
-    id: "T8",
-    text: "Cali has integrity.",
-    key: "tias_8",
-    isReversed: false,
-  },
-  {
-    id: "T9",
-    text: "Cali is dependable.",
-    key: "tias_9",
-    isReversed: false,
-  },
-  {
-    id: "T10",
-    text: "Cali is reliable.",
-    key: "tias_10",
-    isReversed: false,
-  },
-  {
-    id: "T11",
-    text: "I can trust Cali.",
-    key: "tias_11",
-    isReversed: false,
-  },
-  {
-    id: "T12",
-    text: "I am familiar with Cali.",
-    key: "tias_12",
-    isReversed: false,
-  },
+  { id: "T1", text: "Cali is deceptive.", key: "tias_1", isReversed: true },
+  { id: "T2", text: "Cali behaves in an underhanded manner.", key: "tias_2", isReversed: true },
+  { id: "T3", text: "I am suspicious of Cali's intent, action, or output.", key: "tias_3", isReversed: true },
+  { id: "T4", text: "I am wary of Cali.", key: "tias_4", isReversed: true },
+  { id: "T5", text: "Cali's action will have a harmful or injurious outcome.", key: "tias_5", isReversed: true },
+  { id: "T6", text: "I am confident in Cali.", key: "tias_6", isReversed: false },
+  { id: "T7", text: "Cali provides security.", key: "tias_7", isReversed: false },
+  { id: "T8", text: "Cali has integrity.", key: "tias_8", isReversed: false },
+  { id: "T9", text: "Cali is dependable.", key: "tias_9", isReversed: false },
+  { id: "T10", text: "Cali is reliable.", key: "tias_10", isReversed: false },
+  { id: "T11", text: "I can trust Cali.", key: "tias_11", isReversed: false },
+  { id: "T12", text: "I am familiar with Cali.", key: "tias_12", isReversed: false },
 ];
+
 const SCALE_LABELS = [
-  {
-    value: 1,
-    label: "Not at all",
-  },
-  {
-    value: 2,
-    label: "Slightly",
-  },
-  {
-    value: 3,
-    label: "Somewhat",
-  },
-  {
-    value: 4,
-    label: "Moderately",
-  },
-  {
-    value: 5,
-    label: "Quite a bit",
-  },
-  {
-    value: 6,
-    label: "Very",
-  },
-  {
-    value: 7,
-    label: "Extremely",
-  },
+  { value: 1, label: "Not at all" },
+  { value: 2, label: "Slightly" },
+  { value: 3, label: "Somewhat" },
+  { value: 4, label: "Moderately" },
+  { value: 5, label: "Quite a bit" },
+  { value: 6, label: "Very" },
+  { value: 7, label: "Extremely" },
 ];
+
 const tiasResponseSchema = z.object({
   tias_1: z.number().min(1).max(7).int(),
   tias_2: z.number().min(1).max(7).int(),
@@ -152,10 +65,25 @@ const tiasResponseSchema = z.object({
   tias_10: z.number().min(1).max(7).int(),
   tias_11: z.number().min(1).max(7).int(),
   tias_12: z.number().min(1).max(7).int(),
+  // Position tracking
+  tias_1_position: z.number().int(),
+  tias_2_position: z.number().int(),
+  tias_3_position: z.number().int(),
+  tias_4_position: z.number().int(),
+  tias_5_position: z.number().int(),
+  tias_6_position: z.number().int(),
+  tias_7_position: z.number().int(),
+  tias_8_position: z.number().int(),
+  tias_9_position: z.number().int(),
+  tias_10_position: z.number().int(),
+  tias_11_position: z.number().int(),
+  tias_12_position: z.number().int(),
   tias_total: z.number(),
   tias_attention_check_1: z.number().min(1).max(7).int().optional(),
   tias_attention_check_1_expected: z.number().min(1).max(7).int().optional(),
+  tias_attention_check_1_position: z.number().int().optional(),
 });
+
 const TiasQuestionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -164,7 +92,6 @@ const TiasQuestionnaire = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, number>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
 
@@ -180,19 +107,26 @@ const TiasQuestionnaire = () => {
     };
   }, []);
 
-  // Randomize items once and insert attention check randomly
-  const randomizedItems = useMemo(() => {
+  // Randomize items and capture position data
+  const { randomizedItems, positionMap } = useMemo(() => {
     const allItems: TIASQuestionItem[] = [...TIAS_ITEMS];
     const shuffled = allItems.sort(() => Math.random() - 0.5);
 
     // Insert attention check at random position
-    const position = Math.floor(Math.random() * (shuffled.length + 1));
-    shuffled.splice(position, 0, attentionCheck);
-    return shuffled;
+    const acPosition = Math.floor(Math.random() * (shuffled.length + 1));
+    shuffled.splice(acPosition, 0, attentionCheck);
+
+    // Build position map (1-indexed)
+    const positions: Record<string, number> = {};
+    shuffled.forEach((item, index) => {
+      positions[item.key] = index + 1;
+    });
+
+    return { randomizedItems: shuffled, positionMap: positions };
   }, [attentionCheck]);
+
   useEffect(() => {
     const checkAccess = async () => {
-      // Load IDs from sessionStorage/state, no validation/redirects
       const storedId = sessionStorage.getItem("prolificId");
       const stateCallId = location.state?.callId;
       const petsDataString = sessionStorage.getItem("petsData");
@@ -205,65 +139,52 @@ const TiasQuestionnaire = () => {
       sessionStorage.setItem("prolificId", finalProlificId);
       sessionStorage.setItem("flowStep", "4");
 
-      // Set default PETS data if missing
+      // Set default PETS data if missing (for researcher mode)
       if (!petsDataString) {
-        sessionStorage.setItem(
-          "petsData",
-          JSON.stringify({
-            e1: 50,
-            e2: 50,
-            e3: 50,
-            e4: 50,
-            e5: 50,
-            e6: 50,
-            u1: 50,
-            u2: 50,
-            u3: 50,
-            u4: 50,
-            attention_check_1: 50,
-            attention_check_1_expected: 50,
-            prolific_id: finalProlificId,
-            call_id: finalCallId,
-            pets_er: 50,
-            pets_ut: 50,
-            pets_total: 50,
-          }),
-        );
+        const defaultPetsData = {
+          e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
+          u1: 50, u2: 50, u3: 50, u4: 50,
+          e1_position: 1, e2_position: 2, e3_position: 3, e4_position: 4, e5_position: 5, e6_position: 6,
+          u1_position: 7, u2_position: 8, u3_position: 9, u4_position: 10,
+          attention_check_1: 50,
+          attention_check_1_expected: 50,
+          attention_check_1_position: 11,
+          prolific_id: finalProlificId,
+          call_id: finalCallId,
+          pets_er: 50,
+          pets_ut: 50,
+          pets_total: 50,
+        };
+        sessionStorage.setItem("petsData", JSON.stringify(defaultPetsData));
       }
 
       // Check if already submitted
       const { data: existingResponse, error } = await supabase
-        .from("pets_responses")
-        .select("*")
+        .from("experiment_responses")
+        .select("prolific_id")
         .eq("prolific_id", storedId)
-        .eq("call_id", stateCallId)
-        .single();
+        .maybeSingle();
+
       if (error && error.code !== "PGRST116") {
         console.error("Error checking existing response:", error);
       }
-      if (existingResponse && existingResponse.tias_1 !== null) {
-        // Load existing TIAS responses
-        const loadedResponses: Record<string, number> = {};
-        for (let i = 1; i <= 12; i++) {
-          const key = `tias_${i}`;
-          loadedResponses[key] = existingResponse[key] || 0;
-        }
-        setResponses(loadedResponses);
+
+      if (existingResponse) {
+        navigate("/complete");
+        return;
       }
+
       setIsLoading(false);
     };
     checkAccess();
   }, [navigate, location, toast]);
+
   const handleRadioChange = (key: string, value: string) => {
-    setResponses((prev) => ({
-      ...prev,
-      [key]: parseInt(value),
-    }));
+    setResponses((prev) => ({ ...prev, [key]: parseInt(value) }));
   };
+
   const handleNext = () => {
-    // Skip validation if researcher mode is enabled
     if (!isResearcherMode) {
-      // Check all questions have been answered (including attention checks)
       const allAnswered = randomizedItems.every((item) => responses[item.key] !== undefined && responses[item.key] > 0);
       if (!allAnswered) {
         setShowValidationErrors(true);
@@ -276,27 +197,27 @@ const TiasQuestionnaire = () => {
       }
     }
 
-    // Calculate TIAS score with reverse scoring for items 1-5 (excluding attention checks)
+    // Calculate TIAS score with reverse scoring for items 1-5
     const tiasScores = TIAS_ITEMS.map((item) => {
-      const score = responses[item.key] || 4; // Default to 4 if not answered (researcher mode)
+      const score = responses[item.key] || 4;
       return item.isReversed ? 8 - score : score;
     });
     const tias_total = tiasScores.reduce((a, b) => a + b, 0) / tiasScores.length;
 
-    // Prepare TIAS data
-    const tiasData: Record<string, number> = {
-      tias_total,
-    };
+    // Prepare TIAS data with positions
+    const tiasData: Record<string, number> = { tias_total };
+    
     for (let i = 1; i <= 12; i++) {
       const key = `tias_${i}`;
-      tiasData[key] = responses[key] || 4; // Default to 4 if not answered
+      tiasData[key] = responses[key] || 4;
+      tiasData[`${key}_position`] = positionMap[key];
     }
 
     // Add attention check data
     tiasData.tias_attention_check_1 = responses.tias_ac1 || 4;
     tiasData.tias_attention_check_1_expected = attentionCheck.expectedValue;
+    tiasData.tias_attention_check_1_position = positionMap.tias_ac1;
 
-    // Validate TIAS data
     const validationResult = tiasResponseSchema.safeParse(tiasData);
     if (!validationResult.success) {
       console.error("TIAS validation error:", validationResult.error);
@@ -308,16 +229,10 @@ const TiasQuestionnaire = () => {
       return;
     }
 
-    // Store TIAS data in sessionStorage
     sessionStorage.setItem("tiasData", JSON.stringify(validationResult.data));
-
-    // Navigate to intention questionnaire
-    navigate("/questionnaire/intention", {
-      state: {
-        callId,
-      },
-    });
+    navigate("/questionnaire/intention", { state: { callId } });
   };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary">
@@ -329,7 +244,7 @@ const TiasQuestionnaire = () => {
       </div>
     );
   }
-  const allAnswered = randomizedItems.every((item) => responses[item.key] !== undefined && responses[item.key] > 0);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-4xl shadow-xl border-border">
@@ -383,13 +298,7 @@ const TiasQuestionnaire = () => {
           <div className="flex gap-4">
             <Button
               variant="outline"
-              onClick={() =>
-                navigate("/questionnaire/pets", {
-                  state: {
-                    callId,
-                  },
-                })
-              }
+              onClick={() => navigate("/questionnaire/pets", { state: { callId } })}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -404,4 +313,5 @@ const TiasQuestionnaire = () => {
     </div>
   );
 };
+
 export default TiasQuestionnaire;

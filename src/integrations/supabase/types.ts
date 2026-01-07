@@ -77,6 +77,207 @@ export type Database = {
         }
         Relationships: []
       }
+      experiment_responses: {
+        Row: {
+          attention_check_1: number | null
+          attention_check_1_expected: number | null
+          attention_check_1_position: number | null
+          call_attempt_number: number
+          call_id: string
+          created_at: string
+          e1: number
+          e1_position: number
+          e2: number
+          e2_position: number
+          e3: number
+          e3_position: number
+          e4: number
+          e4_position: number
+          e5: number
+          e5_position: number
+          e6: number
+          e6_position: number
+          experiment_feedback: string
+          formality: number
+          id: string
+          intention_1: number
+          intention_2: number
+          pets_er: number
+          pets_total: number
+          pets_ut: number
+          prolific_id: string
+          tias_1: number | null
+          tias_1_position: number | null
+          tias_10: number | null
+          tias_10_position: number | null
+          tias_11: number | null
+          tias_11_position: number | null
+          tias_12: number | null
+          tias_12_position: number | null
+          tias_2: number | null
+          tias_2_position: number | null
+          tias_3: number | null
+          tias_3_position: number | null
+          tias_4: number | null
+          tias_4_position: number | null
+          tias_5: number | null
+          tias_5_position: number | null
+          tias_6: number | null
+          tias_6_position: number | null
+          tias_7: number | null
+          tias_7_position: number | null
+          tias_8: number | null
+          tias_8_position: number | null
+          tias_9: number | null
+          tias_9_position: number | null
+          tias_attention_check_1: number | null
+          tias_attention_check_1_expected: number | null
+          tias_attention_check_1_position: number | null
+          tias_total: number | null
+          u1: number
+          u1_position: number
+          u2: number
+          u2_position: number
+          u3: number
+          u3_position: number
+          u4: number
+          u4_position: number
+          voice_assistant_feedback: string
+        }
+        Insert: {
+          attention_check_1?: number | null
+          attention_check_1_expected?: number | null
+          attention_check_1_position?: number | null
+          call_attempt_number?: number
+          call_id: string
+          created_at?: string
+          e1: number
+          e1_position: number
+          e2: number
+          e2_position: number
+          e3: number
+          e3_position: number
+          e4: number
+          e4_position: number
+          e5: number
+          e5_position: number
+          e6: number
+          e6_position: number
+          experiment_feedback: string
+          formality: number
+          id?: string
+          intention_1: number
+          intention_2: number
+          pets_er: number
+          pets_total: number
+          pets_ut: number
+          prolific_id: string
+          tias_1?: number | null
+          tias_1_position?: number | null
+          tias_10?: number | null
+          tias_10_position?: number | null
+          tias_11?: number | null
+          tias_11_position?: number | null
+          tias_12?: number | null
+          tias_12_position?: number | null
+          tias_2?: number | null
+          tias_2_position?: number | null
+          tias_3?: number | null
+          tias_3_position?: number | null
+          tias_4?: number | null
+          tias_4_position?: number | null
+          tias_5?: number | null
+          tias_5_position?: number | null
+          tias_6?: number | null
+          tias_6_position?: number | null
+          tias_7?: number | null
+          tias_7_position?: number | null
+          tias_8?: number | null
+          tias_8_position?: number | null
+          tias_9?: number | null
+          tias_9_position?: number | null
+          tias_attention_check_1?: number | null
+          tias_attention_check_1_expected?: number | null
+          tias_attention_check_1_position?: number | null
+          tias_total?: number | null
+          u1: number
+          u1_position: number
+          u2: number
+          u2_position: number
+          u3: number
+          u3_position: number
+          u4: number
+          u4_position: number
+          voice_assistant_feedback: string
+        }
+        Update: {
+          attention_check_1?: number | null
+          attention_check_1_expected?: number | null
+          attention_check_1_position?: number | null
+          call_attempt_number?: number
+          call_id?: string
+          created_at?: string
+          e1?: number
+          e1_position?: number
+          e2?: number
+          e2_position?: number
+          e3?: number
+          e3_position?: number
+          e4?: number
+          e4_position?: number
+          e5?: number
+          e5_position?: number
+          e6?: number
+          e6_position?: number
+          experiment_feedback?: string
+          formality?: number
+          id?: string
+          intention_1?: number
+          intention_2?: number
+          pets_er?: number
+          pets_total?: number
+          pets_ut?: number
+          prolific_id?: string
+          tias_1?: number | null
+          tias_1_position?: number | null
+          tias_10?: number | null
+          tias_10_position?: number | null
+          tias_11?: number | null
+          tias_11_position?: number | null
+          tias_12?: number | null
+          tias_12_position?: number | null
+          tias_2?: number | null
+          tias_2_position?: number | null
+          tias_3?: number | null
+          tias_3_position?: number | null
+          tias_4?: number | null
+          tias_4_position?: number | null
+          tias_5?: number | null
+          tias_5_position?: number | null
+          tias_6?: number | null
+          tias_6_position?: number | null
+          tias_7?: number | null
+          tias_7_position?: number | null
+          tias_8?: number | null
+          tias_8_position?: number | null
+          tias_9?: number | null
+          tias_9_position?: number | null
+          tias_attention_check_1?: number | null
+          tias_attention_check_1_expected?: number | null
+          tias_attention_check_1_position?: number | null
+          tias_total?: number | null
+          u1?: number
+          u1_position?: number
+          u2?: number
+          u2_position?: number
+          u3?: number
+          u3_position?: number
+          u4?: number
+          u4_position?: number
+          voice_assistant_feedback?: string
+        }
+        Relationships: []
+      }
       feedback_responses: {
         Row: {
           call_id: string
