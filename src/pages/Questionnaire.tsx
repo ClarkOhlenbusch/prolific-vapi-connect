@@ -126,6 +126,7 @@ const Questionnaire = () => {
     u4: false,
     ac1: false,
   });
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Generate attention check question with random target value
@@ -239,9 +240,10 @@ const Questionnaire = () => {
       // Check all questions have been interacted with
       const allAnswered = Object.values(interacted).every((val) => val === true);
       if (!allAnswered) {
+        setShowValidationErrors(true);
         toast({
           title: "Incomplete",
-          description: "Please answer all questions before continuing.",
+          description: "Please answer all highlighted questions before continuing.",
           variant: "destructive",
         });
         return;
@@ -341,11 +343,15 @@ const Questionnaire = () => {
 
           <div className="space-y-8">
             {randomizedItems.map((item, index) => {
+              const hasError = showValidationErrors && !interacted[item.key];
               return (
-                <div key={item.key} className="space-y-3">
+                <div key={item.key} className={`space-y-3 p-4 rounded-lg transition-colors ${hasError ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
                   <div className="flex items-start gap-3">
                     <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
-                    <label className="text-sm flex-1 text-foreground">{item.text}</label>
+                    <label className={`text-sm flex-1 ${hasError ? 'text-destructive font-medium' : 'text-foreground'}`}>
+                      {item.text}
+                      {hasError && <span className="ml-2 text-xs">(Please answer this question)</span>}
+                    </label>
                   </div>
                   <div className="pl-6 space-y-2">
                     <PetsSlider
@@ -367,7 +373,7 @@ const Questionnaire = () => {
                         value={responses[item.key]}
                         onChange={(e) => handleInputChange(item.key, e.target.value)}
                         onFocus={() => handleInteract(item.key)}
-                        className="w-20 text-center"
+                        className={`w-20 text-center ${hasError ? 'border-destructive' : ''}`}
                       />
                       <span>Strongly agree (100)</span>
                     </div>
@@ -390,7 +396,7 @@ const Questionnaire = () => {
               <ArrowLeft className="w-4 h-4" />
               Back
             </Button>
-            <Button onClick={handleNext} disabled={!isResearcherMode && !allAnswered} className="flex-1" size="lg">
+            <Button onClick={handleNext} className="flex-1" size="lg">
               Next
             </Button>
           </div>
