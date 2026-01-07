@@ -6,70 +6,92 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Validation schema for intention data
-const intentionResponseSchema = z.object({
-  intention_1: z.number().min(1).max(7).int(),
-  intention_2: z.number().min(1).max(7).int(),
-});
-
-// Validation schema for PETS and TIAS data
-const petsResponseSchema = z.object({
-  // PETS items (0-100 scale)
-  e1: z.number().min(0).max(100).int(),
-  e2: z.number().min(0).max(100).int(),
-  e3: z.number().min(0).max(100).int(),
-  e4: z.number().min(0).max(100).int(),
-  e5: z.number().min(0).max(100).int(),
-  e6: z.number().min(0).max(100).int(),
-  u1: z.number().min(0).max(100).int(),
-  u2: z.number().min(0).max(100).int(),
-  u3: z.number().min(0).max(100).int(),
-  u4: z.number().min(0).max(100).int(),
+// Validation schema for PETS data with positions
+const petsDataSchema = z.object({
+  e1: z.number().min(0).max(100),
+  e2: z.number().min(0).max(100),
+  e3: z.number().min(0).max(100),
+  e4: z.number().min(0).max(100),
+  e5: z.number().min(0).max(100),
+  e6: z.number().min(0).max(100),
+  u1: z.number().min(0).max(100),
+  u2: z.number().min(0).max(100),
+  u3: z.number().min(0).max(100),
+  u4: z.number().min(0).max(100),
+  e1_position: z.number().int(),
+  e2_position: z.number().int(),
+  e3_position: z.number().int(),
+  e4_position: z.number().int(),
+  e5_position: z.number().int(),
+  e6_position: z.number().int(),
+  u1_position: z.number().int(),
+  u2_position: z.number().int(),
+  u3_position: z.number().int(),
+  u4_position: z.number().int(),
+  attention_check_1: z.number().min(0).max(100).optional(),
+  attention_check_1_expected: z.number().min(0).max(100).optional(),
+  attention_check_1_position: z.number().int().optional(),
   pets_er: z.number(),
   pets_ut: z.number(),
   pets_total: z.number(),
-  attention_check_1: z.number().min(0).max(100).int().optional(),
-  attention_check_1_expected: z.number().min(0).max(100).int().optional(),
-  // TIAS items (1-7 scale)
-  tias_1: z.number().min(1).max(7).int(),
-  tias_2: z.number().min(1).max(7).int(),
-  tias_3: z.number().min(1).max(7).int(),
-  tias_4: z.number().min(1).max(7).int(),
-  tias_5: z.number().min(1).max(7).int(),
-  tias_6: z.number().min(1).max(7).int(),
-  tias_7: z.number().min(1).max(7).int(),
-  tias_8: z.number().min(1).max(7).int(),
-  tias_9: z.number().min(1).max(7).int(),
-  tias_10: z.number().min(1).max(7).int(),
-  tias_11: z.number().min(1).max(7).int(),
-  tias_12: z.number().min(1).max(7).int(),
-  tias_total: z.number(),
-  tias_attention_check_1: z.number().min(1).max(7).int().optional(),
-  tias_attention_check_1_expected: z.number().min(1).max(7).int().optional(),
-  // IDs
   prolific_id: z.string().min(1).max(100),
-  call_id: z.string().min(1).max(100),
+  call_id: z.string().min(1).max(255),
+});
+
+// Validation schema for TIAS data with positions
+const tiasDataSchema = z.object({
+  tias_1: z.number().min(1).max(7),
+  tias_2: z.number().min(1).max(7),
+  tias_3: z.number().min(1).max(7),
+  tias_4: z.number().min(1).max(7),
+  tias_5: z.number().min(1).max(7),
+  tias_6: z.number().min(1).max(7),
+  tias_7: z.number().min(1).max(7),
+  tias_8: z.number().min(1).max(7),
+  tias_9: z.number().min(1).max(7),
+  tias_10: z.number().min(1).max(7),
+  tias_11: z.number().min(1).max(7),
+  tias_12: z.number().min(1).max(7),
+  tias_1_position: z.number().int(),
+  tias_2_position: z.number().int(),
+  tias_3_position: z.number().int(),
+  tias_4_position: z.number().int(),
+  tias_5_position: z.number().int(),
+  tias_6_position: z.number().int(),
+  tias_7_position: z.number().int(),
+  tias_8_position: z.number().int(),
+  tias_9_position: z.number().int(),
+  tias_10_position: z.number().int(),
+  tias_11_position: z.number().int(),
+  tias_12_position: z.number().int(),
+  tias_total: z.number(),
+  tias_attention_check_1: z.number().min(1).max(7).optional(),
+  tias_attention_check_1_expected: z.number().min(1).max(7).optional(),
+  tias_attention_check_1_position: z.number().int().optional(),
+});
+
+// Validation schema for intention data
+const intentionDataSchema = z.object({
+  intention_1: z.number().min(1).max(7),
+  intention_2: z.number().min(1).max(7),
 });
 
 // Validation schema for feedback data
-const feedbackResponseSchema = z.object({
-  prolific_id: z.string().min(1).max(100),
-  call_id: z.string().min(1).max(100),
-  formality: z.number().min(1).max(7).int(),
+const feedbackDataSchema = z.object({
+  formality: z.number().min(1).max(7),
   voice_assistant_feedback: z.string().min(1).max(1000),
   experiment_feedback: z.string().min(1).max(1000),
 });
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { sessionToken, questionnaireData, intentionData, feedbackData } = await req.json();
+    const { sessionToken, petsData, tiasData, intentionData, feedbackData } = await req.json();
 
-    // Validate inputs
+    // Validate session token format
     if (!sessionToken || typeof sessionToken !== 'string') {
       console.error('Invalid session token format');
       return new Response(
@@ -78,7 +100,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate UUID format for session token
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(sessionToken)) {
       console.error('Session token is not a valid UUID');
@@ -88,52 +109,50 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate questionnaire data against schema
-    let validatedPetsData;
+    // Validate all data against schemas
+    let validatedPets, validatedTias, validatedIntention, validatedFeedback;
+    
     try {
-      validatedPetsData = petsResponseSchema.parse(questionnaireData);
-    } catch (validationError) {
-      console.error('Questionnaire data validation failed:', validationError);
+      validatedPets = petsDataSchema.parse(petsData);
+    } catch (err) {
+      console.error('PETS validation failed:', err);
       return new Response(
-        JSON.stringify({ 
-          error: 'Invalid questionnaire data',
-          details: validationError instanceof z.ZodError ? validationError.errors : undefined
-        }),
+        JSON.stringify({ error: 'Invalid PETS data', details: err instanceof z.ZodError ? err.errors : undefined }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Validate intention data against schema
-    let validatedIntentionData;
     try {
-      validatedIntentionData = intentionResponseSchema.parse(intentionData);
-    } catch (validationError) {
-      console.error('Intention data validation failed:', validationError);
+      validatedTias = tiasDataSchema.parse(tiasData);
+    } catch (err) {
+      console.error('TIAS validation failed:', err);
       return new Response(
-        JSON.stringify({ 
-          error: 'Invalid intention data',
-          details: validationError instanceof z.ZodError ? validationError.errors : undefined
-        }),
+        JSON.stringify({ error: 'Invalid TIAS data', details: err instanceof z.ZodError ? err.errors : undefined }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Validate feedback data against schema
-    let validatedFeedbackData;
     try {
-      validatedFeedbackData = feedbackResponseSchema.parse(feedbackData);
-    } catch (validationError) {
-      console.error('Feedback data validation failed:', validationError);
+      validatedIntention = intentionDataSchema.parse(intentionData);
+    } catch (err) {
+      console.error('Intention validation failed:', err);
       return new Response(
-        JSON.stringify({ 
-          error: 'Invalid feedback data',
-          details: validationError instanceof z.ZodError ? validationError.errors : undefined
-        }),
+        JSON.stringify({ error: 'Invalid intention data', details: err instanceof z.ZodError ? err.errors : undefined }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Initialize Supabase client with service role (bypasses RLS)
+    try {
+      validatedFeedback = feedbackDataSchema.parse(feedbackData);
+    } catch (err) {
+      console.error('Feedback validation failed:', err);
+      return new Response(
+        JSON.stringify({ error: 'Invalid feedback data', details: err instanceof z.ZodError ? err.errors : undefined }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
@@ -147,7 +166,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Validate session exists, is not used, and not expired
+    // Validate session
     const { data: session, error: sessionError } = await supabase
       .from('participant_calls')
       .select('*')
@@ -164,12 +183,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if questionnaire already submitted for this session
+    // Check for existing submission (by prolific_id since it's unique)
     const { data: existingResponse, error: existingError } = await supabase
-      .from('pets_responses')
-      .select('id')
-      .eq('prolific_id', validatedPetsData.prolific_id)
-      .eq('call_id', validatedPetsData.call_id)
+      .from('experiment_responses')
+      .select('prolific_id')
+      .eq('prolific_id', validatedPets.prolific_id)
       .maybeSingle();
 
     if (existingError) {
@@ -181,52 +199,103 @@ Deno.serve(async (req) => {
     }
 
     if (existingResponse) {
-      console.log('Questionnaire already submitted for this session');
+      console.log('Questionnaire already submitted for prolific_id:', validatedPets.prolific_id);
       return new Response(
         JSON.stringify({ error: 'Questionnaire already submitted' }),
         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Insert PETS/TIAS questionnaire response
-    const { error: insertPetsError } = await supabase
-      .from('pets_responses')
-      .insert([validatedPetsData]);
+    // Count call attempts for this participant
+    const { count: callAttempts } = await supabase
+      .from('participant_calls')
+      .select('*', { count: 'exact', head: true })
+      .eq('prolific_id', validatedPets.prolific_id);
 
-    if (insertPetsError) {
-      console.error('Failed to insert questionnaire response:', insertPetsError);
+    // Insert into consolidated experiment_responses table
+    const experimentData = {
+      prolific_id: validatedPets.prolific_id,
+      call_id: validatedPets.call_id,
+      call_attempt_number: callAttempts || 1,
+      // PETS items
+      e1: validatedPets.e1,
+      e2: validatedPets.e2,
+      e3: validatedPets.e3,
+      e4: validatedPets.e4,
+      e5: validatedPets.e5,
+      e6: validatedPets.e6,
+      u1: validatedPets.u1,
+      u2: validatedPets.u2,
+      u3: validatedPets.u3,
+      u4: validatedPets.u4,
+      // PETS positions
+      e1_position: validatedPets.e1_position,
+      e2_position: validatedPets.e2_position,
+      e3_position: validatedPets.e3_position,
+      e4_position: validatedPets.e4_position,
+      e5_position: validatedPets.e5_position,
+      e6_position: validatedPets.e6_position,
+      u1_position: validatedPets.u1_position,
+      u2_position: validatedPets.u2_position,
+      u3_position: validatedPets.u3_position,
+      u4_position: validatedPets.u4_position,
+      // PETS attention check
+      attention_check_1: validatedPets.attention_check_1,
+      attention_check_1_expected: validatedPets.attention_check_1_expected,
+      attention_check_1_position: validatedPets.attention_check_1_position,
+      // PETS scores
+      pets_er: validatedPets.pets_er,
+      pets_ut: validatedPets.pets_ut,
+      pets_total: validatedPets.pets_total,
+      // TIAS items
+      tias_1: validatedTias.tias_1,
+      tias_2: validatedTias.tias_2,
+      tias_3: validatedTias.tias_3,
+      tias_4: validatedTias.tias_4,
+      tias_5: validatedTias.tias_5,
+      tias_6: validatedTias.tias_6,
+      tias_7: validatedTias.tias_7,
+      tias_8: validatedTias.tias_8,
+      tias_9: validatedTias.tias_9,
+      tias_10: validatedTias.tias_10,
+      tias_11: validatedTias.tias_11,
+      tias_12: validatedTias.tias_12,
+      // TIAS positions
+      tias_1_position: validatedTias.tias_1_position,
+      tias_2_position: validatedTias.tias_2_position,
+      tias_3_position: validatedTias.tias_3_position,
+      tias_4_position: validatedTias.tias_4_position,
+      tias_5_position: validatedTias.tias_5_position,
+      tias_6_position: validatedTias.tias_6_position,
+      tias_7_position: validatedTias.tias_7_position,
+      tias_8_position: validatedTias.tias_8_position,
+      tias_9_position: validatedTias.tias_9_position,
+      tias_10_position: validatedTias.tias_10_position,
+      tias_11_position: validatedTias.tias_11_position,
+      tias_12_position: validatedTias.tias_12_position,
+      // TIAS attention check
+      tias_attention_check_1: validatedTias.tias_attention_check_1,
+      tias_attention_check_1_expected: validatedTias.tias_attention_check_1_expected,
+      tias_attention_check_1_position: validatedTias.tias_attention_check_1_position,
+      // TIAS score
+      tias_total: validatedTias.tias_total,
+      // Intention
+      intention_1: validatedIntention.intention_1,
+      intention_2: validatedIntention.intention_2,
+      // Formality and feedback
+      formality: validatedFeedback.formality,
+      voice_assistant_feedback: validatedFeedback.voice_assistant_feedback,
+      experiment_feedback: validatedFeedback.experiment_feedback,
+    };
+
+    const { error: insertError } = await supabase
+      .from('experiment_responses')
+      .insert([experimentData]);
+
+    if (insertError) {
+      console.error('Failed to insert experiment response:', insertError);
       return new Response(
         JSON.stringify({ error: 'Failed to save questionnaire' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Insert intention response
-    const { error: insertIntentionError } = await supabase
-      .from('intention')
-      .insert([{
-        prolific_id: validatedPetsData.prolific_id,
-        call_id: validatedPetsData.call_id,
-        ...validatedIntentionData
-      }]);
-
-    if (insertIntentionError) {
-      console.error('Failed to insert intention response:', insertIntentionError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to save intention data' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Insert feedback response
-    const { error: insertFeedbackError } = await supabase
-      .from('feedback_responses')
-      .insert([validatedFeedbackData]);
-
-    if (insertFeedbackError) {
-      console.error('Failed to insert feedback response:', insertFeedbackError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to save feedback' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -239,27 +308,19 @@ Deno.serve(async (req) => {
 
     if (updateError) {
       console.error('Failed to mark token as used:', updateError);
-      // Note: Questionnaire is already saved, so we return success
-      // but log the token update failure
     }
 
-    console.log('Questionnaire and feedback submitted successfully for prolific_id:', validatedPetsData.prolific_id);
+    console.log('Experiment response submitted successfully for prolific_id:', validatedPets.prolific_id);
 
     return new Response(
-      JSON.stringify({ 
-        success: true,
-        message: 'Questionnaire submitted successfully' 
-      }),
+      JSON.stringify({ success: true, message: 'Questionnaire submitted successfully' }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('Unexpected error in submit-questionnaire:', error);
     return new Response(
-      JSON.stringify({ 
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      }),
+      JSON.stringify({ error: 'Internal server error', message: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

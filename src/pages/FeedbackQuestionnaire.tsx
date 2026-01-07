@@ -38,21 +38,18 @@ const FeedbackQuestionnaire = () => {
       sessionStorage.setItem("prolificId", finalProlificId);
       sessionStorage.setItem("flowStep", "4");
 
-      // Set default PETS data if missing
+      // Set default PETS data if missing (with position data)
       if (!petsDataString) {
         sessionStorage.setItem(
           "petsData",
           JSON.stringify({
-            e1: 50,
-            e2: 50,
-            e3: 50,
-            e4: 50,
-            e5: 50,
-            e6: 50,
-            u1: 50,
-            u2: 50,
-            u3: 50,
-            u4: 50,
+            e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
+            u1: 50, u2: 50, u3: 50, u4: 50,
+            e1_position: 1, e2_position: 2, e3_position: 3, e4_position: 4, e5_position: 5, e6_position: 6,
+            u1_position: 7, u2_position: 8, u3_position: 9, u4_position: 10,
+            attention_check_1: 50,
+            attention_check_1_expected: 50,
+            attention_check_1_position: 11,
             prolific_id: finalProlificId,
             call_id: finalCallId,
             pets_er: 50,
@@ -62,23 +59,19 @@ const FeedbackQuestionnaire = () => {
         );
       }
 
-      // Set default TIAS data if missing
+      // Set default TIAS data if missing (with position data)
       if (!tiasDataString) {
         sessionStorage.setItem(
           "tiasData",
           JSON.stringify({
-            tias_1: 4,
-            tias_2: 4,
-            tias_3: 4,
-            tias_4: 4,
-            tias_5: 4,
-            tias_6: 4,
-            tias_7: 4,
-            tias_8: 4,
-            tias_9: 4,
-            tias_10: 4,
-            tias_11: 4,
-            tias_12: 4,
+            tias_1: 4, tias_2: 4, tias_3: 4, tias_4: 4, tias_5: 4, tias_6: 4,
+            tias_7: 4, tias_8: 4, tias_9: 4, tias_10: 4, tias_11: 4, tias_12: 4,
+            tias_1_position: 1, tias_2_position: 2, tias_3_position: 3, tias_4_position: 4,
+            tias_5_position: 5, tias_6_position: 6, tias_7_position: 7, tias_8_position: 8,
+            tias_9_position: 9, tias_10_position: 10, tias_11_position: 11, tias_12_position: 12,
+            tias_attention_check_1: 4,
+            tias_attention_check_1_expected: 4,
+            tias_attention_check_1_position: 13,
             tias_total: 4,
           }),
         );
@@ -163,28 +156,19 @@ const FeedbackQuestionnaire = () => {
       const intentionData = JSON.parse(intentionDataString);
       const formalityData = JSON.parse(formalityDataString);
 
-      // Combine PETS and TIAS questionnaire data
-      const questionnaireData = {
-        prolific_id: prolificId,
-        call_id: callId,
-        ...petsData,
-        ...tiasData,
-      };
-
       // Create feedback data object
       const feedbackPayload = {
-        prolific_id: prolificId,
-        call_id: callId,
         formality: formalityData.formality,
         voice_assistant_feedback: voiceAssistantFeedback || "Not provided",
         experiment_feedback: experimentFeedback || "Not provided",
       };
 
-      // Submit via secure edge function
+      // Submit via secure edge function with new payload structure
       const { data, error } = await supabase.functions.invoke("submit-questionnaire", {
         body: {
           sessionToken,
-          questionnaireData,
+          petsData,
+          tiasData,
           intentionData,
           feedbackData: feedbackPayload,
         },
