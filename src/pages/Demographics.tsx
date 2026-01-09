@@ -124,7 +124,7 @@ const Demographics = () => {
                 type="number"
                 min="1920"
                 max={new Date().getFullYear() - 18}
-                placeholder="e.g. 1990"
+                placeholder="e.g. 1960"
                 value={formData.yearOfBirth}
                 onChange={(e) => setFormData(prev => ({ ...prev, yearOfBirth: e.target.value }))}
                 className="max-w-[200px]"
