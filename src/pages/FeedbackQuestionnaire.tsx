@@ -282,9 +282,9 @@ const FeedbackQuestionnaire = () => {
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>
           {/* Bonus motivation message */}
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mt-4">
-            <p className="text-sm text-foreground text-center font-medium">
-              💡 The more detail you provide, the more helpful your feedback and the higher your bonus payout may be.
+          <div className="bg-primary/10 border border-primary/20 rounded-lg px-4 py-2 mt-4">
+            <p className="text-sm text-foreground text-center font-medium whitespace-nowrap">
+              The more detail you provide, the more helpful your feedback and the higher your bonus payout may be.
             </p>
           </div>
         </CardHeader>
@@ -384,18 +384,14 @@ const FeedbackQuestionnaire = () => {
             </div>
           </div>
 
-          {/* Clarifier before Question 3 */}
-          <div className="bg-muted/50 border border-border rounded-lg p-4">
-            <p className="text-sm text-foreground/70 italic text-center">
-              The following question is about the study setup and experience, not about the voice assistant itself.
-            </p>
-          </div>
-
           {/* Question 3: Experiment Feedback */}
           <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Feedback on the Experiment
+              </p>
+              <p className="text-xs text-foreground/60 italic -mt-1">
+                This question is about the study setup and experience, not about the voice assistant itself.
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !experimentStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
                 Please share any feedback on the experiment itself, such as:
