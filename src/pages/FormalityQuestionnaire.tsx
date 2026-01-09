@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { usePageTracking } from "@/hooks/usePageTracking";
+import { ExperimentProgress } from "@/components/ExperimentProgress";
 
 const SCALE_LABELS = [
   { value: 1, label: "Extremely Informal" },
@@ -97,6 +98,7 @@ const FormalityQuestionnaire = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-2xl shadow-xl border-border">
         <CardHeader className="space-y-3">
+          <ExperimentProgress />
           <CardTitle className="text-2xl text-center">Questionnaire 1</CardTitle>
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>

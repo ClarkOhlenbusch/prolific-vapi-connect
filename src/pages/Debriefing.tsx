@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
+import { ExperimentProgress } from '@/components/ExperimentProgress';
+
 const Debriefing = () => {
   const navigate = useNavigate();
   const { isResearcherMode } = useResearcherMode();
@@ -22,6 +24,7 @@ const Debriefing = () => {
   return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-3xl shadow-xl border-border">
         <CardHeader className="space-y-3">
+          <ExperimentProgress />
           <CardTitle className="text-3xl text-center">Debriefing</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
