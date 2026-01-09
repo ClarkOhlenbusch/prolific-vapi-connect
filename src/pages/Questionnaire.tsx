@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
 import { z } from "zod";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
+import { usePageTracking } from "@/hooks/usePageTracking";
 
 interface PETSItem {
   id: string;
@@ -50,7 +51,6 @@ const petsResponseSchema = z.object({
   u2: z.number().min(0).max(100).int(),
   u3: z.number().min(0).max(100).int(),
   u4: z.number().min(0).max(100).int(),
-  // Position tracking (1-indexed display order)
   e1_position: z.number().int(),
   e2_position: z.number().int(),
   e3_position: z.number().int(),
@@ -89,7 +89,12 @@ const Questionnaire = () => {
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Generate attention check question with random target value
+  const { trackBackButtonClick } = usePageTracking({
+    pageName: "pets",
+    prolificId,
+    callId,
+  });
+
   const attentionCheck = useMemo((): AttentionCheckItem => {
     const val = Math.floor(Math.random() * 101);
     return {
@@ -101,17 +106,12 @@ const Questionnaire = () => {
     };
   }, []);
 
-  // Randomize items once and insert attention check randomly
-  // Also capture position data for each item
   const { randomizedItems, positionMap } = useMemo(() => {
     const allItems: QuestionItem[] = [...PETS_ITEMS];
     const shuffled = allItems.sort(() => Math.random() - 0.5);
-
-    // Insert attention check at random position
     const acPosition = Math.floor(Math.random() * (shuffled.length + 1));
     shuffled.splice(acPosition, 0, attentionCheck);
 
-    // Build position map (1-indexed)
     const positions: Record<string, number> = {};
     shuffled.forEach((item, index) => {
       positions[item.key] = index + 1;
@@ -133,7 +133,6 @@ const Questionnaire = () => {
       sessionStorage.setItem("prolificId", finalProlificId);
       sessionStorage.setItem("flowStep", "3");
 
-      // Check if already submitted to new consolidated table
       const { data: existingResponse, error } = await supabase
         .from("experiment_responses")
         .select("prolific_id")
@@ -145,7 +144,6 @@ const Questionnaire = () => {
       }
 
       if (existingResponse) {
-        // Already submitted - redirect to complete
         navigate("/complete");
         return;
       }
@@ -173,6 +171,14 @@ const Questionnaire = () => {
     setInteracted((prev) => ({ ...prev, [key]: true }));
   };
 
+  const handleBackClick = async () => {
+    await trackBackButtonClick({
+      responses,
+      interactedCount: Object.values(interacted).filter(Boolean).length,
+    });
+    navigate("/questionnaire/formality", { state: { callId } });
+  };
+
   const handleNext = () => {
     if (!isResearcherMode) {
       const allAnswered = Object.values(interacted).every((val) => val === true);
@@ -196,14 +202,12 @@ const Questionnaire = () => {
       return;
     }
 
-    // Calculate scores
     const erItems = [responses.e1, responses.e2, responses.e3, responses.e4, responses.e5, responses.e6];
     const utItems = [responses.u1, responses.u2, responses.u3, responses.u4];
     const pets_er = erItems.reduce((a, b) => a + b, 0) / erItems.length;
     const pets_ut = utItems.reduce((a, b) => a + b, 0) / utItems.length;
     const pets_total = pets_er * 0.6 + pets_ut * 0.4;
 
-    // Prepare questionnaire data with positions
     const questionnaireData = {
       e1: responses.e1,
       e2: responses.e2,
@@ -215,7 +219,6 @@ const Questionnaire = () => {
       u2: responses.u2,
       u3: responses.u3,
       u4: responses.u4,
-      // Position data
       e1_position: positionMap.e1,
       e2_position: positionMap.e2,
       e3_position: positionMap.e3,
@@ -226,11 +229,9 @@ const Questionnaire = () => {
       u2_position: positionMap.u2,
       u3_position: positionMap.u3,
       u4_position: positionMap.u4,
-      // Attention check
       attention_check_1: responses.ac1,
       attention_check_1_expected: attentionCheck.expectedValue,
       attention_check_1_position: positionMap.ac1,
-      // IDs and scores
       prolific_id: prolificId,
       call_id: callId,
       pets_er,
@@ -248,7 +249,6 @@ const Questionnaire = () => {
       return;
     }
 
-    // Store PETS data in sessionStorage
     sessionStorage.setItem("petsData", JSON.stringify(validationResult.data));
     sessionStorage.setItem("flowStep", "4");
 
@@ -330,7 +330,7 @@ const Questionnaire = () => {
           <div className="flex gap-4">
             <Button
               variant="outline"
-              onClick={() => navigate("/questionnaire/formality", { state: { callId } })}
+              onClick={handleBackClick}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
