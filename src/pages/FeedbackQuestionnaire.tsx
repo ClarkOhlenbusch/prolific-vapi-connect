@@ -296,7 +296,7 @@ const FeedbackQuestionnaire = () => {
                 Experience with Cali
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !experienceStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
-                Please describe your experience interacting with Cali during the conversation.
+                Describe your experience interacting with Cali during the conversation.
               </label>
               <p className="text-sm text-foreground/70">
                 You may consider aspects such as:
@@ -339,7 +339,7 @@ const FeedbackQuestionnaire = () => {
                 Communication Style (Formality)
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !styleStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
-                Thinking about Cali's way of speaking, how would you describe Cali's communication style?
+                How would you describe Cali's communication style?
               </label>
               <p className="text-sm text-foreground/70">
                 Please include:
