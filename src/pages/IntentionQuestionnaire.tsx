@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { usePageTracking } from "@/hooks/usePageTracking";
 import { toast } from "sonner";
+import { ExperimentProgress } from "@/components/ExperimentProgress";
 
 interface IntentionData {
   intention_1: number | null;
@@ -132,6 +133,7 @@ const IntentionQuestionnaire = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-4xl shadow-xl border-border">
         <div className="p-8 space-y-6">
+          <ExperimentProgress />
           <div className="space-y-3">
             <h1 className="text-2xl font-bold text-center">Questionnaire 4</h1>
           </div>

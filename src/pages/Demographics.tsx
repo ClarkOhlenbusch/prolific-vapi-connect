@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
+import { ExperimentProgress } from '@/components/ExperimentProgress';
 
 const Demographics = () => {
   const [searchParams] = useSearchParams();
@@ -110,6 +111,7 @@ const Demographics = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-2xl shadow-xl border-border">
         <CardHeader className="space-y-3">
+          <ExperimentProgress />
           <CardTitle className="text-2xl text-center">Demographics</CardTitle>
           <CardDescription className="text-center">
             Please answer the following questions about yourself.
