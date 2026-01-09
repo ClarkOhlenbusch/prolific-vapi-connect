@@ -117,7 +117,11 @@ const PracticeConversation = () => {
       await vapiRef.current.start(practiceAssistantId, {
         variableValues: {
           prolificId: prolificId
-        }
+        },
+        metadata: {
+          prolificId: prolificId,
+          researcherMode: isResearcherMode,
+        },
       });
       toast({
         title: "Practice Started",
