@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { Mic, Phone, Clock } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
+import { ExperimentProgress } from "@/components/ExperimentProgress";
+
 const VoiceConversation = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [isCallActive, setIsCallActive] = useState(false);
@@ -299,6 +301,7 @@ const VoiceConversation = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-background to-amber-50 p-4">
       <Card className="w-full max-w-2xl shadow-xl border-orange-200">
         <CardHeader className="space-y-3">
+          <ExperimentProgress />
           <div className="flex justify-center">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-300">
               <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>

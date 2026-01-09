@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Mic, Phone } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
+import { ExperimentProgress } from '@/components/ExperimentProgress';
+
 const PracticeConversation = () => {
   const [searchParams] = useSearchParams();
   const [prolificId, setProlificId] = useState<string | null>(null);
@@ -157,6 +159,7 @@ const PracticeConversation = () => {
   return <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cyan-50 via-background to-teal-50 p-4">
       <Card className="w-full max-w-2xl shadow-xl border-teal-200">
         <CardHeader className="space-y-3">
+          <ExperimentProgress />
           <div className="flex justify-center">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-teal-100 text-teal-700 border border-teal-300">
               <span className="w-2 h-2 rounded-full bg-teal-500"></span>

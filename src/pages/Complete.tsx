@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ExperimentProgress } from '@/components/ExperimentProgress';
 
 const Complete = () => {
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ const Complete = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-2xl shadow-xl border-border">
         <CardHeader className="space-y-3">
+          <ExperimentProgress />
           <div className="w-16 h-16 mx-auto bg-primary rounded-full flex items-center justify-center">
             <svg className="w-8 h-8 text-primary-foreground" fill="none" strokeWidth="2" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
