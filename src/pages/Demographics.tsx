@@ -92,7 +92,7 @@ const Demographics = () => {
     }
   };
 
-  const ageOptions = ['Under 18', '18-29', '30-49', '50-59', '60+'];
+  // Age is now collected as exact number input
   const genderOptions = ['Male', 'Female', 'Other', 'Prefer not to say'];
   const ethnicityOptions = [
     'Hispanic or Latino',
@@ -118,15 +118,17 @@ const Demographics = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-3">
-              <Label className="text-base font-semibold">What is your age group?</Label>
-              <RadioGroup value={formData.age} onValueChange={(value) => setFormData(prev => ({ ...prev, age: value }))}>
-                {ageOptions.map(option => (
-                  <div key={option} className="flex items-center space-x-2">
-                    <RadioGroupItem value={option} id={`age-${option}`} />
-                    <Label htmlFor={`age-${option}`} className="font-normal cursor-pointer">{option}</Label>
-                  </div>
-                ))}
-              </RadioGroup>
+              <Label htmlFor="age" className="text-base font-semibold">What is your age?</Label>
+              <Input
+                id="age"
+                type="number"
+                min="18"
+                max="120"
+                placeholder="Enter your age"
+                value={formData.age}
+                onChange={(e) => setFormData(prev => ({ ...prev, age: e.target.value }))}
+                className="max-w-[200px]"
+              />
             </div>
 
             <div className="space-y-3">
