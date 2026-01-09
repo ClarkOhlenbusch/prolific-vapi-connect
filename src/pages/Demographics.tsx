@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const Demographics = () => {
@@ -21,12 +22,21 @@ const Demographics = () => {
   const prolificId = searchParams.get('prolificId') || (isResearcherMode ? 'RESEARCHER_MODE' : null);
 
   const [formData, setFormData] = useState({
-    age: '',
+    yearOfBirth: '',
     gender: '',
     ethnicity: [] as string[],
     ethnicityOther: '',
     native_english: ''
   });
+
+  const birthYears = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const years: number[] = [];
+    for (let year = currentYear - 18; year >= 1920; year--) {
+      years.push(year);
+    }
+    return years;
+  }, []);
 
   const handleEthnicityChange = (option: string, checked: boolean) => {
     setFormData(prev => ({
@@ -42,7 +52,7 @@ const Demographics = () => {
     
     // Skip validation if researcher mode is enabled
     if (!isResearcherMode) {
-      if (!formData.age || !formData.gender || formData.ethnicity.length === 0 || !formData.native_english) {
+      if (!formData.yearOfBirth || !formData.gender || formData.ethnicity.length === 0 || !formData.native_english) {
         toast({
           title: "Missing Information",
           description: "Please answer all required questions.",
@@ -73,7 +83,7 @@ const Demographics = () => {
         .insert({
           session_token: sessionToken,
           prolific_id: prolificId,
-          age: formData.age || 'Not provided',
+          age: formData.yearOfBirth || 'Not provided',
           gender: formData.gender || 'Not provided',
           ethnicity: ethnicityData.length > 0 ? ethnicityData : ['Not provided'],
           native_english: formData.native_english || 'Not provided'
@@ -92,7 +102,7 @@ const Demographics = () => {
     }
   };
 
-  // Age is now collected as exact number input
+  // Year of birth is collected via dropdown
   const genderOptions = ['Male', 'Female', 'Other', 'Prefer not to say'];
   const ethnicityOptions = [
     'Hispanic or Latino',
@@ -118,17 +128,17 @@ const Demographics = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-3">
-              <Label htmlFor="age" className="text-base font-semibold">What is your age?</Label>
-              <Input
-                id="age"
-                type="number"
-                min="18"
-                max="120"
-                placeholder="Enter your age"
-                value={formData.age}
-                onChange={(e) => setFormData(prev => ({ ...prev, age: e.target.value }))}
-                className="max-w-[200px]"
-              />
+              <Label className="text-base font-semibold">What is your year of birth?</Label>
+              <Select value={formData.yearOfBirth} onValueChange={(value) => setFormData(prev => ({ ...prev, yearOfBirth: value }))}>
+                <SelectTrigger className="max-w-[200px]">
+                  <SelectValue placeholder="Select year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {birthYears.map(year => (
+                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-3">
