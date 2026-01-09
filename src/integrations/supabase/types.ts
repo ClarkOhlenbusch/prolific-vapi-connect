@@ -335,6 +335,39 @@ export type Database = {
         }
         Relationships: []
       }
+      navigation_events: {
+        Row: {
+          call_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          page_name: string
+          prolific_id: string
+          time_on_page_seconds: number | null
+        }
+        Insert: {
+          call_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          page_name: string
+          prolific_id: string
+          time_on_page_seconds?: number | null
+        }
+        Update: {
+          call_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          page_name?: string
+          prolific_id?: string
+          time_on_page_seconds?: number | null
+        }
+        Relationships: []
+      }
       no_consent_feedback: {
         Row: {
           created_at: string
