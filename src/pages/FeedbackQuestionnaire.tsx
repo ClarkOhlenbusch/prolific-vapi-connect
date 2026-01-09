@@ -5,8 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, AlertCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
+import { usePageTracking } from "@/hooks/usePageTracking";
+import { FeedbackProgressBar } from "@/components/FeedbackProgressBar";
 
 const FeedbackQuestionnaire = () => {
   const navigate = useNavigate();
@@ -23,7 +25,13 @@ const FeedbackQuestionnaire = () => {
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   
   const MAX_CHARS = 2500;
-  const MIN_WORDS = 200;
+  const MIN_WORDS = 35;
+
+  const { trackBackButtonClick } = usePageTracking({
+    pageName: "feedback",
+    prolificId,
+    callId,
+  });
 
   const countWords = (text: string): number => {
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
@@ -36,7 +44,6 @@ const FeedbackQuestionnaire = () => {
 
   useEffect(() => {
     const checkAccess = async () => {
-      // Load IDs from sessionStorage/state, no validation/redirects
       const storedId = sessionStorage.getItem("prolificId");
       const stateCallId = location.state?.callId;
       const petsDataString = sessionStorage.getItem("petsData");
@@ -52,7 +59,6 @@ const FeedbackQuestionnaire = () => {
       sessionStorage.setItem("prolificId", finalProlificId);
       sessionStorage.setItem("flowStep", "4");
 
-      // Set default PETS data if missing (with position data)
       if (!petsDataString) {
         sessionStorage.setItem(
           "petsData",
@@ -73,7 +79,6 @@ const FeedbackQuestionnaire = () => {
         );
       }
 
-      // Set default TIAS data if missing (with position data)
       if (!tiasDataString) {
         sessionStorage.setItem(
           "tiasData",
@@ -91,7 +96,6 @@ const FeedbackQuestionnaire = () => {
         );
       }
 
-      // Set default intention data if missing
       if (!intentionDataString) {
         sessionStorage.setItem(
           "intentionData",
@@ -102,7 +106,6 @@ const FeedbackQuestionnaire = () => {
         );
       }
 
-      // Set default formality data if missing
       if (!formalityDataString) {
         sessionStorage.setItem(
           "formalityData",
@@ -116,12 +119,8 @@ const FeedbackQuestionnaire = () => {
     checkAccess();
   }, [navigate, location, toast, isResearcherMode]);
 
-  const handleBackClick = () => {
-    // Log back button click
-    console.log("[FeedbackQuestionnaire] Back button clicked", {
-      prolificId,
-      callId,
-      timestamp: new Date().toISOString(),
+  const handleBackClick = async () => {
+    await trackBackButtonClick({
       voiceAssistantExperienceWordCount: countWords(voiceAssistantExperience),
       communicationStyleWordCount: countWords(communicationStyleFeedback),
       experimentFeedbackWordCount: countWords(experimentFeedback),
@@ -139,9 +138,7 @@ const FeedbackQuestionnaire = () => {
     const styleStatus = getWordCountStatus(communicationStyleFeedback);
     const experimentStatus = getWordCountStatus(experimentFeedback);
 
-    // Skip validation if researcher mode is enabled
     if (!isResearcherMode) {
-      // Validate that all feedback fields meet minimum word count
       if (!experienceStatus.isValid || !styleStatus.isValid || !experimentStatus.isValid) {
         setShowValidationErrors(true);
         toast({
@@ -173,7 +170,6 @@ const FeedbackQuestionnaire = () => {
       return;
     }
 
-    // Get all previous data from sessionStorage
     const petsDataString = sessionStorage.getItem("petsData");
     const tiasDataString = sessionStorage.getItem("tiasData");
     const intentionDataString = sessionStorage.getItem("intentionData");
@@ -194,17 +190,14 @@ const FeedbackQuestionnaire = () => {
       const intentionData = JSON.parse(intentionDataString);
       const formalityData = JSON.parse(formalityDataString);
 
-      // Combine voice assistant experience and communication style feedback
       const combinedVoiceAssistantFeedback = `[Experience with Voice Assistant]\n${voiceAssistantExperience}\n\n[Communication Style and Formality]\n${communicationStyleFeedback}`;
 
-      // Create feedback data object
       const feedbackPayload = {
         formality: formalityData.formality,
         voice_assistant_feedback: combinedVoiceAssistantFeedback || "Not provided",
         experiment_feedback: experimentFeedback || "Not provided",
       };
 
-      // Submit via secure edge function with new payload structure
       const { data, error } = await supabase.functions.invoke("submit-questionnaire", {
         body: {
           sessionToken,
@@ -242,7 +235,6 @@ const FeedbackQuestionnaire = () => {
         return;
       }
 
-      // Clear stored data
       sessionStorage.removeItem("petsData");
       sessionStorage.removeItem("tiasData");
       sessionStorage.removeItem("formalityData");
@@ -251,7 +243,6 @@ const FeedbackQuestionnaire = () => {
         description: "Your responses have been submitted successfully.",
       });
 
-      // Advance to final step
       sessionStorage.setItem("flowStep", "5");
       navigate("/debriefing");
     } catch (err) {
@@ -290,27 +281,34 @@ const FeedbackQuestionnaire = () => {
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>
+          {/* Bonus motivation message */}
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mt-4">
+            <p className="text-sm text-foreground text-center font-medium">
+              💡 The more detail you provide, the more helpful your feedback and the higher your bonus payout may be.
+            </p>
+          </div>
         </CardHeader>
         <CardContent className="space-y-8">
           {/* Question 1: Voice Assistant Experience */}
           <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experienceStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Experience with the Voice Assistant
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !experienceStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
                 Please describe your experience interacting with the voice assistant (Cali) during the conversation.
               </label>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-foreground/70">
                 You may consider aspects such as:
               </p>
-              <ul className="text-sm text-muted-foreground list-disc list-inside ml-2 space-y-1">
+              <ul className="text-sm text-foreground/70 list-disc list-inside ml-2 space-y-1">
                 <li>How the assistant communicated overall</li>
                 <li>How well it understood and responded to you</li>
                 <li>Anything that stood out positively or negatively during the interaction</li>
+                <li>Any technical issues during the call (audio quality, delays, pauses, voice changes, or glitches)</li>
               </ul>
             </div>
-            <div className="bg-accent/50 rounded-lg p-4">
+            <div className="bg-accent/50 rounded-lg p-4 space-y-3">
               <Textarea
                 value={voiceAssistantExperience}
                 onChange={(e) => {
@@ -326,12 +324,13 @@ const FeedbackQuestionnaire = () => {
                 className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !experienceStatus.isValid ? 'border-destructive' : ''}`}
                 placeholder="Describe your experience with Cali..."
               />
-              <div className="mt-2 flex justify-between items-center text-sm">
-                <span className={`flex items-center gap-1 ${experienceStatus.isValid ? 'text-green-600' : showValidationErrors ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {!experienceStatus.isValid && showValidationErrors && <AlertCircle className="w-4 h-4" />}
-                  {experienceStatus.count} / {MIN_WORDS} words minimum
-                </span>
-                <span className="text-muted-foreground">
+              <FeedbackProgressBar 
+                wordCount={experienceStatus.count} 
+                minWords={MIN_WORDS} 
+                showValidationError={showValidationErrors && !experienceStatus.isValid}
+              />
+              <div className="flex justify-end">
+                <span className="text-sm text-foreground/60">
                   {voiceAssistantExperience.length} / {MAX_CHARS} characters
                 </span>
               </div>
@@ -341,22 +340,22 @@ const FeedbackQuestionnaire = () => {
           {/* Question 2: Communication Style and Formality */}
           <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !styleStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Communication Style (Formality)
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !styleStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
                 Thinking about the assistant's way of speaking, how would you describe its communication style?
               </label>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-foreground/70">
                 Please include:
               </p>
-              <ul className="text-sm text-muted-foreground list-disc list-inside ml-2 space-y-1">
+              <ul className="text-sm text-foreground/70 list-disc list-inside ml-2 space-y-1">
                 <li>Whether it felt more formal or more informal (and what gave you that impression)</li>
                 <li>How appropriate that style felt for this conversation</li>
                 <li>Whether the style affected your comfort, engagement, or trust</li>
               </ul>
             </div>
-            <div className="bg-accent/50 rounded-lg p-4">
+            <div className="bg-accent/50 rounded-lg p-4 space-y-3">
               <Textarea
                 value={communicationStyleFeedback}
                 onChange={(e) => {
@@ -372,12 +371,13 @@ const FeedbackQuestionnaire = () => {
                 className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !styleStatus.isValid ? 'border-destructive' : ''}`}
                 placeholder="Describe the assistant's communication style..."
               />
-              <div className="mt-2 flex justify-between items-center text-sm">
-                <span className={`flex items-center gap-1 ${styleStatus.isValid ? 'text-green-600' : showValidationErrors ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {!styleStatus.isValid && showValidationErrors && <AlertCircle className="w-4 h-4" />}
-                  {styleStatus.count} / {MIN_WORDS} words minimum
-                </span>
-                <span className="text-muted-foreground">
+              <FeedbackProgressBar 
+                wordCount={styleStatus.count} 
+                minWords={MIN_WORDS} 
+                showValidationError={showValidationErrors && !styleStatus.isValid}
+              />
+              <div className="flex justify-end">
+                <span className="text-sm text-foreground/60">
                   {communicationStyleFeedback.length} / {MAX_CHARS} characters
                 </span>
               </div>
@@ -386,7 +386,7 @@ const FeedbackQuestionnaire = () => {
 
           {/* Clarifier before Question 3 */}
           <div className="bg-muted/50 border border-border rounded-lg p-4">
-            <p className="text-sm text-muted-foreground italic text-center">
+            <p className="text-sm text-foreground/70 italic text-center">
               The following question is about the study setup and experience, not about the voice assistant itself.
             </p>
           </div>
@@ -394,20 +394,20 @@ const FeedbackQuestionnaire = () => {
           {/* Question 3: Experiment Feedback */}
           <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Feedback on the Experiment
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !experimentStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
                 Please share any feedback on the experiment itself, such as:
               </label>
-              <ul className="text-sm text-muted-foreground list-disc list-inside ml-2 space-y-1">
+              <ul className="text-sm text-foreground/70 list-disc list-inside ml-2 space-y-1">
                 <li>Clarity of instructions and tasks</li>
-                <li>Technical issues (audio quality, delays, pauses, voice changes, or glitches)</li>
+                <li>Technical issues with the study platform (navigation problems, issues replying to survey questions, page loading issues)</li>
                 <li>Flow and pacing of the study</li>
                 <li>Anything that could be improved for future participants</li>
               </ul>
             </div>
-            <div className="bg-accent/50 rounded-lg p-4">
+            <div className="bg-accent/50 rounded-lg p-4 space-y-3">
               <Textarea
                 value={experimentFeedback}
                 onChange={(e) => {
@@ -423,12 +423,13 @@ const FeedbackQuestionnaire = () => {
                 placeholder="Share your feedback on the experiment..."
                 className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !experimentStatus.isValid ? 'border-destructive' : ''}`}
               />
-              <div className="mt-2 flex justify-between items-center text-sm">
-                <span className={`flex items-center gap-1 ${experimentStatus.isValid ? 'text-green-600' : showValidationErrors ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {!experimentStatus.isValid && showValidationErrors && <AlertCircle className="w-4 h-4" />}
-                  {experimentStatus.count} / {MIN_WORDS} words minimum
-                </span>
-                <span className="text-muted-foreground">
+              <FeedbackProgressBar 
+                wordCount={experimentStatus.count} 
+                minWords={MIN_WORDS} 
+                showValidationError={showValidationErrors && !experimentStatus.isValid}
+              />
+              <div className="flex justify-end">
+                <span className="text-sm text-foreground/60">
                   {experimentFeedback.length} / {MAX_CHARS} characters
                 </span>
               </div>

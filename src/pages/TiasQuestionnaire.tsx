@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
 import { z } from "zod";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
+import { usePageTracking } from "@/hooks/usePageTracking";
 
 interface TIASItem {
   id: string;
@@ -65,7 +66,6 @@ const tiasResponseSchema = z.object({
   tias_10: z.number().min(1).max(7).int(),
   tias_11: z.number().min(1).max(7).int(),
   tias_12: z.number().min(1).max(7).int(),
-  // Position tracking
   tias_1_position: z.number().int(),
   tias_2_position: z.number().int(),
   tias_3_position: z.number().int(),
@@ -95,7 +95,12 @@ const TiasQuestionnaire = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
 
-  // Generate attention check question with random target value (1-7)
+  const { trackBackButtonClick } = usePageTracking({
+    pageName: "tias",
+    prolificId,
+    callId,
+  });
+
   const attentionCheck = useMemo((): TIASAttentionCheckItem => {
     const val = Math.floor(Math.random() * 7) + 1;
     return {
@@ -107,16 +112,12 @@ const TiasQuestionnaire = () => {
     };
   }, []);
 
-  // Randomize items and capture position data
   const { randomizedItems, positionMap } = useMemo(() => {
     const allItems: TIASQuestionItem[] = [...TIAS_ITEMS];
     const shuffled = allItems.sort(() => Math.random() - 0.5);
-
-    // Insert attention check at random position
     const acPosition = Math.floor(Math.random() * (shuffled.length + 1));
     shuffled.splice(acPosition, 0, attentionCheck);
 
-    // Build position map (1-indexed)
     const positions: Record<string, number> = {};
     shuffled.forEach((item, index) => {
       positions[item.key] = index + 1;
@@ -139,7 +140,6 @@ const TiasQuestionnaire = () => {
       sessionStorage.setItem("prolificId", finalProlificId);
       sessionStorage.setItem("flowStep", "4");
 
-      // Set default PETS data if missing (for researcher mode)
       if (!petsDataString) {
         const defaultPetsData = {
           e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
@@ -158,7 +158,6 @@ const TiasQuestionnaire = () => {
         sessionStorage.setItem("petsData", JSON.stringify(defaultPetsData));
       }
 
-      // Check if already submitted
       const { data: existingResponse, error } = await supabase
         .from("experiment_responses")
         .select("prolific_id")
@@ -183,6 +182,13 @@ const TiasQuestionnaire = () => {
     setResponses((prev) => ({ ...prev, [key]: parseInt(value) }));
   };
 
+  const handleBackClick = async () => {
+    await trackBackButtonClick({
+      answeredCount: Object.keys(responses).length,
+    });
+    navigate("/questionnaire/pets", { state: { callId } });
+  };
+
   const handleNext = () => {
     if (!isResearcherMode) {
       const allAnswered = randomizedItems.every((item) => responses[item.key] !== undefined && responses[item.key] > 0);
@@ -197,14 +203,12 @@ const TiasQuestionnaire = () => {
       }
     }
 
-    // Calculate TIAS score with reverse scoring for items 1-5
     const tiasScores = TIAS_ITEMS.map((item) => {
       const score = responses[item.key] || 4;
       return item.isReversed ? 8 - score : score;
     });
     const tias_total = tiasScores.reduce((a, b) => a + b, 0) / tiasScores.length;
 
-    // Prepare TIAS data with positions
     const tiasData: Record<string, number> = { tias_total };
     
     for (let i = 1; i <= 12; i++) {
@@ -213,7 +217,6 @@ const TiasQuestionnaire = () => {
       tiasData[`${key}_position`] = positionMap[key];
     }
 
-    // Add attention check data
     tiasData.tias_attention_check_1 = responses.tias_ac1 || 4;
     tiasData.tias_attention_check_1_expected = attentionCheck.expectedValue;
     tiasData.tias_attention_check_1_position = positionMap.tias_ac1;
@@ -298,7 +301,7 @@ const TiasQuestionnaire = () => {
           <div className="flex gap-4">
             <Button
               variant="outline"
-              onClick={() => navigate("/questionnaire/pets", { state: { callId } })}
+              onClick={handleBackClick}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
