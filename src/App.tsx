@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-ro
 import { supabase } from "@/integrations/supabase/client";
 import { ResearcherModeProvider, useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { ResearcherModeToggle } from "@/components/ResearcherModeToggle";
+import PageSkeleton from "@/components/PageSkeleton";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
@@ -92,7 +93,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <ResearcherModeToggle />
-          <Suspense fallback={<div>Loading...</div>}>
+          <Suspense fallback={<PageSkeleton />}>
             <Routes>
               <Route path="/" element={<ProlificId />} />
               <Route path="/consent" element={<Consent />} />
