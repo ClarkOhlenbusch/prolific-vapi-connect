@@ -19,7 +19,7 @@ const FeedbackQuestionnaire = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
-  const MAX_CHARS = 1000;
+  const MAX_CHARS = 2500;
   useEffect(() => {
     const checkAccess = async () => {
       // Load IDs from sessionStorage/state, no validation/redirects
