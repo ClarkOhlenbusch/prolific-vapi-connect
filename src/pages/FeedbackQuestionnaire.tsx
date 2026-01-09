@@ -97,7 +97,17 @@ const FeedbackQuestionnaire = () => {
         );
       }
 
-      if (!intentionDataString) {
+      // Check if intentionData exists AND has valid non-null values
+      const needsIntentionDefaults = !intentionDataString || (() => {
+        try {
+          const parsed = JSON.parse(intentionDataString);
+          return parsed.intention_1 === null || parsed.intention_2 === null;
+        } catch {
+          return true;
+        }
+      })();
+
+      if (needsIntentionDefaults) {
         sessionStorage.setItem(
           "intentionData",
           JSON.stringify({
