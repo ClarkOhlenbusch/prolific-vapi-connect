@@ -84,6 +84,7 @@ export type Database = {
           attention_check_1_position: number | null
           call_attempt_number: number
           call_id: string
+          communication_style_feedback: string
           created_at: string
           e1: number
           e1_position: number
@@ -150,6 +151,7 @@ export type Database = {
           attention_check_1_position?: number | null
           call_attempt_number?: number
           call_id: string
+          communication_style_feedback?: string
           created_at?: string
           e1: number
           e1_position: number
@@ -216,6 +218,7 @@ export type Database = {
           attention_check_1_position?: number | null
           call_attempt_number?: number
           call_id?: string
+          communication_style_feedback?: string
           created_at?: string
           e1?: number
           e1_position?: number
