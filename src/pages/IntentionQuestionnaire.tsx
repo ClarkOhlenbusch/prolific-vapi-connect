@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
+import { usePageTracking } from "@/hooks/usePageTracking";
 import { toast } from "sonner";
 
 interface IntentionData {
@@ -25,6 +26,12 @@ const IntentionQuestionnaire = () => {
   const [intention2, setIntention2] = useState<number | null>(null);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
 
+  const { trackBackButtonClick } = usePageTracking({
+    pageName: "intention",
+    prolificId,
+    callId,
+  });
+
   const questions = [
     "If available, I intend to start using voice assistants like Cali within the next month.",
     "If available, in the next months, I plan to experiment or regularly use voice assistants like Cali.",
@@ -33,7 +40,6 @@ const IntentionQuestionnaire = () => {
   const scaleLabels = ["Not at all", "Slightly", "Somewhat", "Moderately", "Quite a bit", "Very", "Extremely"];
 
   useEffect(() => {
-    // Load IDs from sessionStorage/state, no validation/redirects
     const storedId = sessionStorage.getItem("prolificId") || location.state?.prolificId;
     const stateCallId = location.state?.callId;
     const petsDataString = sessionStorage.getItem("petsData");
@@ -48,21 +54,12 @@ const IntentionQuestionnaire = () => {
     sessionStorage.setItem("callId", finalCallId);
     sessionStorage.setItem("flowStep", "4");
 
-    // Set default PETS data if missing
     if (!petsDataString) {
       sessionStorage.setItem(
         "petsData",
         JSON.stringify({
-          e1: 50,
-          e2: 50,
-          e3: 50,
-          e4: 50,
-          e5: 50,
-          e6: 50,
-          u1: 50,
-          u2: 50,
-          u3: 50,
-          u4: 50,
+          e1: 50, e2: 50, e3: 50, e4: 50, e5: 50, e6: 50,
+          u1: 50, u2: 50, u3: 50, u4: 50,
           prolific_id: finalProlificId,
           call_id: finalCallId,
           pets_er: 50,
@@ -72,23 +69,12 @@ const IntentionQuestionnaire = () => {
       );
     }
 
-    // Set default TIAS data if missing
     if (!tiasDataString) {
       sessionStorage.setItem(
         "tiasData",
         JSON.stringify({
-          tias_1: 4,
-          tias_2: 4,
-          tias_3: 4,
-          tias_4: 4,
-          tias_5: 4,
-          tias_6: 4,
-          tias_7: 4,
-          tias_8: 4,
-          tias_9: 4,
-          tias_10: 4,
-          tias_11: 4,
-          tias_12: 4,
+          tias_1: 4, tias_2: 4, tias_3: 4, tias_4: 4, tias_5: 4, tias_6: 4,
+          tias_7: 4, tias_8: 4, tias_9: 4, tias_10: 4, tias_11: 4, tias_12: 4,
           tias_total: 4,
         }),
       );
@@ -118,7 +104,11 @@ const IntentionQuestionnaire = () => {
     });
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
+    await trackBackButtonClick({
+      intention1,
+      intention2,
+    });
     navigate("/questionnaire/tias", {
       state: { prolificId, callId },
     });

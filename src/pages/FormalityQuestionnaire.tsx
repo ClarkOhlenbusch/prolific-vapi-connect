@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -8,36 +7,18 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
+import { usePageTracking } from "@/hooks/usePageTracking";
+
 const SCALE_LABELS = [
-  {
-    value: 1,
-    label: "Extremely Informal",
-  },
-  {
-    value: 2,
-    label: "Very Informal",
-  },
-  {
-    value: 3,
-    label: "Mostly Informal",
-  },
-  {
-    value: 4,
-    label: "Neutral",
-  },
-  {
-    value: 5,
-    label: "Mostly Formal",
-  },
-  {
-    value: 6,
-    label: "Very Formal",
-  },
-  {
-    value: 7,
-    label: "Extremely Formal",
-  },
+  { value: 1, label: "Extremely Informal" },
+  { value: 2, label: "Very Informal" },
+  { value: 3, label: "Mostly Informal" },
+  { value: 4, label: "Neutral" },
+  { value: 5, label: "Mostly Formal" },
+  { value: 6, label: "Very Formal" },
+  { value: 7, label: "Extremely Formal" },
 ];
+
 const FormalityQuestionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,9 +29,15 @@ const FormalityQuestionnaire = () => {
   const [formalityRating, setFormalityRating] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const { trackBackButtonClick } = usePageTracking({
+    pageName: "formality",
+    prolificId,
+    callId,
+  });
+
   useEffect(() => {
     const checkAccess = async () => {
-      // Load IDs from sessionStorage/state, no validation/redirects
       const storedId = sessionStorage.getItem("prolificId");
       const stateCallId = location.state?.callId;
 
@@ -66,8 +53,15 @@ const FormalityQuestionnaire = () => {
     };
     checkAccess();
   }, [navigate, location, toast, isResearcherMode]);
+
+  const handleBackClick = async () => {
+    await trackBackButtonClick({
+      formalityRating,
+    });
+    navigate("/voice-conversation", { state: { callId } });
+  };
+
   const handleContinue = () => {
-    // Skip validation if researcher mode is enabled
     if (!isResearcherMode) {
       if (formalityRating === null) {
         toast({
@@ -79,19 +73,14 @@ const FormalityQuestionnaire = () => {
       }
     }
 
-    // Store formality data in sessionStorage
     const formalityData = {
       formality: formalityRating || 4,
     };
     sessionStorage.setItem("formalityData", JSON.stringify(formalityData));
 
-    // Navigate to PETS questionnaire
-    navigate("/questionnaire/pets", {
-      state: {
-        callId,
-      },
-    });
+    navigate("/questionnaire/pets", { state: { callId } });
   };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary">
@@ -103,6 +92,7 @@ const FormalityQuestionnaire = () => {
       </div>
     );
   }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-2xl shadow-xl border-border">
@@ -164,13 +154,7 @@ const FormalityQuestionnaire = () => {
           <div className="flex gap-4">
             <Button
               variant="outline"
-              onClick={() =>
-                navigate("/voice-conversation", {
-                  state: {
-                    callId,
-                  },
-                })
-              }
+              onClick={handleBackClick}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -190,4 +174,5 @@ const FormalityQuestionnaire = () => {
     </div>
   );
 };
+
 export default FormalityQuestionnaire;
