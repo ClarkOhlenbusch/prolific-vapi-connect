@@ -191,6 +191,10 @@ const VoiceConversation = () => {
           prolificId: prolificId,
           sessionToken: sessionToken,
         },
+        metadata: {
+          prolificId: prolificId,
+          researcherMode: isResearcherMode,
+        },
       });
 
       // Store the call ID from the Vapi SDK
