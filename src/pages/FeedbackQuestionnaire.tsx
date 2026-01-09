@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, AlertCircle } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
+
 const FeedbackQuestionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -14,12 +15,25 @@ const FeedbackQuestionnaire = () => {
   const { isResearcherMode } = useResearcherMode();
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
-  const [voiceAssistantFeedback, setVoiceAssistantFeedback] = useState("");
+  const [voiceAssistantExperience, setVoiceAssistantExperience] = useState("");
+  const [communicationStyleFeedback, setCommunicationStyleFeedback] = useState("");
   const [experimentFeedback, setExperimentFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
+  
   const MAX_CHARS = 2500;
+  const MIN_WORDS = 200;
+
+  const countWords = (text: string): number => {
+    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+  };
+
+  const getWordCountStatus = (text: string): { count: number; isValid: boolean } => {
+    const count = countWords(text);
+    return { count, isValid: count >= MIN_WORDS };
+  };
+
   useEffect(() => {
     const checkAccess = async () => {
       // Load IDs from sessionStorage/state, no validation/redirects
@@ -101,21 +115,45 @@ const FeedbackQuestionnaire = () => {
     };
     checkAccess();
   }, [navigate, location, toast, isResearcherMode]);
+
+  const handleBackClick = () => {
+    // Log back button click
+    console.log("[FeedbackQuestionnaire] Back button clicked", {
+      prolificId,
+      callId,
+      timestamp: new Date().toISOString(),
+      voiceAssistantExperienceWordCount: countWords(voiceAssistantExperience),
+      communicationStyleWordCount: countWords(communicationStyleFeedback),
+      experimentFeedbackWordCount: countWords(experimentFeedback),
+    });
+    
+    navigate("/questionnaire/intention", {
+      state: {
+        callId,
+      },
+    });
+  };
+
   const handleSubmit = async () => {
+    const experienceStatus = getWordCountStatus(voiceAssistantExperience);
+    const styleStatus = getWordCountStatus(communicationStyleFeedback);
+    const experimentStatus = getWordCountStatus(experimentFeedback);
+
     // Skip validation if researcher mode is enabled
     if (!isResearcherMode) {
-      // Validate that both feedback fields are filled
-      if (!voiceAssistantFeedback.trim() || !experimentFeedback.trim()) {
+      // Validate that all feedback fields meet minimum word count
+      if (!experienceStatus.isValid || !styleStatus.isValid || !experimentStatus.isValid) {
         setShowValidationErrors(true);
         toast({
-          title: "Incomplete",
-          description: "Please answer both highlighted feedback questions before submitting.",
+          title: "Minimum Word Count Required",
+          description: `Please write at least ${MIN_WORDS} words for each question before submitting.`,
           variant: "destructive",
           duration: 3000,
         });
         return;
       }
     }
+
     if (!prolificId || !callId) {
       toast({
         title: "Error",
@@ -156,10 +194,13 @@ const FeedbackQuestionnaire = () => {
       const intentionData = JSON.parse(intentionDataString);
       const formalityData = JSON.parse(formalityDataString);
 
+      // Combine voice assistant experience and communication style feedback
+      const combinedVoiceAssistantFeedback = `[Experience with Voice Assistant]\n${voiceAssistantExperience}\n\n[Communication Style and Formality]\n${communicationStyleFeedback}`;
+
       // Create feedback data object
       const feedbackPayload = {
         formality: formalityData.formality,
-        voice_assistant_feedback: voiceAssistantFeedback || "Not provided",
+        voice_assistant_feedback: combinedVoiceAssistantFeedback || "Not provided",
         experiment_feedback: experimentFeedback || "Not provided",
       };
 
@@ -224,6 +265,7 @@ const FeedbackQuestionnaire = () => {
       setIsSubmitting(false);
     }
   };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary">
@@ -235,55 +277,136 @@ const FeedbackQuestionnaire = () => {
       </div>
     );
   }
+
+  const experienceStatus = getWordCountStatus(voiceAssistantExperience);
+  const styleStatus = getWordCountStatus(communicationStyleFeedback);
+  const experimentStatus = getWordCountStatus(experimentFeedback);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
-      <Card className="w-full max-w-2xl shadow-xl border-border">
+      <Card className="w-full max-w-3xl shadow-xl border-border">
         <CardHeader className="space-y-3">
           <CardTitle className="text-2xl text-center">Final Feedback</CardTitle>
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Voice Assistant Experience */}
-          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !voiceAssistantFeedback.trim() ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
-            <p className="text-base text-foreground mb-2 text-center">
-              During this experiment, you had a conversation with Cali.
-            </p>
-            <label className={`text-lg font-medium block ${showValidationErrors && !voiceAssistantFeedback.trim() ? 'text-destructive' : 'text-foreground'}`}>
-              Please describe your experience when talking to Cali.
-              {showValidationErrors && !voiceAssistantFeedback.trim() && <span className="ml-2 text-xs font-normal">(Please answer this question)</span>}
-            </label>
+        <CardContent className="space-y-8">
+          {/* Question 1: Voice Assistant Experience */}
+          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experienceStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Experience with the Voice Assistant
+              </p>
+              <label className={`text-lg font-medium block ${showValidationErrors && !experienceStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
+                Please describe your experience interacting with the voice assistant (Cali) during the conversation.
+              </label>
+              <p className="text-sm text-muted-foreground">
+                You may consider aspects such as:
+              </p>
+              <ul className="text-sm text-muted-foreground list-disc list-inside ml-2 space-y-1">
+                <li>How the assistant communicated overall</li>
+                <li>How well it understood and responded to you</li>
+                <li>Anything that stood out positively or negatively during the interaction</li>
+              </ul>
+            </div>
             <div className="bg-accent/50 rounded-lg p-4">
               <Textarea
-                value={voiceAssistantFeedback}
+                value={voiceAssistantExperience}
                 onChange={(e) => {
                   if (e.target.value.length <= MAX_CHARS) {
-                    setVoiceAssistantFeedback(e.target.value);
+                    setVoiceAssistantExperience(e.target.value);
                   }
                 }}
                 onKeyDown={(e) => {
-                  // Ensure spaces work
                   if (e.key === " ") {
                     e.stopPropagation();
                   }
                 }}
-                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !voiceAssistantFeedback.trim() ? 'border-destructive' : ''}`}
-                placeholder="Share your thoughts about Cali..."
+                className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !experienceStatus.isValid ? 'border-destructive' : ''}`}
+                placeholder="Describe your experience with Cali..."
               />
-              <div className="mt-2 text-sm text-muted-foreground text-right">
-                {voiceAssistantFeedback.length} / {MAX_CHARS} characters
+              <div className="mt-2 flex justify-between items-center text-sm">
+                <span className={`flex items-center gap-1 ${experienceStatus.isValid ? 'text-green-600' : showValidationErrors ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {!experienceStatus.isValid && showValidationErrors && <AlertCircle className="w-4 h-4" />}
+                  {experienceStatus.count} / {MIN_WORDS} words minimum
+                </span>
+                <span className="text-muted-foreground">
+                  {voiceAssistantExperience.length} / {MAX_CHARS} characters
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Overall Experiment Feedback */}
-          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentFeedback.trim() ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
-            <label className={`text-lg font-medium block ${showValidationErrors && !experimentFeedback.trim() ? 'text-destructive' : 'text-foreground'}`}>
-              How was your overall experience doing the experiment? Any feedback, comments, or questions on the
-              experiment?
-              {showValidationErrors && !experimentFeedback.trim() && <span className="ml-2 text-xs font-normal">(Please answer this question)</span>}
-            </label>
+          {/* Question 2: Communication Style and Formality */}
+          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !styleStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Communication Style (Formality)
+              </p>
+              <label className={`text-lg font-medium block ${showValidationErrors && !styleStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
+                Thinking about the assistant's way of speaking, how would you describe its communication style?
+              </label>
+              <p className="text-sm text-muted-foreground">
+                Please include:
+              </p>
+              <ul className="text-sm text-muted-foreground list-disc list-inside ml-2 space-y-1">
+                <li>Whether it felt more formal or more informal (and what gave you that impression)</li>
+                <li>How appropriate that style felt for this conversation</li>
+                <li>Whether the style affected your comfort, engagement, or trust</li>
+              </ul>
+            </div>
+            <div className="bg-accent/50 rounded-lg p-4">
+              <Textarea
+                value={communicationStyleFeedback}
+                onChange={(e) => {
+                  if (e.target.value.length <= MAX_CHARS) {
+                    setCommunicationStyleFeedback(e.target.value);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === " ") {
+                    e.stopPropagation();
+                  }
+                }}
+                className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !styleStatus.isValid ? 'border-destructive' : ''}`}
+                placeholder="Describe the assistant's communication style..."
+              />
+              <div className="mt-2 flex justify-between items-center text-sm">
+                <span className={`flex items-center gap-1 ${styleStatus.isValid ? 'text-green-600' : showValidationErrors ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {!styleStatus.isValid && showValidationErrors && <AlertCircle className="w-4 h-4" />}
+                  {styleStatus.count} / {MIN_WORDS} words minimum
+                </span>
+                <span className="text-muted-foreground">
+                  {communicationStyleFeedback.length} / {MAX_CHARS} characters
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Clarifier before Question 3 */}
+          <div className="bg-muted/50 border border-border rounded-lg p-4">
+            <p className="text-sm text-muted-foreground italic text-center">
+              The following question is about the study setup and experience, not about the voice assistant itself.
+            </p>
+          </div>
+
+          {/* Question 3: Experiment Feedback */}
+          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Feedback on the Experiment
+              </p>
+              <label className={`text-lg font-medium block ${showValidationErrors && !experimentStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
+                Please share any feedback on the experiment itself, such as:
+              </label>
+              <ul className="text-sm text-muted-foreground list-disc list-inside ml-2 space-y-1">
+                <li>Clarity of instructions and tasks</li>
+                <li>Technical issues (audio quality, delays, pauses, voice changes, or glitches)</li>
+                <li>Flow and pacing of the study</li>
+                <li>Anything that could be improved for future participants</li>
+              </ul>
+            </div>
             <div className="bg-accent/50 rounded-lg p-4">
               <Textarea
                 value={experimentFeedback}
@@ -293,16 +416,21 @@ const FeedbackQuestionnaire = () => {
                   }
                 }}
                 onKeyDown={(e) => {
-                  // Ensure spaces work
                   if (e.key === " ") {
                     e.stopPropagation();
                   }
                 }}
-                placeholder="Share your thoughts about the experiment..."
-                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !experimentFeedback.trim() ? 'border-destructive' : ''}`}
+                placeholder="Share your feedback on the experiment..."
+                className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !experimentStatus.isValid ? 'border-destructive' : ''}`}
               />
-              <div className="mt-2 text-sm text-muted-foreground text-right">
-                {experimentFeedback.length} / {MAX_CHARS} characters
+              <div className="mt-2 flex justify-between items-center text-sm">
+                <span className={`flex items-center gap-1 ${experimentStatus.isValid ? 'text-green-600' : showValidationErrors ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {!experimentStatus.isValid && showValidationErrors && <AlertCircle className="w-4 h-4" />}
+                  {experimentStatus.count} / {MIN_WORDS} words minimum
+                </span>
+                <span className="text-muted-foreground">
+                  {experimentFeedback.length} / {MAX_CHARS} characters
+                </span>
               </div>
             </div>
           </div>
@@ -310,13 +438,7 @@ const FeedbackQuestionnaire = () => {
           <div className="flex gap-4">
             <Button
               variant="outline"
-              onClick={() =>
-                navigate("/questionnaire/intention", {
-                  state: {
-                    callId,
-                  },
-                })
-              }
+              onClick={handleBackClick}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -336,4 +458,5 @@ const FeedbackQuestionnaire = () => {
     </div>
   );
 };
+
 export default FeedbackQuestionnaire;
