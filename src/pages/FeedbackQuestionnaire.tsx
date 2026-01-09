@@ -293,16 +293,16 @@ const FeedbackQuestionnaire = () => {
           <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experienceStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
-                Experience with the Voice Assistant
+                Experience with Cali
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !experienceStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
-                Please describe your experience interacting with the voice assistant (Cali) during the conversation.
+                Please describe your experience interacting with Cali during the conversation.
               </label>
               <p className="text-sm text-foreground/70">
                 You may consider aspects such as:
               </p>
               <ul className="text-sm text-foreground/70 list-disc list-inside ml-2 space-y-1">
-                <li>How the assistant communicated overall</li>
+                <li>How Cali communicated overall</li>
                 <li>How well it understood and responded to you</li>
                 <li>Anything that stood out positively or negatively during the interaction</li>
                 <li>Any technical issues during the call (audio quality, delays, pauses, voice changes, or glitches)</li>
@@ -339,7 +339,7 @@ const FeedbackQuestionnaire = () => {
                 Communication Style (Formality)
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !styleStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
-                Thinking about the assistant's way of speaking, how would you describe its communication style?
+                Thinking about Cali's way of speaking, how would you describe its communication style?
               </label>
               <p className="text-sm text-foreground/70">
                 Please include:
@@ -364,7 +364,7 @@ const FeedbackQuestionnaire = () => {
                   }
                 }}
                 className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !styleStatus.isValid ? 'border-destructive' : ''}`}
-                placeholder="Describe the assistant's communication style..."
+                placeholder="Describe Cali's communication style..."
               />
               <FeedbackProgressBar 
                 wordCount={styleStatus.count} 
@@ -381,7 +381,7 @@ const FeedbackQuestionnaire = () => {
                 Feedback on the Experiment
               </p>
               <p className="text-xs text-foreground/60 italic -mt-1">
-                This question is about the study setup and experience, not about the voice assistant itself.
+                This question is about the study setup and experience, not about Cali.
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !experimentStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
                 Please share any feedback on the experiment itself, such as:
