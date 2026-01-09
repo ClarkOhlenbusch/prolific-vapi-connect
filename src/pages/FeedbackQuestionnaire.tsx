@@ -201,11 +201,10 @@ const FeedbackQuestionnaire = () => {
       const intentionData = JSON.parse(intentionDataString);
       const formalityData = JSON.parse(formalityDataString);
 
-      const combinedVoiceAssistantFeedback = `[Experience with Voice Assistant]\n${voiceAssistantExperience}\n\n[Communication Style and Formality]\n${communicationStyleFeedback}`;
-
       const feedbackPayload = {
         formality: formalityData.formality,
-        voice_assistant_feedback: combinedVoiceAssistantFeedback || "Not provided",
+        voice_assistant_feedback: voiceAssistantExperience || "Not provided",
+        communication_style_feedback: communicationStyleFeedback || "Not provided",
         experiment_feedback: experimentFeedback || "Not provided",
       };
 
