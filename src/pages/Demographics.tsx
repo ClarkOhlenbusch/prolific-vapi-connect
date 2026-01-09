@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 
 const Demographics = () => {
@@ -28,15 +27,6 @@ const Demographics = () => {
     ethnicityOther: '',
     native_english: ''
   });
-
-  const birthYears = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    const years: number[] = [];
-    for (let year = currentYear - 18; year >= 1920; year--) {
-      years.push(year);
-    }
-    return years;
-  }, []);
 
   const handleEthnicityChange = (option: string, checked: boolean) => {
     setFormData(prev => ({
@@ -128,17 +118,17 @@ const Demographics = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-3">
-              <Label className="text-base font-semibold">What is your year of birth?</Label>
-              <Select value={formData.yearOfBirth} onValueChange={(value) => setFormData(prev => ({ ...prev, yearOfBirth: value }))}>
-                <SelectTrigger className="max-w-[200px]">
-                  <SelectValue placeholder="Select year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {birthYears.map(year => (
-                    <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="yearOfBirth" className="text-base font-semibold">What is your year of birth?</Label>
+              <Input
+                id="yearOfBirth"
+                type="number"
+                min="1920"
+                max={new Date().getFullYear() - 18}
+                placeholder="e.g. 1990"
+                value={formData.yearOfBirth}
+                onChange={(e) => setFormData(prev => ({ ...prev, yearOfBirth: e.target.value }))}
+                className="max-w-[200px]"
+              />
             </div>
 
             <div className="space-y-3">
