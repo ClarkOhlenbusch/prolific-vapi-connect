@@ -79,8 +79,9 @@ const intentionDataSchema = z.object({
 // Validation schema for feedback data
 const feedbackDataSchema = z.object({
   formality: z.number().min(1).max(7),
-  voice_assistant_feedback: z.string().min(1).max(1000),
-  experiment_feedback: z.string().min(1).max(1000),
+  voice_assistant_feedback: z.string().min(1).max(2500),
+  communication_style_feedback: z.string().min(1).max(2500),
+  experiment_feedback: z.string().min(1).max(2500),
 });
 
 Deno.serve(async (req) => {
@@ -285,6 +286,7 @@ Deno.serve(async (req) => {
       // Formality and feedback
       formality: validatedFeedback.formality,
       voice_assistant_feedback: validatedFeedback.voice_assistant_feedback,
+      communication_style_feedback: validatedFeedback.communication_style_feedback,
       experiment_feedback: validatedFeedback.experiment_feedback,
     };
 
