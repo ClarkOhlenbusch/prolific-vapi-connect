@@ -329,11 +329,6 @@ const FeedbackQuestionnaire = () => {
                 minWords={MIN_WORDS} 
                 showValidationError={showValidationErrors && !experienceStatus.isValid}
               />
-              <div className="flex justify-end">
-                <span className="text-sm text-foreground/60">
-                  {voiceAssistantExperience.length} / {MAX_CHARS} characters
-                </span>
-              </div>
             </div>
           </div>
 
@@ -376,11 +371,6 @@ const FeedbackQuestionnaire = () => {
                 minWords={MIN_WORDS} 
                 showValidationError={showValidationErrors && !styleStatus.isValid}
               />
-              <div className="flex justify-end">
-                <span className="text-sm text-foreground/60">
-                  {communicationStyleFeedback.length} / {MAX_CHARS} characters
-                </span>
-              </div>
             </div>
           </div>
 
@@ -424,11 +414,6 @@ const FeedbackQuestionnaire = () => {
                 minWords={MIN_WORDS} 
                 showValidationError={showValidationErrors && !experimentStatus.isValid}
               />
-              <div className="flex justify-end">
-                <span className="text-sm text-foreground/60">
-                  {experimentFeedback.length} / {MAX_CHARS} characters
-                </span>
-              </div>
             </div>
           </div>
 
