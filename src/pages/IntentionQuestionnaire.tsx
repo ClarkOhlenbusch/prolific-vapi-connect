@@ -45,6 +45,7 @@ const IntentionQuestionnaire = () => {
     const stateCallId = location.state?.callId;
     const petsDataString = sessionStorage.getItem("petsData");
     const tiasDataString = sessionStorage.getItem("tiasData");
+    const intentionDataString = sessionStorage.getItem("intentionData");
 
     const finalProlificId = storedId || "RESEARCHER_MODE";
     const finalCallId = stateCallId || "researcher-call-id";
@@ -54,6 +55,21 @@ const IntentionQuestionnaire = () => {
     sessionStorage.setItem("prolificId", finalProlificId);
     sessionStorage.setItem("callId", finalCallId);
     sessionStorage.setItem("flowStep", "4");
+
+    // Restore previously saved intention data if available
+    if (intentionDataString) {
+      try {
+        const intentionData = JSON.parse(intentionDataString);
+        if (intentionData.intention_1 !== null && intentionData.intention_1 !== undefined) {
+          setIntention1(intentionData.intention_1);
+        }
+        if (intentionData.intention_2 !== null && intentionData.intention_2 !== undefined) {
+          setIntention2(intentionData.intention_2);
+        }
+      } catch (e) {
+        console.error("Error parsing intentionData:", e);
+      }
+    }
 
     if (!petsDataString) {
       sessionStorage.setItem(
