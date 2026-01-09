@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
+import { ExperimentProgress } from '@/components/ExperimentProgress';
 
 const VoiceAssistantFamiliarity = () => {
   const [searchParams] = useSearchParams();
@@ -83,6 +84,7 @@ const VoiceAssistantFamiliarity = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-2xl shadow-xl border-border">
         <CardHeader className="space-y-3">
+          <ExperimentProgress />
           <CardTitle className="text-2xl text-center">Voice Assistant Familiarity</CardTitle>
           <CardDescription className="text-center">
             Please answer the following questions about your experience with voice assistants.
