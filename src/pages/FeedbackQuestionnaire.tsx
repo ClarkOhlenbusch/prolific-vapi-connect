@@ -303,7 +303,7 @@ const FeedbackQuestionnaire = () => {
               </p>
               <ul className="text-sm text-foreground/70 list-disc list-inside ml-2 space-y-1">
                 <li>How Cali communicated overall</li>
-                <li>How well it understood and responded to you</li>
+                <li>How well Cali understood and responded to you</li>
                 <li>Anything that stood out positively or negatively during the interaction</li>
                 <li>Any technical issues during the call (audio quality, delays, pauses, voice changes, or glitches)</li>
               </ul>
@@ -339,13 +339,13 @@ const FeedbackQuestionnaire = () => {
                 Communication Style (Formality)
               </p>
               <label className={`text-lg font-medium block ${showValidationErrors && !styleStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
-                Thinking about Cali's way of speaking, how would you describe its communication style?
+                Thinking about Cali's way of speaking, how would you describe Cali's communication style?
               </label>
               <p className="text-sm text-foreground/70">
                 Please include:
               </p>
               <ul className="text-sm text-foreground/70 list-disc list-inside ml-2 space-y-1">
-                <li>Whether it felt more formal or more informal (and what gave you that impression)</li>
+                <li>Whether Cali felt more formal or more informal (and what gave you that impression)</li>
                 <li>How appropriate that style felt for this conversation</li>
                 <li>Whether the style affected your comfort, engagement, or trust</li>
               </ul>
