@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.update-admin-password]
 verify_jwt = false
+
+[functions.get-experiment-config]
+verify_jwt = false

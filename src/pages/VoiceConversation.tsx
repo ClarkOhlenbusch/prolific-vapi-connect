@@ -30,6 +30,8 @@ const VoiceConversation = () => {
   const [elapsedTime, setElapsedTime] = useState(0); // Display timer counting up
   const [isConnecting, setIsConnecting] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [assistantType, setAssistantType] = useState<string | null>(null);
+  const [assistantId, setAssistantId] = useState<string | null>(null);
   const vapiRef = useRef<Vapi | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
@@ -48,6 +50,30 @@ const VoiceConversation = () => {
     if (!localStorage.getItem("sessionToken")) {
       localStorage.setItem("sessionToken", "00000000-0000-0000-0000-000000000000");
     }
+
+    // Fetch the active assistant configuration
+    const fetchAssistantConfig = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("get-experiment-config");
+        if (error) {
+          console.error("Failed to fetch experiment config:", error);
+          // Fallback to env variable
+          setAssistantId(import.meta.env.VITE_VAPI_ASSISTANT_ID);
+          setAssistantType("unknown");
+          return;
+        }
+        setAssistantId(data.assistantId);
+        setAssistantType(data.assistantType);
+        // Store for questionnaire submission
+        sessionStorage.setItem("assistantType", data.assistantType);
+      } catch (error) {
+        console.error("Error fetching assistant config:", error);
+        setAssistantId(import.meta.env.VITE_VAPI_ASSISTANT_ID);
+        setAssistantType("unknown");
+      }
+    };
+
+    fetchAssistantConfig();
   }, []);
 
   // Initialize Vapi SDK - only once when component mounts
@@ -187,8 +213,11 @@ const VoiceConversation = () => {
         return;
       }
 
+      // Get the assistant ID (from config or fallback to env)
+      const activeAssistantId = assistantId || import.meta.env.VITE_VAPI_ASSISTANT_ID;
+      
       // Start the web call using Vapi SDK
-      const call = await vapiRef.current.start(import.meta.env.VITE_VAPI_ASSISTANT_ID, {
+      const call = await vapiRef.current.start(activeAssistantId, {
         variableValues: {
           prolificId: prolificId,
           sessionToken: sessionToken,
@@ -196,6 +225,7 @@ const VoiceConversation = () => {
         metadata: {
           prolificId: prolificId,
           researcherMode: isResearcherMode,
+          assistantType: assistantType || "unknown",
         },
       });
 
