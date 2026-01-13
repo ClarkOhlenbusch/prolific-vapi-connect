@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import {
@@ -18,7 +18,7 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
-  Eye
+  ChevronDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -52,7 +52,26 @@ export const ExperimentResponsesTable = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewItem, setViewItem] = useState<ExperimentResponse | null>(null);
+  const [showScrollIndicator, setShowScrollIndicator] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const { isSuperAdmin, user } = useResearcherAuth();
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement;
+    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 20;
+    setShowScrollIndicator(!isAtBottom);
+  };
+
+  const resetScrollIndicator = () => {
+    setShowScrollIndicator(true);
+    // Check if content is actually scrollable
+    setTimeout(() => {
+      if (scrollRef.current) {
+        const isScrollable = scrollRef.current.scrollHeight > scrollRef.current.clientHeight;
+        setShowScrollIndicator(isScrollable);
+      }
+    }, 100);
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -200,45 +219,46 @@ export const ExperimentResponsesTable = () => {
               <TableHead>PETS Total</TableHead>
               <TableHead>TIAS Total</TableHead>
               <TableHead>Formality</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isSuperAdmin ? 6 : 5} className="text-center py-8 text-muted-foreground">
                   No responses found
                 </TableCell>
               </TableRow>
             ) : (
               data.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow 
+                  key={row.id}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => {
+                    setViewItem(row);
+                    resetScrollIndicator();
+                  }}
+                >
                   <TableCell className="font-mono text-sm">{row.prolific_id}</TableCell>
                   <TableCell>{new Date(row.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>{row.pets_total}</TableCell>
                   <TableCell>{row.tias_total ?? 'N/A'}</TableCell>
                   <TableCell>{row.formality}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  {isSuperAdmin && (
+                    <TableCell className="text-right">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setViewItem(row)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteId(row.id);
+                        }}
+                        className="text-destructive hover:text-destructive"
                       >
-                        <Eye className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                      {isSuperAdmin && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteId(row.id)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             )}
@@ -296,91 +316,114 @@ export const ExperimentResponsesTable = () => {
           <DialogHeader>
             <DialogTitle>Response Details</DialogTitle>
           </DialogHeader>
-          <ScrollArea className="max-h-[60vh]">
-            {viewItem && (
-              <div className="space-y-4 p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Prolific ID</label>
-                    <p className="font-mono">{viewItem.prolific_id}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Call ID</label>
-                    <p className="font-mono text-sm">{viewItem.call_id}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Created At</label>
-                    <p>{new Date(viewItem.created_at).toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Call Attempt</label>
-                    <p>{viewItem.call_attempt_number}</p>
-                  </div>
-                </div>
-                
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">PETS Scores</h4>
-                  <div className="grid grid-cols-3 gap-4">
+          <div className="relative">
+            <div 
+              ref={scrollRef}
+              className="max-h-[60vh] overflow-y-auto pr-2"
+              onScroll={handleScroll}
+            >
+              {viewItem && (
+                <div className="space-y-4 p-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm text-muted-foreground">Total</label>
-                      <p className="font-bold">{viewItem.pets_total}</p>
+                      <label className="text-sm font-medium text-muted-foreground">Prolific ID</label>
+                      <p className="font-mono">{viewItem.prolific_id}</p>
                     </div>
                     <div>
-                      <label className="text-sm text-muted-foreground">ER</label>
-                      <p>{viewItem.pets_er}</p>
+                      <label className="text-sm font-medium text-muted-foreground">Call ID</label>
+                      <p className="font-mono text-sm">{viewItem.call_id}</p>
                     </div>
                     <div>
-                      <label className="text-sm text-muted-foreground">UT</label>
-                      <p>{viewItem.pets_ut}</p>
+                      <label className="text-sm font-medium text-muted-foreground">Created At</label>
+                      <p>{new Date(viewItem.created_at).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Call Attempt</label>
+                      <p>{viewItem.call_attempt_number}</p>
                     </div>
                   </div>
-                </div>
-
-                {viewItem.tias_total !== null && (
+                  
                   <div className="border-t pt-4">
-                    <h4 className="font-medium mb-2">TIAS Score</h4>
-                    <p className="font-bold">{viewItem.tias_total}</p>
+                    <h4 className="font-medium mb-2">PETS Scores</h4>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-sm text-muted-foreground">Total</label>
+                        <p className="font-bold">{viewItem.pets_total}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground">ER</label>
+                        <p>{viewItem.pets_er}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground">UT</label>
+                        <p>{viewItem.pets_ut}</p>
+                      </div>
+                    </div>
                   </div>
-                )}
 
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">Formality & Intention</h4>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-sm text-muted-foreground">Formality</label>
-                      <p>{viewItem.formality}</p>
+                  {viewItem.tias_total !== null && (
+                    <div className="border-t pt-4">
+                      <h4 className="font-medium mb-2">TIAS Score</h4>
+                      <p className="font-bold">{viewItem.tias_total}</p>
                     </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground">Intention 1</label>
-                      <p>{viewItem.intention_1}</p>
+                  )}
+
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-2">Formality & Intention</h4>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-sm text-muted-foreground">Formality</label>
+                        <p>{viewItem.formality}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground">Intention 1</label>
+                        <p>{viewItem.intention_1}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground">Intention 2</label>
+                        <p>{viewItem.intention_2}</p>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground">Intention 2</label>
-                      <p>{viewItem.intention_2}</p>
+                  </div>
+
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-2">Feedback</h4>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-sm text-muted-foreground">Voice Assistant</label>
+                        <p className="text-sm mt-1 p-2 bg-muted/50 rounded-md">
+                          {viewItem.voice_assistant_feedback || <span className="text-muted-foreground italic">No feedback provided</span>}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground">Communication Style</label>
+                        <p className="text-sm mt-1 p-2 bg-muted/50 rounded-md">
+                          {viewItem.communication_style_feedback || <span className="text-muted-foreground italic">No feedback provided</span>}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground">Experiment</label>
+                        <p className="text-sm mt-1 p-2 bg-muted/50 rounded-md">
+                          {viewItem.experiment_feedback || <span className="text-muted-foreground italic">No feedback provided</span>}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
-
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">Feedback</h4>
-                  <div className="space-y-2">
-                    <div>
-                      <label className="text-sm text-muted-foreground">Voice Assistant</label>
-                      <p className="text-sm">{viewItem.voice_assistant_feedback}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground">Communication Style</label>
-                      <p className="text-sm">{viewItem.communication_style_feedback}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground">Experiment</label>
-                      <p className="text-sm">{viewItem.experiment_feedback}</p>
-                    </div>
-                  </div>
+              )}
+            </div>
+            
+            {/* Scroll indicator */}
+            {showScrollIndicator && (
+              <div className="absolute bottom-0 left-0 right-0 pointer-events-none">
+                <div className="h-16 bg-gradient-to-t from-background to-transparent" />
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex flex-col items-center text-muted-foreground">
+                  <ChevronDown className="h-5 w-5 animate-bounce" />
+                  <span className="text-xs">Scroll for more</span>
                 </div>
               </div>
             )}
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
