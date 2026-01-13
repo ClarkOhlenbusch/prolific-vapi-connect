@@ -297,6 +297,18 @@ export const DataSummary = () => {
                   </thead>
                   <tbody className="divide-y divide-border">
                     <tr>
+                      <td className="p-3 text-sm font-medium">Formality Rating</td>
+                      <td className="p-3 text-center text-sm">{comparison.formal.avgFormality.toFixed(2)}</td>
+                      <td className="p-3 text-center text-sm">{comparison.informal.avgFormality.toFixed(2)}</td>
+                      <td className="p-3 text-center text-sm">
+                        {formatDiff(comparison.formal.avgFormality, comparison.informal.avgFormality) && (
+                          <span className={comparison.formal.avgFormality > comparison.informal.avgFormality ? 'text-blue-600' : 'text-amber-600'}>
+                            {formatDiff(comparison.formal.avgFormality, comparison.informal.avgFormality)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
                       <td className="p-3 text-sm font-medium">PETS Total</td>
                       <td className="p-3 text-center text-sm">{comparison.formal.avgPetsTotal.toFixed(2)}</td>
                       <td className="p-3 text-center text-sm">{comparison.informal.avgPetsTotal.toFixed(2)}</td>
@@ -340,18 +352,6 @@ export const DataSummary = () => {
                         {formatDiff(comparison.formal.avgTiasTotal, comparison.informal.avgTiasTotal) && (
                           <span className={comparison.formal.avgTiasTotal > comparison.informal.avgTiasTotal ? 'text-blue-600' : 'text-amber-600'}>
                             {formatDiff(comparison.formal.avgTiasTotal, comparison.informal.avgTiasTotal)}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 text-sm font-medium">Formality Rating</td>
-                      <td className="p-3 text-center text-sm">{comparison.formal.avgFormality.toFixed(2)}</td>
-                      <td className="p-3 text-center text-sm">{comparison.informal.avgFormality.toFixed(2)}</td>
-                      <td className="p-3 text-center text-sm">
-                        {formatDiff(comparison.formal.avgFormality, comparison.informal.avgFormality) && (
-                          <span className={comparison.formal.avgFormality > comparison.informal.avgFormality ? 'text-blue-600' : 'text-amber-600'}>
-                            {formatDiff(comparison.formal.avgFormality, comparison.informal.avgFormality)}
                           </span>
                         )}
                       </td>
