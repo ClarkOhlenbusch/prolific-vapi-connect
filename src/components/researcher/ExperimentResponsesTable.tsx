@@ -55,7 +55,7 @@ import { Tables } from '@/integrations/supabase/types';
 
 type ExperimentResponse = Tables<'experiment_responses'>;
 
-type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'assistant_type';
+type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'assistant_type' | 'batch_label';
 type SortDirection = 'asc' | 'desc' | null;
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -80,7 +80,9 @@ export const ExperimentResponsesTable = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulkArchiveDialog, setShowBulkArchiveDialog] = useState(false);
   const [showBulkAssistantDialog, setShowBulkAssistantDialog] = useState(false);
+  const [showBulkBatchDialog, setShowBulkBatchDialog] = useState(false);
   const [bulkAssistantType, setBulkAssistantType] = useState<'formal' | 'informal'>('formal');
+  const [bulkBatchLabel, setBulkBatchLabel] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const { isSuperAdmin, user } = useResearcherAuth();
 
@@ -143,7 +145,7 @@ export const ExperimentResponsesTable = () => {
       }
 
       if (searchTerm) {
-        query = query.or(`prolific_id.ilike.%${searchTerm}%,call_id.ilike.%${searchTerm}%`);
+        query = query.or(`prolific_id.ilike.%${searchTerm}%,call_id.ilike.%${searchTerm}%,batch_label.ilike.%${searchTerm}%`);
       }
 
       const { data: responses, count, error } = await query;
@@ -261,6 +263,47 @@ export const ExperimentResponsesTable = () => {
     }
   };
 
+  // Bulk update batch label
+  const handleBulkUpdateBatchLabel = async () => {
+    if (selectedIds.size === 0) return;
+
+    try {
+      const { error } = await supabase
+        .from('experiment_responses')
+        .update({ batch_label: bulkBatchLabel.trim() || null })
+        .in('id', Array.from(selectedIds));
+
+      if (error) throw error;
+
+      toast.success(`Updated ${selectedIds.size} responses to batch "${bulkBatchLabel.trim() || '(none)'}"`);
+      setSelectedIds(new Set());
+      setShowBulkBatchDialog(false);
+      setBulkBatchLabel('');
+      fetchData();
+    } catch (error) {
+      console.error('Error updating batch label:', error);
+      toast.error('Failed to update batch label');
+    }
+  };
+
+  // Update single response batch label
+  const handleUpdateSingleBatchLabel = async (id: string, newLabel: string) => {
+    try {
+      const { error } = await supabase
+        .from('experiment_responses')
+        .update({ batch_label: newLabel.trim() || null })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast.success(`Updated batch label`);
+      fetchData();
+    } catch (error) {
+      console.error('Error updating batch label:', error);
+      toast.error('Failed to update');
+    }
+  };
+
   // Update single response assistant type
   const handleUpdateSingleAssistantType = async (id: string, newType: 'formal' | 'informal') => {
     try {
@@ -300,7 +343,7 @@ export const ExperimentResponsesTable = () => {
 
   const exportToCSV = () => {
     const headers = [
-      'Prolific ID', 'Call ID', 'Created At', 'Assistant Type', 'PETS Total', 'PETS ER', 'PETS UT',
+      'Prolific ID', 'Call ID', 'Created At', 'Assistant Type', 'Batch Label', 'PETS Total', 'PETS ER', 'PETS UT',
       'TIAS Total', 'Formality', 'Intention 1', 'Intention 2'
     ];
     
@@ -311,6 +354,7 @@ export const ExperimentResponsesTable = () => {
         row.call_id,
         row.created_at,
         row.assistant_type || 'unknown',
+        row.batch_label || '',
         row.pets_total,
         row.pets_er,
         row.pets_ut,
@@ -348,7 +392,7 @@ export const ExperimentResponsesTable = () => {
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by Prolific ID or Call ID..."
+            placeholder="Search by ID, Call ID, or Batch..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -402,6 +446,14 @@ export const ExperimentResponsesTable = () => {
             >
               <Edit className="h-4 w-4 mr-2" />
               Change Assistant Type
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowBulkBatchDialog(true)}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Change Batch Label
             </Button>
             <Button
               variant="outline"
@@ -503,13 +555,24 @@ export const ExperimentResponsesTable = () => {
                   {getSortIcon('assistant_type')}
                 </Button>
               </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 -ml-3 font-medium"
+                  onClick={() => handleSort('batch_label')}
+                >
+                  Batch
+                  {getSortIcon('batch_label')}
+                </Button>
+              </TableHead>
               {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isSuperAdmin ? 8 : 6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isSuperAdmin ? 9 : 7} className="text-center py-8 text-muted-foreground">
                   No responses found
                 </TableCell>
               </TableRow>
@@ -574,6 +637,37 @@ export const ExperimentResponsesTable = () => {
                         </Badge>
                       ) : (
                         <span className="text-muted-foreground text-sm">Unknown</span>
+                      )
+                    )}
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {isSuperAdmin ? (
+                      <Input
+                        className="w-24 h-8 text-xs"
+                        value={row.batch_label || ''}
+                        placeholder="-"
+                        onChange={(e) => {
+                          // Debounce update on blur
+                        }}
+                        onBlur={(e) => {
+                          const newLabel = e.target.value;
+                          if (newLabel !== (row.batch_label || '')) {
+                            handleUpdateSingleBatchLabel(row.id, newLabel);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                      />
+                    ) : (
+                      row.batch_label ? (
+                        <Badge variant="outline" className="text-xs">
+                          {row.batch_label}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
                       )
                     )}
                   </TableCell>
@@ -683,6 +777,18 @@ export const ExperimentResponsesTable = () => {
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground">Unknown</span>
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Batch Label</label>
+                      <p>
+                        {viewItem.batch_label ? (
+                          <Badge variant="outline">
+                            {viewItem.batch_label}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">None</span>
                         )}
                       </p>
                     </div>
@@ -824,6 +930,42 @@ export const ExperimentResponsesTable = () => {
                 Cancel
               </Button>
               <Button onClick={handleBulkUpdateAssistantType}>
+                Update {selectedIds.size} responses
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Batch Label Dialog */}
+      <Dialog open={showBulkBatchDialog} onOpenChange={setShowBulkBatchDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Batch Label</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Update the batch label for {selectedIds.size} selected responses.
+            </p>
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium">Enter new batch label:</label>
+              <Input
+                placeholder="e.g., Pilot-1, Wave-A (leave empty to clear)"
+                value={bulkBatchLabel}
+                onChange={(e) => setBulkBatchLabel(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty to remove batch labels from selected responses.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => {
+                setShowBulkBatchDialog(false);
+                setBulkBatchLabel('');
+              }}>
+                Cancel
+              </Button>
+              <Button onClick={handleBulkUpdateBatchLabel}>
                 Update {selectedIds.size} responses
               </Button>
             </div>
