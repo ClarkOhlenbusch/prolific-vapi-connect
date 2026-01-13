@@ -208,6 +208,9 @@ const FeedbackQuestionnaire = () => {
         experiment_feedback: experimentFeedback || "Not provided",
       };
 
+      // Get assistant type from session storage (set during VoiceConversation)
+      const assistantType = sessionStorage.getItem("assistantType") || null;
+
       const { data, error } = await supabase.functions.invoke("submit-questionnaire", {
         body: {
           sessionToken,
@@ -215,6 +218,7 @@ const FeedbackQuestionnaire = () => {
           tiasData,
           intentionData,
           feedbackData: feedbackPayload,
+          assistantType,
         },
       });
       if (error) {

@@ -18,6 +18,7 @@ import { DemographicsTable } from '@/components/researcher/DemographicsTable';
 import { ParticipantCallsTable } from '@/components/researcher/ParticipantCallsTable';
 import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponsesTable';
 import { DataSummary } from '@/components/researcher/DataSummary';
+import { ExperimentSettings } from '@/components/researcher/ExperimentSettings';
 
 const ResearcherDashboard = () => {
   const { user, role, logout, isSuperAdmin } = useResearcherAuth();
@@ -67,7 +68,7 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
+          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid lg:grid-cols-6">
             <TabsTrigger value="summary" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Summary</span>
@@ -88,6 +89,12 @@ const ResearcherDashboard = () => {
               <TabsTrigger value="archived" className="flex items-center gap-2">
                 <Archive className="h-4 w-4" />
                 <span className="hidden sm:inline">Archived</span>
+              </TabsTrigger>
+            )}
+            {isSuperAdmin && (
+              <TabsTrigger value="settings" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Settings</span>
               </TabsTrigger>
             )}
           </TabsList>
@@ -151,6 +158,12 @@ const ResearcherDashboard = () => {
                   <ArchivedResponsesTable />
                 </CardContent>
               </Card>
+            </TabsContent>
+          )}
+
+          {isSuperAdmin && (
+            <TabsContent value="settings">
+              <ExperimentSettings />
             </TabsContent>
           )}
         </Tabs>

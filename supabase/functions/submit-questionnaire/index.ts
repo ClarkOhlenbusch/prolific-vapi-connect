@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { sessionToken, petsData, tiasData, intentionData, feedbackData } = await req.json();
+    const { sessionToken, petsData, tiasData, intentionData, feedbackData, assistantType } = await req.json();
 
     // Validate session token format
     if (!sessionToken || typeof sessionToken !== 'string') {
@@ -288,6 +288,8 @@ Deno.serve(async (req) => {
       voice_assistant_feedback: validatedFeedback.voice_assistant_feedback,
       communication_style_feedback: validatedFeedback.communication_style_feedback,
       experiment_feedback: validatedFeedback.experiment_feedback,
+      // Assistant type (formal/informal)
+      assistant_type: assistantType || null,
     };
 
     const { error: insertError } = await supabase
