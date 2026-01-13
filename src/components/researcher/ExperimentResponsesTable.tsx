@@ -437,7 +437,7 @@ export const ExperimentResponsesTable = () => {
 
   // Column order state
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>([
-    'select', 'prolific_id', 'created_at', 'age', 'gender', 'pets_total', 'tias_total', 'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'formality', 'assistant_type', 'batch_label', 'actions'
+    'select', 'prolific_id', 'created_at', 'batch_label', 'assistant_type', 'formality', 'pets_total', 'tias_total', 'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'age', 'gender', 'actions'
   ]);
 
   const columns: ColumnDef[] = useMemo(() => [
