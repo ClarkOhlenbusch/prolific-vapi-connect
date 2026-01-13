@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import {
@@ -24,7 +24,11 @@ import {
   ArrowUp,
   ArrowDown,
   Archive,
-  Edit
+  Edit,
+  GripVertical,
+  Filter,
+  X,
+  CalendarIcon
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -51,18 +55,117 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Tables } from '@/integrations/supabase/types';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { format } from 'date-fns';
 
 type ExperimentResponse = Tables<'experiment_responses'>;
 
 type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'assistant_type' | 'batch_label';
 type SortDirection = 'asc' | 'desc' | null;
 
+type ColumnId = 'select' | 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'assistant_type' | 'batch_label' | 'actions';
+
+interface ColumnDef {
+  id: ColumnId;
+  label: string;
+  sortable: boolean;
+  width?: string;
+}
+
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 const formatNumber = (value: number | null): string => {
   if (value === null || value === undefined) return 'N/A';
   return Number(value).toFixed(2);
+};
+
+// Sortable header cell component
+const SortableHeaderCell = ({ 
+  column, 
+  sortColumn, 
+  sortDirection, 
+  onSort, 
+  getSortIcon,
+  isSuperAdmin 
+}: { 
+  column: ColumnDef;
+  sortColumn: SortColumn;
+  sortDirection: SortDirection;
+  onSort: (col: SortColumn) => void;
+  getSortIcon: (col: SortColumn) => React.ReactNode;
+  isSuperAdmin: boolean;
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: column.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  // Special non-draggable columns
+  if (column.id === 'select' || column.id === 'actions') {
+    if (column.id === 'select' && !isSuperAdmin) return null;
+    if (column.id === 'actions' && !isSuperAdmin) return null;
+    return (
+      <TableHead className={column.width}>
+        {column.label}
+      </TableHead>
+    );
+  }
+
+  return (
+    <TableHead ref={setNodeRef} style={style} className="relative">
+      <div className="flex items-center">
+        <div {...attributes} {...listeners} className="cursor-grab mr-1 opacity-50 hover:opacity-100">
+          <GripVertical className="h-4 w-4" />
+        </div>
+        {column.sortable ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 -ml-1 font-medium"
+            onClick={() => onSort(column.id as SortColumn)}
+          >
+            {column.label}
+            {getSortIcon(column.id as SortColumn)}
+          </Button>
+        ) : (
+          <span className="font-medium">{column.label}</span>
+        )}
+      </div>
+    </TableHead>
+  );
 };
 
 export const ExperimentResponsesTable = () => {
@@ -86,6 +189,54 @@ export const ExperimentResponsesTable = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { isSuperAdmin, user } = useResearcherAuth();
 
+  // Filter states
+  const [filterAssistantType, setFilterAssistantType] = useState<string>('all');
+  const [filterBatch, setFilterBatch] = useState<string>('all');
+  const [filterDateFrom, setFilterDateFrom] = useState<Date | undefined>(undefined);
+  const [filterDateTo, setFilterDateTo] = useState<Date | undefined>(undefined);
+  const [availableBatches, setAvailableBatches] = useState<string[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Column order state
+  const [columnOrder, setColumnOrder] = useState<ColumnId[]>([
+    'select', 'prolific_id', 'created_at', 'pets_total', 'tias_total', 'formality', 'assistant_type', 'batch_label', 'actions'
+  ]);
+
+  const columns: ColumnDef[] = useMemo(() => [
+    { id: 'select', label: '', sortable: false, width: 'w-12' },
+    { id: 'prolific_id', label: 'Prolific ID', sortable: true },
+    { id: 'created_at', label: 'Created At', sortable: true },
+    { id: 'pets_total', label: 'PETS Total', sortable: true },
+    { id: 'tias_total', label: 'TIAS Total', sortable: true },
+    { id: 'formality', label: 'Formality', sortable: true },
+    { id: 'assistant_type', label: 'Assistant', sortable: true },
+    { id: 'batch_label', label: 'Batch', sortable: true },
+    { id: 'actions', label: 'Actions', sortable: false },
+  ], []);
+
+  const orderedColumns = useMemo(() => {
+    return columnOrder.map(id => columns.find(c => c.id === id)!).filter(Boolean);
+  }, [columnOrder, columns]);
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setColumnOrder((items) => {
+        const oldIndex = items.indexOf(active.id as ColumnId);
+        const newIndex = items.indexOf(over.id as ColumnId);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.target as HTMLDivElement;
     const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 20;
@@ -104,7 +255,6 @@ export const ExperimentResponsesTable = () => {
 
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
-      // Cycle: asc -> desc -> null -> asc
       if (sortDirection === 'asc') {
         setSortDirection('desc');
       } else if (sortDirection === 'desc') {
@@ -129,6 +279,27 @@ export const ExperimentResponsesTable = () => {
       : <ArrowDown className="h-4 w-4 ml-1" />;
   };
 
+  // Fetch available batches for filter dropdown
+  const fetchBatches = async () => {
+    try {
+      const { data: batches, error } = await supabase
+        .from('experiment_responses')
+        .select('batch_label')
+        .not('batch_label', 'is', null);
+
+      if (error) throw error;
+
+      const uniqueBatches = [...new Set(batches?.map(b => b.batch_label).filter(Boolean) as string[])];
+      setAvailableBatches(uniqueBatches.sort());
+    } catch (error) {
+      console.error('Error fetching batches:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchBatches();
+  }, []);
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
@@ -144,8 +315,33 @@ export const ExperimentResponsesTable = () => {
         query = query.order('created_at', { ascending: false });
       }
 
+      // Apply search
       if (searchTerm) {
         query = query.or(`prolific_id.ilike.%${searchTerm}%,call_id.ilike.%${searchTerm}%,batch_label.ilike.%${searchTerm}%`);
+      }
+
+      // Apply filters
+      if (filterAssistantType !== 'all') {
+        query = query.eq('assistant_type', filterAssistantType);
+      }
+
+      if (filterBatch !== 'all') {
+        if (filterBatch === 'none') {
+          query = query.is('batch_label', null);
+        } else {
+          query = query.eq('batch_label', filterBatch);
+        }
+      }
+
+      if (filterDateFrom) {
+        query = query.gte('created_at', filterDateFrom.toISOString());
+      }
+
+      if (filterDateTo) {
+        // Set to end of day
+        const endOfDay = new Date(filterDateTo);
+        endOfDay.setHours(23, 59, 59, 999);
+        query = query.lte('created_at', endOfDay.toISOString());
       }
 
       const { data: responses, count, error } = await query;
@@ -164,7 +360,17 @@ export const ExperimentResponsesTable = () => {
 
   useEffect(() => {
     fetchData();
-  }, [currentPage, searchTerm, pageSize, sortColumn, sortDirection]);
+  }, [currentPage, searchTerm, pageSize, sortColumn, sortDirection, filterAssistantType, filterBatch, filterDateFrom, filterDateTo]);
+
+  const clearFilters = () => {
+    setFilterAssistantType('all');
+    setFilterBatch('all');
+    setFilterDateFrom(undefined);
+    setFilterDateTo(undefined);
+    setCurrentPage(0);
+  };
+
+  const hasActiveFilters = filterAssistantType !== 'all' || filterBatch !== 'all' || filterDateFrom || filterDateTo;
 
   const handleArchive = async () => {
     if (!deleteId || !user) return;
@@ -201,14 +407,12 @@ export const ExperimentResponsesTable = () => {
     }
   };
 
-  // Bulk archive selected responses
   const handleBulkArchive = async () => {
     if (selectedIds.size === 0 || !user) return;
 
     try {
       const itemsToArchive = data.filter(item => selectedIds.has(item.id));
       
-      // Insert all into archived_responses
       const archiveInserts = itemsToArchive.map(item => ({
         original_table: 'experiment_responses',
         original_id: item.id,
@@ -223,7 +427,6 @@ export const ExperimentResponsesTable = () => {
 
       if (archiveError) throw archiveError;
 
-      // Delete all from experiment_responses
       const { error: deleteError } = await supabase
         .from('experiment_responses')
         .delete()
@@ -241,7 +444,6 @@ export const ExperimentResponsesTable = () => {
     }
   };
 
-  // Bulk update assistant type
   const handleBulkUpdateAssistantType = async () => {
     if (selectedIds.size === 0) return;
 
@@ -263,7 +465,6 @@ export const ExperimentResponsesTable = () => {
     }
   };
 
-  // Bulk update batch label
   const handleBulkUpdateBatchLabel = async () => {
     if (selectedIds.size === 0) return;
 
@@ -280,13 +481,13 @@ export const ExperimentResponsesTable = () => {
       setShowBulkBatchDialog(false);
       setBulkBatchLabel('');
       fetchData();
+      fetchBatches();
     } catch (error) {
       console.error('Error updating batch label:', error);
       toast.error('Failed to update batch label');
     }
   };
 
-  // Update single response batch label
   const handleUpdateSingleBatchLabel = async (id: string, newLabel: string) => {
     try {
       const { error } = await supabase
@@ -298,13 +499,13 @@ export const ExperimentResponsesTable = () => {
 
       toast.success(`Updated batch label`);
       fetchData();
+      fetchBatches();
     } catch (error) {
       console.error('Error updating batch label:', error);
       toast.error('Failed to update');
     }
   };
 
-  // Update single response assistant type
   const handleUpdateSingleAssistantType = async (id: string, newType: 'formal' | 'informal') => {
     try {
       const { error } = await supabase
@@ -322,7 +523,6 @@ export const ExperimentResponsesTable = () => {
     }
   };
 
-  // Selection handlers
   const toggleSelectAll = () => {
     if (selectedIds.size === data.length) {
       setSelectedIds(new Set());
@@ -341,36 +541,224 @@ export const ExperimentResponsesTable = () => {
     setSelectedIds(newSelected);
   };
 
-  const exportToCSV = () => {
-    const headers = [
-      'Prolific ID', 'Call ID', 'Created At', 'Assistant Type', 'Batch Label', 'PETS Total', 'PETS ER', 'PETS UT',
-      'TIAS Total', 'Formality', 'Intention 1', 'Intention 2'
-    ];
-    
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row => [
-        row.prolific_id,
-        row.call_id,
-        row.created_at,
-        row.assistant_type || 'unknown',
-        row.batch_label || '',
-        row.pets_total,
-        row.pets_er,
-        row.pets_ut,
-        row.tias_total || '',
-        row.formality,
-        row.intention_1,
-        row.intention_2
-      ].join(','))
-    ].join('\n');
+  // Export only the currently displayed/filtered data
+  const exportToCSV = async () => {
+    try {
+      // Fetch ALL data matching current filters (not just current page)
+      let query = supabase
+        .from('experiment_responses')
+        .select('*');
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `experiment_responses_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
+      // Apply same filters as the table view
+      if (sortColumn && sortDirection) {
+        query = query.order(sortColumn, { ascending: sortDirection === 'asc', nullsFirst: false });
+      } else {
+        query = query.order('created_at', { ascending: false });
+      }
+
+      if (searchTerm) {
+        query = query.or(`prolific_id.ilike.%${searchTerm}%,call_id.ilike.%${searchTerm}%,batch_label.ilike.%${searchTerm}%`);
+      }
+
+      if (filterAssistantType !== 'all') {
+        query = query.eq('assistant_type', filterAssistantType);
+      }
+
+      if (filterBatch !== 'all') {
+        if (filterBatch === 'none') {
+          query = query.is('batch_label', null);
+        } else {
+          query = query.eq('batch_label', filterBatch);
+        }
+      }
+
+      if (filterDateFrom) {
+        query = query.gte('created_at', filterDateFrom.toISOString());
+      }
+
+      if (filterDateTo) {
+        const endOfDay = new Date(filterDateTo);
+        endOfDay.setHours(23, 59, 59, 999);
+        query = query.lte('created_at', endOfDay.toISOString());
+      }
+
+      const { data: exportData, error } = await query;
+
+      if (error) throw error;
+
+      if (!exportData || exportData.length === 0) {
+        toast.error('No data to export');
+        return;
+      }
+
+      const headers = [
+        'Prolific ID', 'Call ID', 'Created At', 'Assistant Type', 'Batch Label', 'PETS Total', 'PETS ER', 'PETS UT',
+        'TIAS Total', 'Formality', 'Intention 1', 'Intention 2'
+      ];
+      
+      const csvContent = [
+        headers.join(','),
+        ...exportData.map(row => [
+          row.prolific_id,
+          row.call_id,
+          row.created_at,
+          row.assistant_type || 'unknown',
+          row.batch_label || '',
+          row.pets_total,
+          row.pets_er,
+          row.pets_ut,
+          row.tias_total || '',
+          row.formality,
+          row.intention_1,
+          row.intention_2
+        ].join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // Include filter info in filename
+      let filename = `experiment_responses_${new Date().toISOString().split('T')[0]}`;
+      if (filterBatch !== 'all') filename += `_batch-${filterBatch}`;
+      if (filterAssistantType !== 'all') filename += `_${filterAssistantType}`;
+      filename += '.csv';
+      
+      a.download = filename;
+      a.click();
+      
+      toast.success(`Exported ${exportData.length} responses`);
+    } catch (error) {
+      console.error('Error exporting:', error);
+      toast.error('Failed to export data');
+    }
+  };
+
+  const renderCell = (row: ExperimentResponse, columnId: ColumnId) => {
+    switch (columnId) {
+      case 'select':
+        return isSuperAdmin ? (
+          <TableCell onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={selectedIds.has(row.id)}
+              onCheckedChange={() => toggleSelect(row.id)}
+              aria-label={`Select ${row.prolific_id}`}
+            />
+          </TableCell>
+        ) : null;
+
+      case 'prolific_id':
+        return <TableCell className="font-mono text-sm">{row.prolific_id}</TableCell>;
+
+      case 'created_at':
+        return <TableCell>{new Date(row.created_at).toLocaleDateString()}</TableCell>;
+
+      case 'pets_total':
+        return <TableCell>{formatNumber(row.pets_total)}</TableCell>;
+
+      case 'tias_total':
+        return <TableCell>{formatNumber(row.tias_total)}</TableCell>;
+
+      case 'formality':
+        return <TableCell>{formatNumber(row.formality)}</TableCell>;
+
+      case 'assistant_type':
+        return (
+          <TableCell onClick={(e) => e.stopPropagation()}>
+            {isSuperAdmin ? (
+              <Select
+                value={row.assistant_type || 'unknown'}
+                onValueChange={(value) => {
+                  if (value === 'formal' || value === 'informal') {
+                    handleUpdateSingleAssistantType(row.id, value);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-28 h-8">
+                  <SelectValue>
+                    {row.assistant_type ? (
+                      <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'} className="text-xs">
+                        {row.assistant_type}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">Unknown</span>
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="formal">
+                    <Badge variant="default" className="text-xs">formal</Badge>
+                  </SelectItem>
+                  <SelectItem value="informal">
+                    <Badge variant="secondary" className="text-xs">informal</Badge>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              row.assistant_type ? (
+                <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'}>
+                  {row.assistant_type}
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground text-sm">Unknown</span>
+              )
+            )}
+          </TableCell>
+        );
+
+      case 'batch_label':
+        return (
+          <TableCell onClick={(e) => e.stopPropagation()}>
+            {isSuperAdmin ? (
+              <Input
+                className="w-24 h-8 text-xs"
+                defaultValue={row.batch_label || ''}
+                placeholder="-"
+                onBlur={(e) => {
+                  const newLabel = e.target.value;
+                  if (newLabel !== (row.batch_label || '')) {
+                    handleUpdateSingleBatchLabel(row.id, newLabel);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+              />
+            ) : (
+              row.batch_label ? (
+                <Badge variant="outline" className="text-xs">
+                  {row.batch_label}
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground text-sm">-</span>
+              )
+            )}
+          </TableCell>
+        );
+
+      case 'actions':
+        return isSuperAdmin ? (
+          <TableCell className="text-right">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteId(row.id);
+              }}
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </TableCell>
+        ) : null;
+
+      default:
+        return null;
+    }
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -388,50 +776,150 @@ export const ExperimentResponsesTable = () => {
   return (
     <div className="space-y-4">
       {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by ID, Call ID, or Batch..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(0);
-            }}
-            className="pl-10"
-          />
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Show</span>
-            <Select
-              value={pageSize.toString()}
-              onValueChange={(value) => {
-                setPageSize(Number(value));
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by ID, Call ID, or Batch..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
                 setCurrentPage(0);
               }}
-            >
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <SelectItem key={size} value={size.toString()}>
-                    {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              className="pl-10"
+            />
           </div>
           
-          {isSuperAdmin && (
-            <Button onClick={exportToCSV} variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showFilters ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="h-4 w-4 mr-2" />
+              Filters
+              {hasActiveFilters && (
+                <Badge variant="default" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                  !
+                </Badge>
+              )}
             </Button>
-          )}
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Show</span>
+              <Select
+                value={pageSize.toString()}
+                onValueChange={(value) => {
+                  setPageSize(Number(value));
+                  setCurrentPage(0);
+                }}
+              >
+                <SelectTrigger className="w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <SelectItem key={size} value={size.toString()}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {isSuperAdmin && (
+              <Button onClick={exportToCSV} variant="outline">
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
+            )}
+          </div>
         </div>
+
+        {/* Filter Panel */}
+        {showFilters && (
+          <div className="flex flex-wrap gap-4 p-4 bg-muted/50 rounded-lg border">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Assistant Type</label>
+              <Select value={filterAssistantType} onValueChange={(v) => { setFilterAssistantType(v); setCurrentPage(0); }}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="formal">Formal</SelectItem>
+                  <SelectItem value="informal">Informal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Batch</label>
+              <Select value={filterBatch} onValueChange={(v) => { setFilterBatch(v); setCurrentPage(0); }}>
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Batches</SelectItem>
+                  <SelectItem value="none">No Batch</SelectItem>
+                  {availableBatches.map(batch => (
+                    <SelectItem key={batch} value={batch}>{batch}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">From Date</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-40 justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {filterDateFrom ? format(filterDateFrom, 'PP') : <span className="text-muted-foreground">Pick date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={filterDateFrom}
+                    onSelect={(date) => { setFilterDateFrom(date); setCurrentPage(0); }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">To Date</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-40 justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {filterDateTo ? format(filterDateTo, 'PP') : <span className="text-muted-foreground">Pick date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={filterDateTo}
+                    onSelect={(date) => { setFilterDateTo(date); setCurrentPage(0); }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {hasActiveFilters && (
+              <div className="flex items-end">
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  <X className="h-4 w-4 mr-1" />
+                  Clear filters
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Bulk Actions Bar */}
@@ -479,95 +967,27 @@ export const ExperimentResponsesTable = () => {
       <div className="rounded-md border">
         <Table>
           <TableHeader>
-            <TableRow>
-              {isSuperAdmin && (
-                <TableHead className="w-12">
-                  <Checkbox
-                    checked={data.length > 0 && selectedIds.size === data.length}
-                    onCheckedChange={toggleSelectAll}
-                    aria-label="Select all"
-                  />
-                </TableHead>
-              )}
-              <TableHead>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 -ml-3 font-medium"
-                  onClick={() => handleSort('prolific_id')}
-                >
-                  Prolific ID
-                  {getSortIcon('prolific_id')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 -ml-3 font-medium"
-                  onClick={() => handleSort('created_at')}
-                >
-                  Created At
-                  {getSortIcon('created_at')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 -ml-3 font-medium"
-                  onClick={() => handleSort('pets_total')}
-                >
-                  PETS Total
-                  {getSortIcon('pets_total')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 -ml-3 font-medium"
-                  onClick={() => handleSort('tias_total')}
-                >
-                  TIAS Total
-                  {getSortIcon('tias_total')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 -ml-3 font-medium"
-                  onClick={() => handleSort('formality')}
-                >
-                  Formality
-                  {getSortIcon('formality')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 -ml-3 font-medium"
-                  onClick={() => handleSort('assistant_type')}
-                >
-                  Assistant
-                  {getSortIcon('assistant_type')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 -ml-3 font-medium"
-                  onClick={() => handleSort('batch_label')}
-                >
-                  Batch
-                  {getSortIcon('batch_label')}
-                </Button>
-              </TableHead>
-              {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
-            </TableRow>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <TableRow>
+                <SortableContext items={columnOrder} strategy={horizontalListSortingStrategy}>
+                  {orderedColumns.map((column) => (
+                    <SortableHeaderCell
+                      key={column.id}
+                      column={column}
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={handleSort}
+                      getSortIcon={getSortIcon}
+                      isSuperAdmin={isSuperAdmin}
+                    />
+                  ))}
+                </SortableContext>
+              </TableRow>
+            </DndContext>
           </TableHeader>
           <TableBody>
             {data.length === 0 ? (
@@ -586,103 +1006,11 @@ export const ExperimentResponsesTable = () => {
                     resetScrollIndicator();
                   }}
                 >
-                  {isSuperAdmin && (
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={selectedIds.has(row.id)}
-                        onCheckedChange={() => toggleSelect(row.id)}
-                        aria-label={`Select ${row.prolific_id}`}
-                      />
-                    </TableCell>
-                  )}
-                  <TableCell className="font-mono text-sm">{row.prolific_id}</TableCell>
-                  <TableCell>{new Date(row.created_at).toLocaleDateString()}</TableCell>
-                  <TableCell>{formatNumber(row.pets_total)}</TableCell>
-                  <TableCell>{formatNumber(row.tias_total)}</TableCell>
-                  <TableCell>{formatNumber(row.formality)}</TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    {isSuperAdmin ? (
-                      <Select
-                        value={row.assistant_type || 'unknown'}
-                        onValueChange={(value) => {
-                          if (value === 'formal' || value === 'informal') {
-                            handleUpdateSingleAssistantType(row.id, value);
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="w-28 h-8">
-                          <SelectValue>
-                            {row.assistant_type ? (
-                              <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'} className="text-xs">
-                                {row.assistant_type}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">Unknown</span>
-                            )}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="formal">
-                            <Badge variant="default" className="text-xs">formal</Badge>
-                          </SelectItem>
-                          <SelectItem value="informal">
-                            <Badge variant="secondary" className="text-xs">informal</Badge>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      row.assistant_type ? (
-                        <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'}>
-                          {row.assistant_type}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">Unknown</span>
-                      )
-                    )}
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    {isSuperAdmin ? (
-                      <Input
-                        className="w-24 h-8 text-xs"
-                        defaultValue={row.batch_label || ''}
-                        placeholder="-"
-                        onBlur={(e) => {
-                          const newLabel = e.target.value;
-                          if (newLabel !== (row.batch_label || '')) {
-                            handleUpdateSingleBatchLabel(row.id, newLabel);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                      />
-                    ) : (
-                      row.batch_label ? (
-                        <Badge variant="outline" className="text-xs">
-                          {row.batch_label}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
-                      )
-                    )}
-                  </TableCell>
-                  {isSuperAdmin && (
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteId(row.id);
-                        }}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  )}
+                  {orderedColumns.map((column) => (
+                    <React.Fragment key={column.id}>
+                      {renderCell(row, column.id)}
+                    </React.Fragment>
+                  ))}
                 </TableRow>
               ))
             )}
@@ -694,6 +1022,7 @@ export const ExperimentResponsesTable = () => {
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           Showing {totalCount === 0 ? 0 : currentPage * pageSize + 1} to {Math.min((currentPage + 1) * pageSize, totalCount)} of {totalCount}
+          {hasActiveFilters && ' (filtered)'}
         </p>
         <div className="flex items-center gap-2">
           <Button
