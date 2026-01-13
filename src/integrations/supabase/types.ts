@@ -109,6 +109,7 @@ export type Database = {
       }
       experiment_responses: {
         Row: {
+          assistant_type: string | null
           attention_check_1: number | null
           attention_check_1_expected: number | null
           attention_check_1_position: number | null
@@ -176,6 +177,7 @@ export type Database = {
           voice_assistant_feedback: string
         }
         Insert: {
+          assistant_type?: string | null
           attention_check_1?: number | null
           attention_check_1_expected?: number | null
           attention_check_1_position?: number | null
@@ -243,6 +245,7 @@ export type Database = {
           voice_assistant_feedback: string
         }
         Update: {
+          assistant_type?: string | null
           attention_check_1?: number | null
           attention_check_1_expected?: number | null
           attention_check_1_position?: number | null
@@ -308,6 +311,30 @@ export type Database = {
           u4?: number
           u4_position?: number
           voice_assistant_feedback?: string
+        }
+        Relationships: []
+      }
+      experiment_settings: {
+        Row: {
+          id: string
+          setting_key: string
+          setting_value: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          setting_key: string
+          setting_value: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          setting_key?: string
+          setting_value?: string
+          updated_at?: string | null
+          updated_by?: string | null
         }
         Relationships: []
       }
