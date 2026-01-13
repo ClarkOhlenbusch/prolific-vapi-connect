@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -72,20 +72,21 @@ export const ExperimentSettings = () => {
     }
   };
 
-  const handleToggle = async (checked: boolean) => {
+  const handleSelectAssistant = async (type: "formal" | "informal") => {
     if (!isSuperAdmin) {
       toast.error("Only super admins can change this setting");
       return;
     }
 
-    const newType = checked ? "formal" : "informal";
+    if (type === assistantType) return;
+
     setIsSaving(true);
 
     try {
       const { error } = await supabase
         .from("experiment_settings")
         .update({
-          setting_value: newType,
+          setting_value: type,
           updated_at: new Date().toISOString(),
           updated_by: user?.id,
         })
@@ -97,9 +98,9 @@ export const ExperimentSettings = () => {
         return;
       }
 
-      setAssistantType(newType);
+      setAssistantType(type);
       setLastUpdated(new Date().toISOString());
-      toast.success(`Switched to ${newType} assistant`);
+      toast.success(`Switched to ${type} assistant`);
     } catch (error) {
       console.error("Error:", error);
       toast.error("Failed to update setting");
@@ -178,33 +179,24 @@ export const ExperimentSettings = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
-            <div className="space-y-1">
-              <Label htmlFor="assistant-toggle" className="text-base font-medium">
-                Active Assistant Type
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Toggle between formal and informal communication styles
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className={`text-sm font-medium ${assistantType === "informal" ? "text-foreground" : "text-muted-foreground"}`}>
-                Informal
-              </span>
-              <Switch
-                id="assistant-toggle"
-                checked={assistantType === "formal"}
-                onCheckedChange={handleToggle}
-                disabled={isSaving || !isSuperAdmin}
-              />
-              <span className={`text-sm font-medium ${assistantType === "formal" ? "text-foreground" : "text-muted-foreground"}`}>
-                Formal
-              </span>
-            </div>
+          <div className="space-y-2">
+            <Label className="text-base font-medium">Select Active Assistant</Label>
+            <p className="text-sm text-muted-foreground">
+              Click on an assistant to set it as active for all new participants
+            </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <div className={`p-4 border rounded-lg ${assistantType === "formal" ? "border-primary bg-primary/5" : ""}`}>
+            <button
+              type="button"
+              onClick={() => handleSelectAssistant("formal")}
+              disabled={isSaving || !isSuperAdmin}
+              className={`p-4 border rounded-lg text-left transition-all ${
+                assistantType === "formal" 
+                  ? "border-primary bg-primary/5 ring-2 ring-primary" 
+                  : "hover:border-primary/50 hover:bg-muted/50"
+              } ${(!isSuperAdmin || isSaving) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            >
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="font-medium">Formal Assistant</h3>
                 {assistantType === "formal" && <Badge variant="default">Active</Badge>}
@@ -215,9 +207,18 @@ export const ExperimentSettings = () => {
               <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
                 ID: {ASSISTANT_IDS.formal}
               </code>
-            </div>
+            </button>
 
-            <div className={`p-4 border rounded-lg ${assistantType === "informal" ? "border-primary bg-primary/5" : ""}`}>
+            <button
+              type="button"
+              onClick={() => handleSelectAssistant("informal")}
+              disabled={isSaving || !isSuperAdmin}
+              className={`p-4 border rounded-lg text-left transition-all ${
+                assistantType === "informal" 
+                  ? "border-primary bg-primary/5 ring-2 ring-primary" 
+                  : "hover:border-primary/50 hover:bg-muted/50"
+              } ${(!isSuperAdmin || isSaving) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            >
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="font-medium">Informal Assistant</h3>
                 {assistantType === "informal" && <Badge variant="default">Active</Badge>}
@@ -228,7 +229,7 @@ export const ExperimentSettings = () => {
               <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
                 ID: {ASSISTANT_IDS.informal}
               </code>
-            </div>
+            </button>
           </div>
 
           {lastUpdated && (
