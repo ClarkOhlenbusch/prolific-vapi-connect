@@ -6,7 +6,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ResearcherModeProvider, useResearcherMode } from "@/contexts/ResearcherModeContext";
+import { ResearcherAuthProvider } from "@/contexts/ResearcherAuthContext";
 import { ResearcherModeToggle } from "@/components/ResearcherModeToggle";
+import { ResearcherProtectedRoute } from "@/components/researcher/ResearcherProtectedRoute";
 import PageSkeleton from "@/components/PageSkeleton";
 
 // Lazy load route components for code splitting
@@ -25,6 +27,8 @@ const FeedbackQuestionnaire = lazy(() => import("./pages/FeedbackQuestionnaire")
 const Debriefing = lazy(() => import("./pages/Debriefing"));
 const Complete = lazy(() => import("./pages/Complete"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const ResearcherLogin = lazy(() => import("./pages/ResearcherLogin"));
+const ResearcherDashboard = lazy(() => import("./pages/ResearcherDashboard"));
 
 const queryClient = new QueryClient();
 
@@ -88,95 +92,36 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ResearcherModeProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <ResearcherModeToggle />
-          <Suspense fallback={<PageSkeleton />}>
-            <Routes>
-              <Route path="/" element={<ProlificId />} />
-              <Route path="/consent" element={<Consent />} />
-              <Route path="/no-consent" element={<NoConsent />} />
-              <Route
-                path="/demographics"
-                element={
-                  <SessionValidator>
-                    <Demographics />
-                  </SessionValidator>
-                }
-              />
-              <Route
-                path="/voiceassistant-familiarity"
-                element={
-                  <SessionValidator>
-                    <VoiceAssistantFamiliarity />
-                  </SessionValidator>
-                }
-              />
-              <Route 
-                path="/practice" 
-                element={
-                  <SessionValidator>
-                    <PracticeConversation />
-                  </SessionValidator>
-                } 
-              />
-              <Route 
-                path="/voice-conversation" 
-                element={
-                  <SessionValidator>
-                    <VoiceConversation />
-                  </SessionValidator>
-                } 
-              />
-              <Route 
-                path="/questionnaire/pets" 
-                element={
-                  <SessionValidator>
-                    <Questionnaire />
-                  </SessionValidator>
-                } 
-              />
-              <Route 
-                path="/questionnaire/tias" 
-                element={
-                  <SessionValidator>
-                    <TiasQuestionnaire />
-                  </SessionValidator>
-                } 
-              />
-              <Route 
-                path="/questionnaire/intention" 
-                element={
-                  <SessionValidator>
-                    <IntentionQuestionnaire />
-                  </SessionValidator>
-                } 
-              />
-              <Route 
-                path="/questionnaire/formality" 
-                element={
-                  <SessionValidator>
-                    <FormalityQuestionnaire />
-                  </SessionValidator>
-                } 
-              />
-              <Route 
-                path="/questionnaire/feedback" 
-                element={
-                  <SessionValidator>
-                    <FeedbackQuestionnaire />
-                  </SessionValidator>
-                } 
-              />
-              <Route path="/debriefing" element={<Debriefing />} />
-              <Route path="/complete" element={<Complete />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-      </TooltipProvider>
+      <ResearcherAuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <ResearcherModeToggle />
+            <Suspense fallback={<PageSkeleton />}>
+              <Routes>
+                <Route path="/" element={<ProlificId />} />
+                <Route path="/consent" element={<Consent />} />
+                <Route path="/no-consent" element={<NoConsent />} />
+                <Route path="/demographics" element={<SessionValidator><Demographics /></SessionValidator>} />
+                <Route path="/voiceassistant-familiarity" element={<SessionValidator><VoiceAssistantFamiliarity /></SessionValidator>} />
+                <Route path="/practice" element={<SessionValidator><PracticeConversation /></SessionValidator>} />
+                <Route path="/voice-conversation" element={<SessionValidator><VoiceConversation /></SessionValidator>} />
+                <Route path="/questionnaire/pets" element={<SessionValidator><Questionnaire /></SessionValidator>} />
+                <Route path="/questionnaire/tias" element={<SessionValidator><TiasQuestionnaire /></SessionValidator>} />
+                <Route path="/questionnaire/intention" element={<SessionValidator><IntentionQuestionnaire /></SessionValidator>} />
+                <Route path="/questionnaire/formality" element={<SessionValidator><FormalityQuestionnaire /></SessionValidator>} />
+                <Route path="/questionnaire/feedback" element={<SessionValidator><FeedbackQuestionnaire /></SessionValidator>} />
+                <Route path="/debriefing" element={<Debriefing />} />
+                <Route path="/complete" element={<Complete />} />
+                <Route path="/researcher" element={<ResearcherLogin />} />
+                <Route path="/researcher/dashboard" element={<ResearcherProtectedRoute><ResearcherDashboard /></ResearcherProtectedRoute>} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </TooltipProvider>
+      </ResearcherAuthProvider>
     </ResearcherModeProvider>
   </QueryClientProvider>
 );
