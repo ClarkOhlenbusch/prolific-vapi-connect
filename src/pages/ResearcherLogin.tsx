@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Button } from '@/components/ui/button';
@@ -17,41 +17,23 @@ const ResearcherLogin = () => {
   const navigate = useNavigate();
 
   // Redirect if already authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/researcher/dashboard', { replace: true });
-    }
-  }, [isAuthenticated, navigate]);
+  if (isAuthenticated) {
+    navigate('/researcher/dashboard', { replace: true });
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    try {
-      const timeoutMs = 15000;
-      let timedOut = false;
-
-      const timeoutPromise = new Promise<{ error: string | null }>((resolve) => {
-        window.setTimeout(() => {
-          timedOut = true;
-          resolve({ error: 'Sign-in timed out. Please check your connection and try again.' });
-        }, timeoutMs);
-      });
-
-      const result = await Promise.race([login(email, password), timeoutPromise]);
-
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-
-      // If the request timed out but auth eventually succeeds, the useEffect redirect will still handle it.
-      if (timedOut) return;
-
-      navigate('/researcher/dashboard', { replace: true });
-    } finally {
+    const { error } = await login(email, password);
+    
+    if (error) {
+      setError(error);
       setIsLoading(false);
+    } else {
+      navigate('/researcher/dashboard', { replace: true });
     }
   };
 
