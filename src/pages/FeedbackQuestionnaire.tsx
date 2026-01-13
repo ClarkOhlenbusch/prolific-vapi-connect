@@ -182,10 +182,11 @@ const FeedbackQuestionnaire = () => {
     }
 
     const petsDataString = sessionStorage.getItem("petsData");
+    const godspeedDataString = sessionStorage.getItem("godspeedData");
     const tiasDataString = sessionStorage.getItem("tiasData");
     const intentionDataString = sessionStorage.getItem("intentionData");
     const formalityDataString = sessionStorage.getItem("formalityData");
-    if (!petsDataString || !tiasDataString || !intentionDataString || !formalityDataString) {
+    if (!petsDataString || !godspeedDataString || !tiasDataString || !intentionDataString || !formalityDataString) {
       toast({
         title: "Error",
         description: "Previous questionnaire data not found.",
@@ -197,6 +198,7 @@ const FeedbackQuestionnaire = () => {
     setIsSubmitting(true);
     try {
       const petsData = JSON.parse(petsDataString);
+      const godspeedData = JSON.parse(godspeedDataString);
       const tiasData = JSON.parse(tiasDataString);
       const intentionData = JSON.parse(intentionDataString);
       const formalityData = JSON.parse(formalityDataString);
@@ -215,6 +217,7 @@ const FeedbackQuestionnaire = () => {
         body: {
           sessionToken,
           petsData,
+          godspeedData,
           tiasData,
           intentionData,
           feedbackData: feedbackPayload,

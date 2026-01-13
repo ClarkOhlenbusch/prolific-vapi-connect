@@ -187,7 +187,7 @@ const TiasQuestionnaire = () => {
     await trackBackButtonClick({
       answeredCount: Object.keys(responses).length,
     });
-    navigate("/questionnaire/pets", { state: { callId } });
+    navigate("/questionnaire/godspeed", { state: { callId } });
   };
 
   const handleNext = () => {
@@ -254,7 +254,7 @@ const TiasQuestionnaire = () => {
       <Card className="w-full max-w-4xl shadow-xl border-border">
         <CardHeader className="space-y-3">
           <ExperimentProgress />
-          <CardTitle className="text-2xl text-center">Questionnaire 3</CardTitle>
+          <CardTitle className="text-2xl text-center">Questionnaire 4</CardTitle>
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>
