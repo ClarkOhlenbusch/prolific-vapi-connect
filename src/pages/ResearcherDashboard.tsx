@@ -7,14 +7,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { 
   FlaskConical, 
   LogOut, 
-  Users, 
   FileText, 
   BarChart3, 
   Archive,
   Settings
 } from 'lucide-react';
 import { ExperimentResponsesTable } from '@/components/researcher/ExperimentResponsesTable';
-import { DemographicsTable } from '@/components/researcher/DemographicsTable';
 import { ParticipantCallsTable } from '@/components/researcher/ParticipantCallsTable';
 import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponsesTable';
 import { DataSummary } from '@/components/researcher/DataSummary';
@@ -68,7 +66,7 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid lg:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-5">
             <TabsTrigger value="summary" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Summary</span>
@@ -76,10 +74,6 @@ const ResearcherDashboard = () => {
             <TabsTrigger value="responses" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
               <span className="hidden sm:inline">Responses</span>
-            </TabsTrigger>
-            <TabsTrigger value="demographics" className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">Demographics</span>
             </TabsTrigger>
             <TabsTrigger value="calls" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
@@ -113,20 +107,6 @@ const ResearcherDashboard = () => {
               </CardHeader>
               <CardContent>
                 <ExperimentResponsesTable />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="demographics">
-            <Card>
-              <CardHeader>
-                <CardTitle>Demographics</CardTitle>
-                <CardDescription>
-                  Participant demographic information
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <DemographicsTable />
               </CardContent>
             </Card>
           </TabsContent>
