@@ -953,7 +953,7 @@ export const ExperimentResponsesTable = () => {
         ) : null;
 
       case 'prolific_id':
-        return <TableCell className="font-mono text-sm">{row.prolific_id}</TableCell>;
+        return <TableCell className="font-mono text-sm" title={row.prolific_id}>{row.prolific_id.substring(0, 4)}...</TableCell>;
 
       case 'created_at':
         return <TableCell>{new Date(row.created_at).toLocaleDateString()}</TableCell>;
