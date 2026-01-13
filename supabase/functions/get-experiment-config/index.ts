@@ -27,12 +27,11 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch the active assistant type from experiment_settings
+    // Fetch both settings at once
     const { data, error } = await supabase
       .from("experiment_settings")
-      .select("setting_value")
-      .eq("setting_key", "active_assistant_type")
-      .single();
+      .select("setting_key, setting_value")
+      .in("setting_key", ["active_assistant_type", "current_batch_label"]);
 
     if (error) {
       console.error("Error fetching experiment config:", error);
@@ -41,6 +40,7 @@ Deno.serve(async (req) => {
         JSON.stringify({
           assistantType: "informal",
           assistantId: ASSISTANT_IDS.informal,
+          batchLabel: null,
         }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -48,13 +48,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    const assistantType = data.setting_value as keyof typeof ASSISTANT_IDS;
+    const assistantSetting = data?.find(s => s.setting_key === "active_assistant_type");
+    const batchSetting = data?.find(s => s.setting_key === "current_batch_label");
+
+    const assistantType = (assistantSetting?.setting_value as keyof typeof ASSISTANT_IDS) || "informal";
     const assistantId = ASSISTANT_IDS[assistantType] || ASSISTANT_IDS.informal;
+    const batchLabel = batchSetting?.setting_value || null;
 
     return new Response(
       JSON.stringify({
         assistantType,
         assistantId,
+        batchLabel: batchLabel && batchLabel.trim() !== "" ? batchLabel : null,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

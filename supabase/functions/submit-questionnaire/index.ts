@@ -255,6 +255,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Fetch current batch label from experiment_settings
+    const { data: batchSetting } = await supabase
+      .from('experiment_settings')
+      .select('setting_value')
+      .eq('setting_key', 'current_batch_label')
+      .single();
+    
+    const batchLabel = batchSetting?.setting_value?.trim() || null;
+
     // Count call attempts for this participant
     const { count: callAttempts } = await supabase
       .from('participant_calls')
@@ -376,6 +385,8 @@ Deno.serve(async (req) => {
       experiment_feedback: validatedFeedback.experiment_feedback,
       // Assistant type (formal/informal)
       assistant_type: assistantType || null,
+      // Batch label
+      batch_label: batchLabel || null,
     };
 
     const { error: insertError } = await supabase
