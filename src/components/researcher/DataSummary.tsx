@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 
 interface SummaryData {
   totalResponses: number;
-  totalDemographics: number;
   totalCalls: number;
   totalArchived: number;
   avgPetsTotal: number;
@@ -89,9 +88,8 @@ export const DataSummary = () => {
     const fetchSummary = async () => {
       try {
         // Fetch counts in parallel
-        const [responsesRes, demographicsRes, callsRes, archivedRes] = await Promise.all([
+        const [responsesRes, callsRes, archivedRes] = await Promise.all([
           supabase.from('experiment_responses').select('*', { count: 'exact', head: false }),
-          supabase.from('demographics').select('*', { count: 'exact', head: true }),
           supabase.from('participant_calls').select('*', { count: 'exact', head: true }),
           isSuperAdmin 
             ? supabase.from('archived_responses').select('*', { count: 'exact', head: true })
@@ -127,7 +125,6 @@ export const DataSummary = () => {
 
         setData({
           totalResponses: responsesRes.count || 0,
-          totalDemographics: demographicsRes.count || 0,
           totalCalls: callsRes.count || 0,
           totalArchived: archivedRes.count || 0,
           avgPetsTotal,
@@ -189,16 +186,6 @@ export const DataSummary = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data?.totalResponses || 0}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Demographics</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.totalDemographics || 0}</div>
           </CardContent>
         </Card>
 
