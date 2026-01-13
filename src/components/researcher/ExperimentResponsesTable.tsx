@@ -29,7 +29,10 @@ import {
   Filter,
   X,
   CalendarIcon,
-  Check
+  Check,
+  Eye,
+  EyeOff,
+  Columns
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -435,6 +438,9 @@ export const ExperimentResponsesTable = () => {
   });
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
 
+  // Column visibility state
+  const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnId>>(new Set());
+
   // Column order state
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>([
     'select', 'prolific_id', 'created_at', 'batch_label', 'assistant_type', 'formality', 'pets_total', 'tias_total', 'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'age', 'gender', 'actions'
@@ -458,8 +464,23 @@ export const ExperimentResponsesTable = () => {
   ], []);
 
   const orderedColumns = useMemo(() => {
-    return columnOrder.map(id => columns.find(c => c.id === id)!).filter(Boolean);
-  }, [columnOrder, columns]);
+    return columnOrder
+      .map(id => columns.find(c => c.id === id)!)
+      .filter(Boolean)
+      .filter(col => !hiddenColumns.has(col.id));
+  }, [columnOrder, columns, hiddenColumns]);
+
+  const toggleColumnVisibility = (columnId: ColumnId) => {
+    setHiddenColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(columnId)) {
+        next.delete(columnId);
+      } else {
+        next.add(columnId);
+      }
+      return next;
+    });
+  };
 
   // DnD sensors
   const sensors = useSensors(
@@ -1163,6 +1184,32 @@ export const ExperimentResponsesTable = () => {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Column Visibility Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Columns className="h-4 w-4 mr-2" />
+                Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 bg-popover">
+              {columns.filter(col => col.id !== 'select' && col.id !== 'actions').map((column) => (
+                <DropdownMenuItem
+                  key={column.id}
+                  onClick={() => toggleColumnVisibility(column.id)}
+                  className="flex items-center justify-between cursor-pointer"
+                >
+                  <span>{column.label}</span>
+                  {!hiddenColumns.has(column.id) ? (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           
           {isSuperAdmin && (
             <Button onClick={exportToCSV} variant="outline">

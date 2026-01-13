@@ -332,7 +332,7 @@ export const DataSummary = () => {
             {comparison && (comparison.formal.count > 0 || comparison.informal.count > 0) ? (
               <div className="space-y-6">
                 {/* Response Counts */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className={`grid gap-4 ${comparison.unknown.count > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   <div className="text-center p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
                     <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 mb-2">
                       Formal
@@ -351,13 +351,15 @@ export const DataSummary = () => {
                     </div>
                     <p className="text-xs text-muted-foreground">responses</p>
                   </div>
-                  <div className="text-center p-4 rounded-lg bg-muted/50 border border-border">
-                    <Badge variant="outline" className="mb-2">Unknown</Badge>
-                    <div className="text-2xl font-bold text-muted-foreground">
-                      {comparison.unknown.count}
+                  {comparison.unknown.count > 0 && (
+                    <div className="text-center p-4 rounded-lg bg-muted/50 border border-border">
+                      <Badge variant="outline" className="mb-2">Unknown</Badge>
+                      <div className="text-2xl font-bold text-muted-foreground">
+                        {comparison.unknown.count}
+                      </div>
+                      <p className="text-xs text-muted-foreground">responses</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">responses</p>
-                  </div>
+                  )}
                 </div>
 
                 {/* Comparison Table */}
