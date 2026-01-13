@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -6,6 +6,13 @@ import { FileText, Phone, Archive, ArrowUpDown } from 'lucide-react';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type AssistantFilter = 'both' | 'formal' | 'informal';
 
@@ -94,7 +101,15 @@ export const DataSummary = () => {
   const [allResponses, setAllResponses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [assistantFilter, setAssistantFilter] = useState<AssistantFilter>('both');
+  const [batchFilter, setBatchFilter] = useState<string>('all');
+  const [availableBatches, setAvailableBatches] = useState<string[]>([]);
   const { isSuperAdmin } = useResearcherAuth();
+
+  // Get unique batches from responses
+  const extractBatches = (responses: any[]) => {
+    const batches = [...new Set(responses.map(r => r.batch_label).filter(Boolean) as string[])];
+    return batches.sort();
+  };
 
   useEffect(() => {
     const fetchSummary = async () => {
@@ -110,8 +125,9 @@ export const DataSummary = () => {
 
         const responses = responsesRes.data || [];
         setAllResponses(responses);
+        setAvailableBatches(extractBatches(responses));
 
-        // Calculate comparison stats by assistant type
+        // Calculate comparison stats by assistant type (will be recalculated when filters change)
         const formalResponses = responses.filter(r => r.assistant_type === 'formal');
         const informalResponses = responses.filter(r => r.assistant_type === 'informal');
         const unknownResponses = responses.filter(r => r.assistant_type === null || r.assistant_type === undefined);
@@ -140,18 +156,36 @@ export const DataSummary = () => {
     fetchSummary();
   }, [isSuperAdmin]);
 
-  // Recalculate stats when filter changes
+  // Recalculate stats when filters change
   useEffect(() => {
     if (allResponses.length === 0) return;
 
+    // First filter by batch
+    let batchFiltered = allResponses;
+    if (batchFilter !== 'all') {
+      batchFiltered = allResponses.filter(r => r.batch_label === batchFilter);
+    }
+
+    // Then filter by assistant type for the main stats
     let filteredResponses: any[];
     if (assistantFilter === 'formal') {
-      filteredResponses = allResponses.filter(r => r.assistant_type === 'formal');
+      filteredResponses = batchFiltered.filter(r => r.assistant_type === 'formal');
     } else if (assistantFilter === 'informal') {
-      filteredResponses = allResponses.filter(r => r.assistant_type === 'informal');
+      filteredResponses = batchFiltered.filter(r => r.assistant_type === 'informal');
     } else {
-      filteredResponses = allResponses;
+      filteredResponses = batchFiltered;
     }
+
+    // Recalculate comparison based on batch filter
+    const formalResponses = batchFiltered.filter(r => r.assistant_type === 'formal');
+    const informalResponses = batchFiltered.filter(r => r.assistant_type === 'informal');
+    const unknownResponses = batchFiltered.filter(r => r.assistant_type === null || r.assistant_type === undefined);
+
+    setComparison({
+      formal: calculateStats(formalResponses),
+      informal: calculateStats(informalResponses),
+      unknown: calculateStats(unknownResponses),
+    });
 
     const stats = calculateStats(filteredResponses);
     setData(prev => prev ? {
@@ -159,7 +193,7 @@ export const DataSummary = () => {
       totalResponses: filteredResponses.length,
       ...stats,
     } : null);
-  }, [assistantFilter, allResponses]);
+  }, [assistantFilter, batchFilter, allResponses]);
 
   const formatDiff = (formal: number, informal: number) => {
     const diff = formal - informal;
@@ -197,25 +231,42 @@ export const DataSummary = () => {
 
   return (
     <div className="space-y-6">
-      {/* Filter Toggle */}
-      <div className="flex items-center gap-4">
-        <span className="text-sm font-medium text-muted-foreground">Filter by Assistant Type:</span>
-        <ToggleGroup 
-          type="single" 
-          value={assistantFilter} 
-          onValueChange={(value) => value && setAssistantFilter(value as AssistantFilter)}
-          className="justify-start"
-        >
-          <ToggleGroupItem value="both" aria-label="Show both">
-            Both
-          </ToggleGroupItem>
-          <ToggleGroupItem value="formal" aria-label="Show formal only" className="data-[state=on]:bg-blue-100 data-[state=on]:text-blue-700 dark:data-[state=on]:bg-blue-900 dark:data-[state=on]:text-blue-300">
-            Formal
-          </ToggleGroupItem>
-          <ToggleGroupItem value="informal" aria-label="Show informal only" className="data-[state=on]:bg-amber-100 data-[state=on]:text-amber-700 dark:data-[state=on]:bg-amber-900 dark:data-[state=on]:text-amber-300">
-            Informal
-          </ToggleGroupItem>
-        </ToggleGroup>
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">Assistant:</span>
+          <ToggleGroup 
+            type="single" 
+            value={assistantFilter} 
+            onValueChange={(value) => value && setAssistantFilter(value as AssistantFilter)}
+            className="justify-start"
+          >
+            <ToggleGroupItem value="both" aria-label="Show both">
+              Both
+            </ToggleGroupItem>
+            <ToggleGroupItem value="formal" aria-label="Show formal only" className="data-[state=on]:bg-blue-100 data-[state=on]:text-blue-700 dark:data-[state=on]:bg-blue-900 dark:data-[state=on]:text-blue-300">
+              Formal
+            </ToggleGroupItem>
+            <ToggleGroupItem value="informal" aria-label="Show informal only" className="data-[state=on]:bg-amber-100 data-[state=on]:text-amber-700 dark:data-[state=on]:bg-amber-900 dark:data-[state=on]:text-amber-300">
+              Informal
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">Batch:</span>
+          <Select value={batchFilter} onValueChange={setBatchFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All batches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All batches</SelectItem>
+              {availableBatches.map((batch) => (
+                <SelectItem key={batch} value={batch}>{batch}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Count Cards */}
