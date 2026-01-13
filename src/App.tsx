@@ -29,6 +29,7 @@ const Complete = lazy(() => import("./pages/Complete"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const ResearcherLogin = lazy(() => import("./pages/ResearcherLogin"));
 const ResearcherDashboard = lazy(() => import("./pages/ResearcherDashboard"));
+const ResearcherUserManagement = lazy(() => import("./pages/ResearcherUserManagement"));
 
 const queryClient = new QueryClient();
 
@@ -116,6 +117,7 @@ const App = () => (
                 <Route path="/complete" element={<Complete />} />
                 <Route path="/researcher" element={<ResearcherLogin />} />
                 <Route path="/researcher/dashboard" element={<ResearcherProtectedRoute><ResearcherDashboard /></ResearcherProtectedRoute>} />
+                <Route path="/researcher/users" element={<ResearcherProtectedRoute><ResearcherUserManagement /></ResearcherProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
