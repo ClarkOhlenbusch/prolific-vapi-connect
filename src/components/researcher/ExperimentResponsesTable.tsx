@@ -869,14 +869,6 @@ export const ExperimentResponsesTable = () => {
         demographicsMap.set(d.prolific_id, d);
       });
 
-      const headers = [
-        'Prolific ID', 'Call ID', 'Created At', 'Assistant Type', 'Batch Label',
-        'Age', 'Gender', 'Native English', 'Ethnicity', 'VA Familiarity', 'VA Usage Frequency',
-        'PETS Total', 'PETS ER', 'PETS UT', 'TIAS Total',
-        'GS Anthro Total', 'GS Like Total', 'GS Intel Total',
-        'Formality', 'Intention 1', 'Intention 2'
-      ];
-
       const escapeCSV = (value: any) => {
         if (value === null || value === undefined) return '';
         const str = String(value);
@@ -885,6 +877,41 @@ export const ExperimentResponsesTable = () => {
         }
         return str;
       };
+
+      // Get all columns from the first row to ensure we export everything
+      const experimentColumns = [
+        'id', 'prolific_id', 'call_id', 'created_at', 'call_attempt_number', 'assistant_type', 'batch_label',
+        'e1', 'e1_position', 'e2', 'e2_position', 'e3', 'e3_position', 
+        'e4', 'e4_position', 'e5', 'e5_position', 'e6', 'e6_position',
+        'u1', 'u1_position', 'u2', 'u2_position', 'u3', 'u3_position', 'u4', 'u4_position',
+        'attention_check_1', 'attention_check_1_expected', 'attention_check_1_position',
+        'pets_er', 'pets_ut', 'pets_total',
+        'tias_1', 'tias_1_position', 'tias_2', 'tias_2_position', 'tias_3', 'tias_3_position',
+        'tias_4', 'tias_4_position', 'tias_5', 'tias_5_position', 'tias_6', 'tias_6_position',
+        'tias_7', 'tias_7_position', 'tias_8', 'tias_8_position', 'tias_9', 'tias_9_position',
+        'tias_10', 'tias_10_position', 'tias_11', 'tias_11_position', 'tias_12', 'tias_12_position',
+        'tias_attention_check_1', 'tias_attention_check_1_expected', 'tias_attention_check_1_position',
+        'tias_total',
+        'intention_1', 'intention_2', 'formality',
+        'godspeed_anthro_1', 'godspeed_anthro_1_position', 'godspeed_anthro_2', 'godspeed_anthro_2_position',
+        'godspeed_anthro_3', 'godspeed_anthro_3_position', 'godspeed_anthro_4', 'godspeed_anthro_4_position',
+        'godspeed_anthro_total',
+        'godspeed_like_1', 'godspeed_like_1_position', 'godspeed_like_2', 'godspeed_like_2_position',
+        'godspeed_like_3', 'godspeed_like_3_position', 'godspeed_like_4', 'godspeed_like_4_position',
+        'godspeed_like_5', 'godspeed_like_5_position', 'godspeed_like_total',
+        'godspeed_intel_1', 'godspeed_intel_1_position', 'godspeed_intel_2', 'godspeed_intel_2_position',
+        'godspeed_intel_3', 'godspeed_intel_3_position', 'godspeed_intel_4', 'godspeed_intel_4_position',
+        'godspeed_intel_5', 'godspeed_intel_5_position', 'godspeed_intel_total',
+        'godspeed_attention_check_1', 'godspeed_attention_check_1_expected', 'godspeed_attention_check_1_position',
+        'voice_assistant_feedback', 'communication_style_feedback', 'experiment_feedback'
+      ];
+
+      const demographicColumns = [
+        'demo_age', 'demo_gender', 'demo_native_english', 'demo_ethnicity', 
+        'demo_va_familiarity', 'demo_va_usage_frequency'
+      ];
+
+      const headers = [...experimentColumns, ...demographicColumns];
       
       const csvContent = [
         headers.join(','),
@@ -893,29 +920,22 @@ export const ExperimentResponsesTable = () => {
           const ethnicityStr = demo?.ethnicity 
             ? (Array.isArray(demo.ethnicity) ? (demo.ethnicity as string[]).join('; ') : String(demo.ethnicity))
             : '';
-          return [
-            escapeCSV(row.prolific_id),
-            escapeCSV(row.call_id),
-            escapeCSV(row.created_at),
-            escapeCSV(row.assistant_type || 'unknown'),
-            escapeCSV(row.batch_label || ''),
-            escapeCSV(demo?.age || ''),
-            escapeCSV(demo?.gender || ''),
-            escapeCSV(demo?.native_english || ''),
+          
+          const experimentValues = experimentColumns.map(col => {
+            const value = (row as any)[col];
+            return escapeCSV(value ?? '');
+          });
+
+          const demographicValues = [
+            escapeCSV(demo?.age ?? ''),
+            escapeCSV(demo?.gender ?? ''),
+            escapeCSV(demo?.native_english ?? ''),
             escapeCSV(ethnicityStr),
             escapeCSV(demo?.voice_assistant_familiarity ?? ''),
             escapeCSV(demo?.voice_assistant_usage_frequency ?? ''),
-            escapeCSV(row.pets_total),
-            escapeCSV(row.pets_er),
-            escapeCSV(row.pets_ut),
-            escapeCSV(row.tias_total ?? ''),
-            escapeCSV(row.godspeed_anthro_total ?? ''),
-            escapeCSV(row.godspeed_like_total ?? ''),
-            escapeCSV(row.godspeed_intel_total ?? ''),
-            escapeCSV(row.formality),
-            escapeCSV(row.intention_1),
-            escapeCSV(row.intention_2)
-          ].join(',');
+          ];
+
+          return [...experimentValues, ...demographicValues].join(',');
         })
       ].join('\n');
 
