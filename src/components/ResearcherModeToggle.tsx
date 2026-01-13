@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
-import { FlaskConical } from 'lucide-react';
+import { FlaskConical, LogIn } from 'lucide-react';
 
 export const ResearcherModeToggle = () => {
   const [showButton, setShowButton] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
   const { isResearcherMode, toggleResearcherMode } = useResearcherMode();
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Disable on no-consent page to allow normal typing
       if (location.pathname === '/no-consent') return;
+      // Disable on researcher pages
+      if (location.pathname.startsWith('/researcher')) return;
       
       if (e.code === 'Space') {
         e.preventDefault();
@@ -44,7 +47,18 @@ export const ResearcherModeToggle = () => {
   if (!showButton) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+      {isResearcherMode && (
+        <Button
+          onClick={() => navigate('/researcher')}
+          variant="default"
+          size="lg"
+          className="shadow-lg"
+        >
+          <LogIn className="w-5 h-5 mr-2" />
+          Login as Researcher
+        </Button>
+      )}
       <Button
         onClick={toggleResearcherMode}
         variant={isResearcherMode ? "default" : "outline"}
