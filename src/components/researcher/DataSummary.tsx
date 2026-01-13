@@ -6,13 +6,14 @@ import { FileText, Phone, Archive, ArrowUpDown } from 'lucide-react';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { ChevronDown, X } from 'lucide-react';
 
 type AssistantFilter = 'both' | 'formal' | 'informal';
 
@@ -101,7 +102,7 @@ export const DataSummary = () => {
   const [allResponses, setAllResponses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [assistantFilter, setAssistantFilter] = useState<AssistantFilter>('both');
-  const [batchFilter, setBatchFilter] = useState<string>('all');
+  const [selectedBatches, setSelectedBatches] = useState<Set<string>>(new Set());
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
   const { isSuperAdmin } = useResearcherAuth();
 
@@ -160,10 +161,10 @@ export const DataSummary = () => {
   useEffect(() => {
     if (allResponses.length === 0) return;
 
-    // First filter by batch
+    // First filter by batch (if any selected)
     let batchFiltered = allResponses;
-    if (batchFilter !== 'all') {
-      batchFiltered = allResponses.filter(r => r.batch_label === batchFilter);
+    if (selectedBatches.size > 0) {
+      batchFiltered = allResponses.filter(r => r.batch_label && selectedBatches.has(r.batch_label));
     }
 
     // Then filter by assistant type for the main stats
@@ -193,7 +194,23 @@ export const DataSummary = () => {
       totalResponses: filteredResponses.length,
       ...stats,
     } : null);
-  }, [assistantFilter, batchFilter, allResponses]);
+  }, [assistantFilter, selectedBatches, allResponses]);
+
+  const toggleBatch = (batch: string) => {
+    setSelectedBatches(prev => {
+      const next = new Set(prev);
+      if (next.has(batch)) {
+        next.delete(batch);
+      } else {
+        next.add(batch);
+      }
+      return next;
+    });
+  };
+
+  const clearBatches = () => {
+    setSelectedBatches(new Set());
+  };
 
   const formatDiff = (formal: number, informal: number) => {
     const diff = formal - informal;
@@ -255,17 +272,51 @@ export const DataSummary = () => {
 
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">Batch:</span>
-          <Select value={batchFilter} onValueChange={setBatchFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="All batches" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All batches</SelectItem>
-              {availableBatches.map((batch) => (
-                <SelectItem key={batch} value={batch}>{batch}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-[200px] justify-between">
+                {selectedBatches.size === 0 
+                  ? "All batches" 
+                  : selectedBatches.size === 1 
+                    ? Array.from(selectedBatches)[0]
+                    : `${selectedBatches.size} batches`}
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[200px] p-2" align="start">
+              <div className="space-y-2">
+                {availableBatches.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2 text-center">No batches available</p>
+                ) : (
+                  <>
+                    {selectedBatches.size > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-muted-foreground"
+                        onClick={clearBatches}
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Clear selection
+                      </Button>
+                    )}
+                    {availableBatches.map((batch) => (
+                      <label
+                        key={batch}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={selectedBatches.has(batch)}
+                          onCheckedChange={() => toggleBatch(batch)}
+                        />
+                        <span className="text-sm">{batch}</span>
+                      </label>
+                    ))}
+                  </>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 

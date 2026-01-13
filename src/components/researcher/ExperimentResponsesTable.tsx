@@ -69,6 +69,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
   DropdownMenuPortal,
+  DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
 import {
   Popover,
@@ -1195,18 +1196,14 @@ export const ExperimentResponsesTable = () => {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-popover">
               {columns.filter(col => col.id !== 'select' && col.id !== 'actions').map((column) => (
-                <DropdownMenuItem
+                <DropdownMenuCheckboxItem
                   key={column.id}
-                  onClick={() => toggleColumnVisibility(column.id)}
-                  className="flex items-center justify-between cursor-pointer"
+                  checked={!hiddenColumns.has(column.id)}
+                  onCheckedChange={() => toggleColumnVisibility(column.id)}
+                  onSelect={(e) => e.preventDefault()}
                 >
-                  <span>{column.label}</span>
-                  {!hiddenColumns.has(column.id) ? (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </DropdownMenuItem>
+                  {column.label}
+                </DropdownMenuCheckboxItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
