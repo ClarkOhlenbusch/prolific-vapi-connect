@@ -52,57 +52,35 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
   };
 
   useEffect(() => {
-    let cancelled = false;
-
-    const init = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (cancelled) return;
-
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          const fetchedRole = await fetchRole(session.user.id);
-          if (cancelled) return;
-          setRole(fetchedRole);
-        }
-      } catch (err) {
-        console.error('Error getting initial session:', err);
-        if (cancelled) return;
-        setSession(null);
-        setUser(null);
-        setRole(null);
-      } finally {
-        if (!cancelled) setIsLoading(false);
+    // Get initial session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        const fetchedRole = await fetchRole(session.user.id);
+        setRole(fetchedRole);
       }
-    };
-
-    init();
+      
+      setIsLoading(false);
+    });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setIsLoading(true);
-
-      try {
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          const fetchedRole = await fetchRole(session.user.id);
-          setRole(fetchedRole);
-        } else {
-          setRole(null);
-        }
-      } finally {
-        setIsLoading(false);
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        const fetchedRole = await fetchRole(session.user.id);
+        setRole(fetchedRole);
+      } else {
+        setRole(null);
       }
+      
+      setIsLoading(false);
     });
 
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string): Promise<{ error: string | null }> => {
