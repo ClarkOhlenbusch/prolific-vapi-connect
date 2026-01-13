@@ -131,6 +131,40 @@ export type Database = {
           e6_position: number
           experiment_feedback: string
           formality: number
+          godspeed_anthro_1: number | null
+          godspeed_anthro_1_position: number | null
+          godspeed_anthro_2: number | null
+          godspeed_anthro_2_position: number | null
+          godspeed_anthro_3: number | null
+          godspeed_anthro_3_position: number | null
+          godspeed_anthro_4: number | null
+          godspeed_anthro_4_position: number | null
+          godspeed_anthro_total: number | null
+          godspeed_attention_check_1: number | null
+          godspeed_attention_check_1_expected: number | null
+          godspeed_attention_check_1_position: number | null
+          godspeed_intel_1: number | null
+          godspeed_intel_1_position: number | null
+          godspeed_intel_2: number | null
+          godspeed_intel_2_position: number | null
+          godspeed_intel_3: number | null
+          godspeed_intel_3_position: number | null
+          godspeed_intel_4: number | null
+          godspeed_intel_4_position: number | null
+          godspeed_intel_5: number | null
+          godspeed_intel_5_position: number | null
+          godspeed_intel_total: number | null
+          godspeed_like_1: number | null
+          godspeed_like_1_position: number | null
+          godspeed_like_2: number | null
+          godspeed_like_2_position: number | null
+          godspeed_like_3: number | null
+          godspeed_like_3_position: number | null
+          godspeed_like_4: number | null
+          godspeed_like_4_position: number | null
+          godspeed_like_5: number | null
+          godspeed_like_5_position: number | null
+          godspeed_like_total: number | null
           id: string
           intention_1: number
           intention_2: number
@@ -199,6 +233,40 @@ export type Database = {
           e6_position: number
           experiment_feedback: string
           formality: number
+          godspeed_anthro_1?: number | null
+          godspeed_anthro_1_position?: number | null
+          godspeed_anthro_2?: number | null
+          godspeed_anthro_2_position?: number | null
+          godspeed_anthro_3?: number | null
+          godspeed_anthro_3_position?: number | null
+          godspeed_anthro_4?: number | null
+          godspeed_anthro_4_position?: number | null
+          godspeed_anthro_total?: number | null
+          godspeed_attention_check_1?: number | null
+          godspeed_attention_check_1_expected?: number | null
+          godspeed_attention_check_1_position?: number | null
+          godspeed_intel_1?: number | null
+          godspeed_intel_1_position?: number | null
+          godspeed_intel_2?: number | null
+          godspeed_intel_2_position?: number | null
+          godspeed_intel_3?: number | null
+          godspeed_intel_3_position?: number | null
+          godspeed_intel_4?: number | null
+          godspeed_intel_4_position?: number | null
+          godspeed_intel_5?: number | null
+          godspeed_intel_5_position?: number | null
+          godspeed_intel_total?: number | null
+          godspeed_like_1?: number | null
+          godspeed_like_1_position?: number | null
+          godspeed_like_2?: number | null
+          godspeed_like_2_position?: number | null
+          godspeed_like_3?: number | null
+          godspeed_like_3_position?: number | null
+          godspeed_like_4?: number | null
+          godspeed_like_4_position?: number | null
+          godspeed_like_5?: number | null
+          godspeed_like_5_position?: number | null
+          godspeed_like_total?: number | null
           id?: string
           intention_1: number
           intention_2: number
@@ -267,6 +335,40 @@ export type Database = {
           e6_position?: number
           experiment_feedback?: string
           formality?: number
+          godspeed_anthro_1?: number | null
+          godspeed_anthro_1_position?: number | null
+          godspeed_anthro_2?: number | null
+          godspeed_anthro_2_position?: number | null
+          godspeed_anthro_3?: number | null
+          godspeed_anthro_3_position?: number | null
+          godspeed_anthro_4?: number | null
+          godspeed_anthro_4_position?: number | null
+          godspeed_anthro_total?: number | null
+          godspeed_attention_check_1?: number | null
+          godspeed_attention_check_1_expected?: number | null
+          godspeed_attention_check_1_position?: number | null
+          godspeed_intel_1?: number | null
+          godspeed_intel_1_position?: number | null
+          godspeed_intel_2?: number | null
+          godspeed_intel_2_position?: number | null
+          godspeed_intel_3?: number | null
+          godspeed_intel_3_position?: number | null
+          godspeed_intel_4?: number | null
+          godspeed_intel_4_position?: number | null
+          godspeed_intel_5?: number | null
+          godspeed_intel_5_position?: number | null
+          godspeed_intel_total?: number | null
+          godspeed_like_1?: number | null
+          godspeed_like_1_position?: number | null
+          godspeed_like_2?: number | null
+          godspeed_like_2_position?: number | null
+          godspeed_like_3?: number | null
+          godspeed_like_3_position?: number | null
+          godspeed_like_4?: number | null
+          godspeed_like_4_position?: number | null
+          godspeed_like_5?: number | null
+          godspeed_like_5_position?: number | null
+          godspeed_like_total?: number | null
           id?: string
           intention_1?: number
           intention_2?: number
