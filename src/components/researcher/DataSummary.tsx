@@ -25,6 +25,9 @@ interface AssistantTypeStats {
   avgFormality: number;
   avgIntention1: number;
   avgIntention2: number;
+  avgGodspeedAnthro: number;
+  avgGodspeedLike: number;
+  avgGodspeedIntel: number;
 }
 
 interface ComparisonData {
@@ -44,10 +47,14 @@ const calculateStats = (responses: any[]): AssistantTypeStats => {
       avgFormality: 0,
       avgIntention1: 0,
       avgIntention2: 0,
+      avgGodspeedAnthro: 0,
+      avgGodspeedLike: 0,
+      avgGodspeedIntel: 0,
     };
   }
 
   const tiasResponses = responses.filter(r => r.tias_total !== null);
+  const godspeedResponses = responses.filter(r => r.godspeed_anthro_total !== null);
 
   return {
     count: responses.length,
@@ -60,6 +67,15 @@ const calculateStats = (responses: any[]): AssistantTypeStats => {
     avgFormality: responses.reduce((sum, r) => sum + (r.formality || 0), 0) / responses.length,
     avgIntention1: responses.reduce((sum, r) => sum + (r.intention_1 || 0), 0) / responses.length,
     avgIntention2: responses.reduce((sum, r) => sum + (r.intention_2 || 0), 0) / responses.length,
+    avgGodspeedAnthro: godspeedResponses.length > 0
+      ? godspeedResponses.reduce((sum, r) => sum + (r.godspeed_anthro_total || 0), 0) / godspeedResponses.length
+      : 0,
+    avgGodspeedLike: godspeedResponses.length > 0
+      ? godspeedResponses.reduce((sum, r) => sum + (r.godspeed_like_total || 0), 0) / godspeedResponses.length
+      : 0,
+    avgGodspeedIntel: godspeedResponses.length > 0
+      ? godspeedResponses.reduce((sum, r) => sum + (r.godspeed_intel_total || 0), 0) / godspeedResponses.length
+      : 0,
   };
 };
 
@@ -352,6 +368,42 @@ export const DataSummary = () => {
                         {formatDiff(comparison.formal.avgTiasTotal, comparison.informal.avgTiasTotal) && (
                           <span className={comparison.formal.avgTiasTotal > comparison.informal.avgTiasTotal ? 'text-blue-600' : 'text-amber-600'}>
                             {formatDiff(comparison.formal.avgTiasTotal, comparison.informal.avgTiasTotal)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 text-sm font-medium">Godspeed Anthropomorphism</td>
+                      <td className="p-3 text-center text-sm">{comparison.formal.avgGodspeedAnthro.toFixed(2)}</td>
+                      <td className="p-3 text-center text-sm">{comparison.informal.avgGodspeedAnthro.toFixed(2)}</td>
+                      <td className="p-3 text-center text-sm">
+                        {formatDiff(comparison.formal.avgGodspeedAnthro, comparison.informal.avgGodspeedAnthro) && (
+                          <span className={comparison.formal.avgGodspeedAnthro > comparison.informal.avgGodspeedAnthro ? 'text-blue-600' : 'text-amber-600'}>
+                            {formatDiff(comparison.formal.avgGodspeedAnthro, comparison.informal.avgGodspeedAnthro)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 text-sm font-medium">Godspeed Likeability</td>
+                      <td className="p-3 text-center text-sm">{comparison.formal.avgGodspeedLike.toFixed(2)}</td>
+                      <td className="p-3 text-center text-sm">{comparison.informal.avgGodspeedLike.toFixed(2)}</td>
+                      <td className="p-3 text-center text-sm">
+                        {formatDiff(comparison.formal.avgGodspeedLike, comparison.informal.avgGodspeedLike) && (
+                          <span className={comparison.formal.avgGodspeedLike > comparison.informal.avgGodspeedLike ? 'text-blue-600' : 'text-amber-600'}>
+                            {formatDiff(comparison.formal.avgGodspeedLike, comparison.informal.avgGodspeedLike)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 text-sm font-medium">Godspeed Intelligence</td>
+                      <td className="p-3 text-center text-sm">{comparison.formal.avgGodspeedIntel.toFixed(2)}</td>
+                      <td className="p-3 text-center text-sm">{comparison.informal.avgGodspeedIntel.toFixed(2)}</td>
+                      <td className="p-3 text-center text-sm">
+                        {formatDiff(comparison.formal.avgGodspeedIntel, comparison.informal.avgGodspeedIntel) && (
+                          <span className={comparison.formal.avgGodspeedIntel > comparison.informal.avgGodspeedIntel ? 'text-blue-600' : 'text-amber-600'}>
+                            {formatDiff(comparison.formal.avgGodspeedIntel, comparison.informal.avgGodspeedIntel)}
                           </span>
                         )}
                       </td>

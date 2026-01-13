@@ -38,6 +38,44 @@ const petsDataSchema = z.object({
   call_id: z.string().min(1).max(255),
 });
 
+// Validation schema for Godspeed data with positions
+const godspeedDataSchema = z.object({
+  godspeed_anthro_1: z.number().min(1).max(5),
+  godspeed_anthro_2: z.number().min(1).max(5),
+  godspeed_anthro_3: z.number().min(1).max(5),
+  godspeed_anthro_4: z.number().min(1).max(5),
+  godspeed_like_1: z.number().min(1).max(5),
+  godspeed_like_2: z.number().min(1).max(5),
+  godspeed_like_3: z.number().min(1).max(5),
+  godspeed_like_4: z.number().min(1).max(5),
+  godspeed_like_5: z.number().min(1).max(5),
+  godspeed_intel_1: z.number().min(1).max(5),
+  godspeed_intel_2: z.number().min(1).max(5),
+  godspeed_intel_3: z.number().min(1).max(5),
+  godspeed_intel_4: z.number().min(1).max(5),
+  godspeed_intel_5: z.number().min(1).max(5),
+  godspeed_anthro_1_position: z.number().int(),
+  godspeed_anthro_2_position: z.number().int(),
+  godspeed_anthro_3_position: z.number().int(),
+  godspeed_anthro_4_position: z.number().int(),
+  godspeed_like_1_position: z.number().int(),
+  godspeed_like_2_position: z.number().int(),
+  godspeed_like_3_position: z.number().int(),
+  godspeed_like_4_position: z.number().int(),
+  godspeed_like_5_position: z.number().int(),
+  godspeed_intel_1_position: z.number().int(),
+  godspeed_intel_2_position: z.number().int(),
+  godspeed_intel_3_position: z.number().int(),
+  godspeed_intel_4_position: z.number().int(),
+  godspeed_intel_5_position: z.number().int(),
+  godspeed_anthro_total: z.number(),
+  godspeed_like_total: z.number(),
+  godspeed_intel_total: z.number(),
+  godspeed_attention_check_1: z.number().min(1).max(5).optional(),
+  godspeed_attention_check_1_expected: z.number().min(1).max(5).optional(),
+  godspeed_attention_check_1_position: z.number().int().optional(),
+});
+
 // Validation schema for TIAS data with positions
 const tiasDataSchema = z.object({
   tias_1: z.number().min(1).max(7),
@@ -90,7 +128,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { sessionToken, petsData, tiasData, intentionData, feedbackData, assistantType } = await req.json();
+    const { sessionToken, petsData, godspeedData, tiasData, intentionData, feedbackData, assistantType } = await req.json();
 
     // Validate session token format
     if (!sessionToken || typeof sessionToken !== 'string') {
@@ -111,7 +149,7 @@ Deno.serve(async (req) => {
     }
 
     // Validate all data against schemas
-    let validatedPets, validatedTias, validatedIntention, validatedFeedback;
+    let validatedPets, validatedGodspeed, validatedTias, validatedIntention, validatedFeedback;
     
     try {
       validatedPets = petsDataSchema.parse(petsData);
@@ -119,6 +157,16 @@ Deno.serve(async (req) => {
       console.error('PETS validation failed:', err);
       return new Response(
         JSON.stringify({ error: 'Invalid PETS data', details: err instanceof z.ZodError ? err.errors : undefined }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    try {
+      validatedGodspeed = godspeedDataSchema.parse(godspeedData);
+    } catch (err) {
+      console.error('Godspeed validation failed:', err);
+      return new Response(
+        JSON.stringify({ error: 'Invalid Godspeed data', details: err instanceof z.ZodError ? err.errors : undefined }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -248,6 +296,44 @@ Deno.serve(async (req) => {
       pets_er: validatedPets.pets_er,
       pets_ut: validatedPets.pets_ut,
       pets_total: validatedPets.pets_total,
+      // Godspeed Anthropomorphism items
+      godspeed_anthro_1: validatedGodspeed.godspeed_anthro_1,
+      godspeed_anthro_2: validatedGodspeed.godspeed_anthro_2,
+      godspeed_anthro_3: validatedGodspeed.godspeed_anthro_3,
+      godspeed_anthro_4: validatedGodspeed.godspeed_anthro_4,
+      godspeed_anthro_1_position: validatedGodspeed.godspeed_anthro_1_position,
+      godspeed_anthro_2_position: validatedGodspeed.godspeed_anthro_2_position,
+      godspeed_anthro_3_position: validatedGodspeed.godspeed_anthro_3_position,
+      godspeed_anthro_4_position: validatedGodspeed.godspeed_anthro_4_position,
+      godspeed_anthro_total: validatedGodspeed.godspeed_anthro_total,
+      // Godspeed Likeability items
+      godspeed_like_1: validatedGodspeed.godspeed_like_1,
+      godspeed_like_2: validatedGodspeed.godspeed_like_2,
+      godspeed_like_3: validatedGodspeed.godspeed_like_3,
+      godspeed_like_4: validatedGodspeed.godspeed_like_4,
+      godspeed_like_5: validatedGodspeed.godspeed_like_5,
+      godspeed_like_1_position: validatedGodspeed.godspeed_like_1_position,
+      godspeed_like_2_position: validatedGodspeed.godspeed_like_2_position,
+      godspeed_like_3_position: validatedGodspeed.godspeed_like_3_position,
+      godspeed_like_4_position: validatedGodspeed.godspeed_like_4_position,
+      godspeed_like_5_position: validatedGodspeed.godspeed_like_5_position,
+      godspeed_like_total: validatedGodspeed.godspeed_like_total,
+      // Godspeed Intelligence items
+      godspeed_intel_1: validatedGodspeed.godspeed_intel_1,
+      godspeed_intel_2: validatedGodspeed.godspeed_intel_2,
+      godspeed_intel_3: validatedGodspeed.godspeed_intel_3,
+      godspeed_intel_4: validatedGodspeed.godspeed_intel_4,
+      godspeed_intel_5: validatedGodspeed.godspeed_intel_5,
+      godspeed_intel_1_position: validatedGodspeed.godspeed_intel_1_position,
+      godspeed_intel_2_position: validatedGodspeed.godspeed_intel_2_position,
+      godspeed_intel_3_position: validatedGodspeed.godspeed_intel_3_position,
+      godspeed_intel_4_position: validatedGodspeed.godspeed_intel_4_position,
+      godspeed_intel_5_position: validatedGodspeed.godspeed_intel_5_position,
+      godspeed_intel_total: validatedGodspeed.godspeed_intel_total,
+      // Godspeed attention check
+      godspeed_attention_check_1: validatedGodspeed.godspeed_attention_check_1,
+      godspeed_attention_check_1_expected: validatedGodspeed.godspeed_attention_check_1_expected,
+      godspeed_attention_check_1_position: validatedGodspeed.godspeed_attention_check_1_position,
       // TIAS items
       tias_1: validatedTias.tias_1,
       tias_2: validatedTias.tias_2,

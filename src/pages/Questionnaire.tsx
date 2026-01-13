@@ -253,7 +253,7 @@ const Questionnaire = () => {
     sessionStorage.setItem("petsData", JSON.stringify(validationResult.data));
     sessionStorage.setItem("flowStep", "4");
 
-    navigate("/questionnaire/tias", { state: { callId } });
+    navigate("/questionnaire/godspeed", { state: { callId } });
   };
 
   if (isLoading) {
