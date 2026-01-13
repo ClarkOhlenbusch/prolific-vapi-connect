@@ -22,8 +22,11 @@ import {
   ChevronDown,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Archive,
+  Edit
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -74,6 +77,10 @@ export const ExperimentResponsesTable = () => {
   const [pageSize, setPageSize] = useState(10);
   const [sortColumn, setSortColumn] = useState<SortColumn>('created_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkArchiveDialog, setShowBulkArchiveDialog] = useState(false);
+  const [showBulkAssistantDialog, setShowBulkAssistantDialog] = useState(false);
+  const [bulkAssistantType, setBulkAssistantType] = useState<'formal' | 'informal'>('formal');
   const scrollRef = useRef<HTMLDivElement>(null);
   const { isSuperAdmin, user } = useResearcherAuth();
 
@@ -192,6 +199,105 @@ export const ExperimentResponsesTable = () => {
     }
   };
 
+  // Bulk archive selected responses
+  const handleBulkArchive = async () => {
+    if (selectedIds.size === 0 || !user) return;
+
+    try {
+      const itemsToArchive = data.filter(item => selectedIds.has(item.id));
+      
+      // Insert all into archived_responses
+      const archiveInserts = itemsToArchive.map(item => ({
+        original_table: 'experiment_responses',
+        original_id: item.id,
+        archived_data: JSON.parse(JSON.stringify(item)),
+        archived_by: user.id,
+        archive_reason: 'Bulk archived by researcher',
+      }));
+
+      const { error: archiveError } = await supabase
+        .from('archived_responses')
+        .insert(archiveInserts);
+
+      if (archiveError) throw archiveError;
+
+      // Delete all from experiment_responses
+      const { error: deleteError } = await supabase
+        .from('experiment_responses')
+        .delete()
+        .in('id', Array.from(selectedIds));
+
+      if (deleteError) throw deleteError;
+
+      toast.success(`${selectedIds.size} responses archived successfully`);
+      setSelectedIds(new Set());
+      setShowBulkArchiveDialog(false);
+      fetchData();
+    } catch (error) {
+      console.error('Error bulk archiving:', error);
+      toast.error('Failed to archive responses');
+    }
+  };
+
+  // Bulk update assistant type
+  const handleBulkUpdateAssistantType = async () => {
+    if (selectedIds.size === 0) return;
+
+    try {
+      const { error } = await supabase
+        .from('experiment_responses')
+        .update({ assistant_type: bulkAssistantType })
+        .in('id', Array.from(selectedIds));
+
+      if (error) throw error;
+
+      toast.success(`Updated ${selectedIds.size} responses to ${bulkAssistantType}`);
+      setSelectedIds(new Set());
+      setShowBulkAssistantDialog(false);
+      fetchData();
+    } catch (error) {
+      console.error('Error updating assistant type:', error);
+      toast.error('Failed to update assistant type');
+    }
+  };
+
+  // Update single response assistant type
+  const handleUpdateSingleAssistantType = async (id: string, newType: 'formal' | 'informal') => {
+    try {
+      const { error } = await supabase
+        .from('experiment_responses')
+        .update({ assistant_type: newType })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast.success(`Updated to ${newType}`);
+      fetchData();
+    } catch (error) {
+      console.error('Error updating assistant type:', error);
+      toast.error('Failed to update');
+    }
+  };
+
+  // Selection handlers
+  const toggleSelectAll = () => {
+    if (selectedIds.size === data.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(data.map(item => item.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
   const exportToCSV = () => {
     const headers = [
       'Prolific ID', 'Call ID', 'Created At', 'Assistant Type', 'PETS Total', 'PETS ER', 'PETS UT',
@@ -284,11 +390,53 @@ export const ExperimentResponsesTable = () => {
         </div>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {isSuperAdmin && selectedIds.size > 0 && (
+        <div className="flex items-center gap-4 p-3 bg-muted rounded-lg border">
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowBulkAssistantDialog(true)}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Change Assistant Type
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowBulkArchiveDialog(true)}
+              className="text-destructive hover:text-destructive"
+            >
+              <Archive className="h-4 w-4 mr-2" />
+              Archive Selected
+            </Button>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Clear selection
+          </Button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
+              {isSuperAdmin && (
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={data.length > 0 && selectedIds.size === data.length}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all"
+                  />
+                </TableHead>
+              )}
               <TableHead>
                 <Button
                   variant="ghost"
@@ -361,7 +509,7 @@ export const ExperimentResponsesTable = () => {
           <TableBody>
             {data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isSuperAdmin ? 7 : 6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isSuperAdmin ? 8 : 6} className="text-center py-8 text-muted-foreground">
                   No responses found
                 </TableCell>
               </TableRow>
@@ -369,24 +517,64 @@ export const ExperimentResponsesTable = () => {
               data.map((row) => (
                 <TableRow 
                   key={row.id}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  className={`cursor-pointer hover:bg-muted/50 transition-colors ${selectedIds.has(row.id) ? 'bg-muted/30' : ''}`}
                   onClick={() => {
                     setViewItem(row);
                     resetScrollIndicator();
                   }}
                 >
+                  {isSuperAdmin && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.has(row.id)}
+                        onCheckedChange={() => toggleSelect(row.id)}
+                        aria-label={`Select ${row.prolific_id}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-mono text-sm">{row.prolific_id}</TableCell>
                   <TableCell>{new Date(row.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>{formatNumber(row.pets_total)}</TableCell>
                   <TableCell>{formatNumber(row.tias_total)}</TableCell>
                   <TableCell>{formatNumber(row.formality)}</TableCell>
-                  <TableCell>
-                    {row.assistant_type ? (
-                      <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'}>
-                        {row.assistant_type}
-                      </Badge>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {isSuperAdmin ? (
+                      <Select
+                        value={row.assistant_type || 'unknown'}
+                        onValueChange={(value) => {
+                          if (value === 'formal' || value === 'informal') {
+                            handleUpdateSingleAssistantType(row.id, value);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-28 h-8">
+                          <SelectValue>
+                            {row.assistant_type ? (
+                              <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'} className="text-xs">
+                                {row.assistant_type}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">Unknown</span>
+                            )}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="formal">
+                            <Badge variant="default" className="text-xs">formal</Badge>
+                          </SelectItem>
+                          <SelectItem value="informal">
+                            <Badge variant="secondary" className="text-xs">informal</Badge>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     ) : (
-                      <span className="text-muted-foreground text-sm">Unknown</span>
+                      row.assistant_type ? (
+                        <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'}>
+                          {row.assistant_type}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">Unknown</span>
+                      )
                     )}
                   </TableCell>
                   {isSuperAdmin && (
@@ -580,6 +768,65 @@ export const ExperimentResponsesTable = () => {
                 </div>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Archive Dialog */}
+      <AlertDialog open={showBulkArchiveDialog} onOpenChange={setShowBulkArchiveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive {selectedIds.size} responses?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will move {selectedIds.size} selected responses to the archive. They won't be permanently deleted and can be viewed in the Archived tab.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkArchive}>Archive All</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Assistant Type Dialog */}
+      <Dialog open={showBulkAssistantDialog} onOpenChange={setShowBulkAssistantDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Assistant Type</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Update the assistant type for {selectedIds.size} selected responses.
+            </p>
+            <div className="flex flex-col gap-3">
+              <label className="text-sm font-medium">Select new assistant type:</label>
+              <div className="flex gap-4">
+                <Button
+                  variant={bulkAssistantType === 'formal' ? 'default' : 'outline'}
+                  onClick={() => setBulkAssistantType('formal')}
+                  className="flex-1"
+                >
+                  <Badge variant="default" className="mr-2">Formal</Badge>
+                  Professional style
+                </Button>
+                <Button
+                  variant={bulkAssistantType === 'informal' ? 'default' : 'outline'}
+                  onClick={() => setBulkAssistantType('informal')}
+                  className="flex-1"
+                >
+                  <Badge variant="secondary" className="mr-2">Informal</Badge>
+                  Casual style
+                </Button>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setShowBulkAssistantDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleBulkUpdateAssistantType}>
+                Update {selectedIds.size} responses
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
