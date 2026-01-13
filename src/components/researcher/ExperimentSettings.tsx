@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useResearcherAuth } from "@/contexts/ResearcherAuthContext";
 
@@ -25,6 +27,12 @@ export const ExperimentSettings = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  
+  // Batch label state
+  const [batchLabel, setBatchLabel] = useState("");
+  const [batchLabelInput, setBatchLabelInput] = useState("");
+  const [isSavingBatch, setIsSavingBatch] = useState(false);
+  const [batchLastUpdated, setBatchLastUpdated] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSettings();
@@ -35,8 +43,7 @@ export const ExperimentSettings = () => {
       const { data, error } = await supabase
         .from("experiment_settings")
         .select("*")
-        .eq("setting_key", "active_assistant_type")
-        .single();
+        .in("setting_key", ["active_assistant_type", "current_batch_label"]);
 
       if (error) {
         console.error("Error fetching settings:", error);
@@ -44,8 +51,19 @@ export const ExperimentSettings = () => {
       }
 
       if (data) {
-        setAssistantType(data.setting_value as "formal" | "informal");
-        setLastUpdated(data.updated_at);
+        const assistantSetting = data.find(s => s.setting_key === "active_assistant_type");
+        const batchSetting = data.find(s => s.setting_key === "current_batch_label");
+        
+        if (assistantSetting) {
+          setAssistantType(assistantSetting.setting_value as "formal" | "informal");
+          setLastUpdated(assistantSetting.updated_at);
+        }
+        
+        if (batchSetting) {
+          setBatchLabel(batchSetting.setting_value);
+          setBatchLabelInput(batchSetting.setting_value);
+          setBatchLastUpdated(batchSetting.updated_at);
+        }
       }
     } catch (error) {
       console.error("Error:", error);
@@ -90,17 +108,63 @@ export const ExperimentSettings = () => {
     }
   };
 
+  const handleSaveBatchLabel = async () => {
+    if (!isSuperAdmin) {
+      toast.error("Only super admins can change this setting");
+      return;
+    }
+
+    setIsSavingBatch(true);
+
+    try {
+      const { error } = await supabase
+        .from("experiment_settings")
+        .update({
+          setting_value: batchLabelInput.trim(),
+          updated_at: new Date().toISOString(),
+          updated_by: user?.id,
+        })
+        .eq("setting_key", "current_batch_label");
+
+      if (error) {
+        console.error("Error updating batch label:", error);
+        toast.error("Failed to update batch label");
+        return;
+      }
+
+      setBatchLabel(batchLabelInput.trim());
+      setBatchLastUpdated(new Date().toISOString());
+      toast.success(batchLabelInput.trim() ? `Batch label set to "${batchLabelInput.trim()}"` : "Batch label cleared");
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Failed to update batch label");
+    } finally {
+      setIsSavingBatch(false);
+    }
+  };
+
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-4 w-72" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-20 w-full" />
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-72" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-20 w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-72" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-20 w-full" />
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -170,6 +234,65 @@ export const ExperimentSettings = () => {
           {lastUpdated && (
             <p className="text-xs text-muted-foreground">
               Last updated: {new Date(lastUpdated).toLocaleString()}
+            </p>
+          )}
+
+          {!isSuperAdmin && (
+            <p className="text-sm text-amber-600">
+              Only super admins can modify these settings
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Batch Label Configuration</CardTitle>
+          <CardDescription>
+            Configure the batch label for new participant data. This helps organize responses into named groups.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
+            <div className="space-y-1 flex-1 mr-4">
+              <Label htmlFor="batch-label" className="text-base font-medium">
+                Current Batch Label
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                All new responses will be tagged with this label
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                id="batch-label"
+                placeholder="e.g., Pilot-1, Wave-A"
+                value={batchLabelInput}
+                onChange={(e) => setBatchLabelInput(e.target.value)}
+                disabled={!isSuperAdmin || isSavingBatch}
+                className="w-48"
+              />
+              <Button 
+                onClick={handleSaveBatchLabel}
+                disabled={!isSuperAdmin || isSavingBatch || batchLabelInput === batchLabel}
+                size="sm"
+              >
+                {isSavingBatch ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Current active label:</span>
+            {batchLabel ? (
+              <Badge variant="outline">{batchLabel}</Badge>
+            ) : (
+              <span className="text-sm text-muted-foreground italic">None (responses won't be tagged)</span>
+            )}
+          </div>
+
+          {batchLastUpdated && (
+            <p className="text-xs text-muted-foreground">
+              Last updated: {new Date(batchLastUpdated).toLocaleString()}
             </p>
           )}
 

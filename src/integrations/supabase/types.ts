@@ -113,6 +113,7 @@ export type Database = {
           attention_check_1: number | null
           attention_check_1_expected: number | null
           attention_check_1_position: number | null
+          batch_label: string | null
           call_attempt_number: number
           call_id: string
           communication_style_feedback: string
@@ -215,6 +216,7 @@ export type Database = {
           attention_check_1?: number | null
           attention_check_1_expected?: number | null
           attention_check_1_position?: number | null
+          batch_label?: string | null
           call_attempt_number?: number
           call_id: string
           communication_style_feedback?: string
@@ -317,6 +319,7 @@ export type Database = {
           attention_check_1?: number | null
           attention_check_1_expected?: number | null
           attention_check_1_position?: number | null
+          batch_label?: string | null
           call_attempt_number?: number
           call_id?: string
           communication_style_feedback?: string
