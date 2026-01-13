@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      archived_responses: {
+        Row: {
+          archive_reason: string | null
+          archived_at: string
+          archived_by: string
+          archived_data: Json
+          id: string
+          original_id: string
+          original_table: string
+        }
+        Insert: {
+          archive_reason?: string | null
+          archived_at?: string
+          archived_by: string
+          archived_data: Json
+          id?: string
+          original_id: string
+          original_table: string
+        }
+        Update: {
+          archive_reason?: string | null
+          archived_at?: string
+          archived_by?: string
+          archived_data?: Json
+          id?: string
+          original_id?: string
+          original_table?: string
+        }
+        Relationships: []
+      }
       data_withdrawal_requests: {
         Row: {
           call_id: string
@@ -530,15 +560,41 @@ export type Database = {
         }
         Relationships: []
       }
+      researcher_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["researcher_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["researcher_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["researcher_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_researcher_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["researcher_role"]
+      }
+      is_researcher: { Args: { _user_id: string }; Returns: boolean }
+      is_super_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      researcher_role: "super_admin" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -665,6 +721,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      researcher_role: ["super_admin", "viewer"],
+    },
   },
 } as const
