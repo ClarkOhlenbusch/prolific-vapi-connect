@@ -644,11 +644,8 @@ export const ExperimentResponsesTable = () => {
                     {isSuperAdmin ? (
                       <Input
                         className="w-24 h-8 text-xs"
-                        value={row.batch_label || ''}
+                        defaultValue={row.batch_label || ''}
                         placeholder="-"
-                        onChange={(e) => {
-                          // Debounce update on blur
-                        }}
                         onBlur={(e) => {
                           const newLabel = e.target.value;
                           if (newLabel !== (row.batch_label || '')) {
