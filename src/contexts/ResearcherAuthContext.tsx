@@ -37,50 +37,85 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
         return null;
       }
 
-      return data?.role as ResearcherRole || null;
+      return (data?.role as ResearcherRole) || null;
     } catch (err) {
       console.error('Error in fetchRole:', err);
       return null;
     }
   };
 
+  const fetchRoleWithTimeout = async (
+    userId: string,
+    timeoutMs: number = 8000
+  ): Promise<ResearcherRole> => {
+    try {
+      return await Promise.race([
+        fetchRole(userId),
+        new Promise<ResearcherRole>((resolve) => {
+          setTimeout(() => resolve(null), timeoutMs);
+        }),
+      ]);
+    } catch (err) {
+      console.error('Error in fetchRoleWithTimeout:', err);
+      return null;
+    }
+  };
+
   const refreshRole = async () => {
     if (user) {
-      const fetchedRole = await fetchRole(user.id);
+      const fetchedRole = await fetchRoleWithTimeout(user.id);
       setRole(fetchedRole);
     }
   };
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        const fetchedRole = await fetchRole(session.user.id);
-        setRole(fetchedRole);
-      }
-      
-      setIsLoading(false);
-    });
+    let isMounted = true;
+    let requestSeq = 0;
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        const fetchedRole = await fetchRole(session.user.id);
-        setRole(fetchedRole);
-      } else {
+    const handleSession = async (nextSession: Session | null) => {
+      const seq = ++requestSeq;
+
+      setIsLoading(true);
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+
+      if (!nextSession?.user) {
         setRole(null);
+        if (isMounted && seq === requestSeq) setIsLoading(false);
+        return;
       }
-      
-      setIsLoading(false);
+
+      try {
+        const fetchedRole = await fetchRoleWithTimeout(nextSession.user.id);
+        if (!isMounted || seq !== requestSeq) return;
+        setRole(fetchedRole);
+      } finally {
+        if (isMounted && seq === requestSeq) setIsLoading(false);
+      }
+    };
+
+    // Listen for auth changes first (prevents missing initial events)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      void handleSession(nextSession);
     });
 
-    return () => subscription.unsubscribe();
+    // Then load initial session
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: initialSession } }) => {
+        void handleSession(initialSession);
+      })
+      .catch((err) => {
+        console.error('Error getting initial session:', err);
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<{ error: string | null }> => {
@@ -95,7 +130,7 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
       }
 
       if (data.user) {
-        const fetchedRole = await fetchRole(data.user.id);
+        const fetchedRole = await fetchRoleWithTimeout(data.user.id);
         if (!fetchedRole) {
           // User exists but is not a researcher
           await supabase.auth.signOut();
