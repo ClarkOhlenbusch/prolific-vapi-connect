@@ -18,7 +18,10 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -37,12 +40,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tables } from '@/integrations/supabase/types';
 
 type ExperimentResponse = Tables<'experiment_responses'>;
 
-const PAGE_SIZE = 10;
+type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality';
+type SortDirection = 'asc' | 'desc' | null;
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+const formatNumber = (value: number | null): string => {
+  if (value === null || value === undefined) return 'N/A';
+  return Number(value).toFixed(2);
+};
 
 export const ExperimentResponsesTable = () => {
   const [data, setData] = useState<ExperimentResponse[]>([]);
@@ -53,6 +70,9 @@ export const ExperimentResponsesTable = () => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewItem, setViewItem] = useState<ExperimentResponse | null>(null);
   const [showScrollIndicator, setShowScrollIndicator] = useState(true);
+  const [pageSize, setPageSize] = useState(10);
+  const [sortColumn, setSortColumn] = useState<SortColumn>('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const scrollRef = useRef<HTMLDivElement>(null);
   const { isSuperAdmin, user } = useResearcherAuth();
 
@@ -64,7 +84,6 @@ export const ExperimentResponsesTable = () => {
 
   const resetScrollIndicator = () => {
     setShowScrollIndicator(true);
-    // Check if content is actually scrollable
     setTimeout(() => {
       if (scrollRef.current) {
         const isScrollable = scrollRef.current.scrollHeight > scrollRef.current.clientHeight;
@@ -73,14 +92,47 @@ export const ExperimentResponsesTable = () => {
     }, 100);
   };
 
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      // Cycle: asc -> desc -> null -> asc
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        setSortDirection(null);
+        setSortColumn('created_at');
+      } else {
+        setSortDirection('asc');
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+    setCurrentPage(0);
+  };
+
+  const getSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column || sortDirection === null) {
+      return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />;
+    }
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="h-4 w-4 ml-1" />
+      : <ArrowDown className="h-4 w-4 ml-1" />;
+  };
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
       let query = supabase
         .from('experiment_responses')
         .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
+        .range(currentPage * pageSize, (currentPage + 1) * pageSize - 1);
+
+      // Apply sorting
+      if (sortColumn && sortDirection) {
+        query = query.order(sortColumn, { ascending: sortDirection === 'asc', nullsFirst: false });
+      } else {
+        query = query.order('created_at', { ascending: false });
+      }
 
       if (searchTerm) {
         query = query.or(`prolific_id.ilike.%${searchTerm}%,call_id.ilike.%${searchTerm}%`);
@@ -102,17 +154,15 @@ export const ExperimentResponsesTable = () => {
 
   useEffect(() => {
     fetchData();
-  }, [currentPage, searchTerm]);
+  }, [currentPage, searchTerm, pageSize, sortColumn, sortDirection]);
 
   const handleArchive = async () => {
     if (!deleteId || !user) return;
 
     try {
-      // Find the item to archive
       const itemToArchive = data.find(item => item.id === deleteId);
       if (!itemToArchive) return;
 
-      // Insert into archive
       const { error: archiveError } = await supabase
         .from('archived_responses')
         .insert([{
@@ -125,7 +175,6 @@ export const ExperimentResponsesTable = () => {
 
       if (archiveError) throw archiveError;
 
-      // Delete from original table
       const { error: deleteError } = await supabase
         .from('experiment_responses')
         .delete()
@@ -172,7 +221,7 @@ export const ExperimentResponsesTable = () => {
     a.click();
   };
 
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   if (isLoading && data.length === 0) {
     return (
@@ -201,12 +250,36 @@ export const ExperimentResponsesTable = () => {
           />
         </div>
         
-        {isSuperAdmin && (
-          <Button onClick={exportToCSV} variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
-        )}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Show</span>
+            <Select
+              value={pageSize.toString()}
+              onValueChange={(value) => {
+                setPageSize(Number(value));
+                setCurrentPage(0);
+              }}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <SelectItem key={size} value={size.toString()}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {isSuperAdmin && (
+            <Button onClick={exportToCSV} variant="outline">
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -214,11 +287,61 @@ export const ExperimentResponsesTable = () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Prolific ID</TableHead>
-              <TableHead>Created At</TableHead>
-              <TableHead>PETS Total</TableHead>
-              <TableHead>TIAS Total</TableHead>
-              <TableHead>Formality</TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 -ml-3 font-medium"
+                  onClick={() => handleSort('prolific_id')}
+                >
+                  Prolific ID
+                  {getSortIcon('prolific_id')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 -ml-3 font-medium"
+                  onClick={() => handleSort('created_at')}
+                >
+                  Created At
+                  {getSortIcon('created_at')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 -ml-3 font-medium"
+                  onClick={() => handleSort('pets_total')}
+                >
+                  PETS Total
+                  {getSortIcon('pets_total')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 -ml-3 font-medium"
+                  onClick={() => handleSort('tias_total')}
+                >
+                  TIAS Total
+                  {getSortIcon('tias_total')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 -ml-3 font-medium"
+                  onClick={() => handleSort('formality')}
+                >
+                  Formality
+                  {getSortIcon('formality')}
+                </Button>
+              </TableHead>
               {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
@@ -241,9 +364,9 @@ export const ExperimentResponsesTable = () => {
                 >
                   <TableCell className="font-mono text-sm">{row.prolific_id}</TableCell>
                   <TableCell>{new Date(row.created_at).toLocaleDateString()}</TableCell>
-                  <TableCell>{row.pets_total}</TableCell>
-                  <TableCell>{row.tias_total ?? 'N/A'}</TableCell>
-                  <TableCell>{row.formality}</TableCell>
+                  <TableCell>{formatNumber(row.pets_total)}</TableCell>
+                  <TableCell>{formatNumber(row.tias_total)}</TableCell>
+                  <TableCell>{formatNumber(row.formality)}</TableCell>
                   {isSuperAdmin && (
                     <TableCell className="text-right">
                       <Button
@@ -269,7 +392,7 @@ export const ExperimentResponsesTable = () => {
       {/* Pagination */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Showing {currentPage * PAGE_SIZE + 1} to {Math.min((currentPage + 1) * PAGE_SIZE, totalCount)} of {totalCount}
+          Showing {totalCount === 0 ? 0 : currentPage * pageSize + 1} to {Math.min((currentPage + 1) * pageSize, totalCount)} of {totalCount}
         </p>
         <div className="flex items-center gap-2">
           <Button
@@ -281,7 +404,7 @@ export const ExperimentResponsesTable = () => {
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-sm">
-            Page {currentPage + 1} of {totalPages}
+            Page {totalPages === 0 ? 0 : currentPage + 1} of {totalPages}
           </span>
           <Button
             variant="outline"
@@ -348,15 +471,15 @@ export const ExperimentResponsesTable = () => {
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <label className="text-sm text-muted-foreground">Total</label>
-                        <p className="font-bold">{viewItem.pets_total}</p>
+                        <p className="font-bold">{formatNumber(viewItem.pets_total)}</p>
                       </div>
                       <div>
                         <label className="text-sm text-muted-foreground">ER</label>
-                        <p>{viewItem.pets_er}</p>
+                        <p>{formatNumber(viewItem.pets_er)}</p>
                       </div>
                       <div>
                         <label className="text-sm text-muted-foreground">UT</label>
-                        <p>{viewItem.pets_ut}</p>
+                        <p>{formatNumber(viewItem.pets_ut)}</p>
                       </div>
                     </div>
                   </div>
@@ -364,7 +487,7 @@ export const ExperimentResponsesTable = () => {
                   {viewItem.tias_total !== null && (
                     <div className="border-t pt-4">
                       <h4 className="font-medium mb-2">TIAS Score</h4>
-                      <p className="font-bold">{viewItem.tias_total}</p>
+                      <p className="font-bold">{formatNumber(viewItem.tias_total)}</p>
                     </div>
                   )}
 
@@ -373,15 +496,15 @@ export const ExperimentResponsesTable = () => {
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <label className="text-sm text-muted-foreground">Formality</label>
-                        <p>{viewItem.formality}</p>
+                        <p>{formatNumber(viewItem.formality)}</p>
                       </div>
                       <div>
                         <label className="text-sm text-muted-foreground">Intention 1</label>
-                        <p>{viewItem.intention_1}</p>
+                        <p>{formatNumber(viewItem.intention_1)}</p>
                       </div>
                       <div>
                         <label className="text-sm text-muted-foreground">Intention 2</label>
-                        <p>{viewItem.intention_2}</p>
+                        <p>{formatNumber(viewItem.intention_2)}</p>
                       </div>
                     </div>
                   </div>
