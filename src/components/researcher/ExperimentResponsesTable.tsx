@@ -28,7 +28,8 @@ import {
   GripVertical,
   Filter,
   X,
-  CalendarIcon
+  CalendarIcon,
+  Check
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -56,6 +57,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
+} from '@/components/ui/dropdown-menu';
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -80,6 +92,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 type ExperimentResponse = Tables<'experiment_responses'>;
 
@@ -92,6 +105,7 @@ interface ColumnDef {
   id: ColumnId;
   label: string;
   sortable: boolean;
+  filterable: boolean;
   width?: string;
 }
 
@@ -102,20 +116,31 @@ const formatNumber = (value: number | null): string => {
   return Number(value).toFixed(2);
 };
 
-// Sortable header cell component
-const SortableHeaderCell = ({ 
+interface FilterState {
+  assistantType: string;
+  batch: string;
+  dateFrom: Date | undefined;
+  dateTo: Date | undefined;
+}
+
+// Excel-style header cell with filter dropdown
+const FilterableHeaderCell = ({ 
   column, 
   sortColumn, 
   sortDirection, 
   onSort, 
-  getSortIcon,
-  isSuperAdmin 
+  filters,
+  onFilterChange,
+  availableBatches,
+  isSuperAdmin,
 }: { 
   column: ColumnDef;
   sortColumn: SortColumn;
   sortDirection: SortDirection;
   onSort: (col: SortColumn) => void;
-  getSortIcon: (col: SortColumn) => React.ReactNode;
+  filters: FilterState;
+  onFilterChange: (key: keyof FilterState, value: any) => void;
+  availableBatches: string[];
   isSuperAdmin: boolean;
 }) => {
   const {
@@ -127,10 +152,36 @@ const SortableHeaderCell = ({
     isDragging,
   } = useSortable({ id: column.id });
 
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [datePickerType, setDatePickerType] = useState<'from' | 'to'>('from');
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+  };
+
+  // Check if this column has an active filter
+  const hasActiveFilter = () => {
+    switch (column.id) {
+      case 'assistant_type':
+        return filters.assistantType !== 'all';
+      case 'batch_label':
+        return filters.batch !== 'all';
+      case 'created_at':
+        return filters.dateFrom !== undefined || filters.dateTo !== undefined;
+      default:
+        return false;
+    }
+  };
+
+  const getSortIcon = () => {
+    if (sortColumn !== column.id || sortDirection === null) {
+      return <ArrowUpDown className="h-3 w-3 opacity-50" />;
+    }
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="h-3 w-3" />
+      : <ArrowDown className="h-3 w-3" />;
   };
 
   // Special non-draggable columns
@@ -144,25 +195,204 @@ const SortableHeaderCell = ({
     );
   }
 
+  // Non-filterable columns
+  if (!column.filterable) {
+    return (
+      <TableHead ref={setNodeRef} style={style} className="relative">
+        <div className="flex items-center gap-1">
+          <div {...attributes} {...listeners} className="cursor-grab opacity-50 hover:opacity-100">
+            <GripVertical className="h-4 w-4" />
+          </div>
+          {column.sortable ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 -ml-1 font-medium px-2"
+              onClick={() => onSort(column.id as SortColumn)}
+            >
+              {column.label}
+              {getSortIcon()}
+            </Button>
+          ) : (
+            <span className="font-medium">{column.label}</span>
+          )}
+        </div>
+      </TableHead>
+    );
+  }
+
+  // Filterable columns with Excel-style dropdown
   return (
     <TableHead ref={setNodeRef} style={style} className="relative">
-      <div className="flex items-center">
-        <div {...attributes} {...listeners} className="cursor-grab mr-1 opacity-50 hover:opacity-100">
+      <div className="flex items-center gap-1">
+        <div {...attributes} {...listeners} className="cursor-grab opacity-50 hover:opacity-100">
           <GripVertical className="h-4 w-4" />
         </div>
-        {column.sortable ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 -ml-1 font-medium"
-            onClick={() => onSort(column.id as SortColumn)}
-          >
-            {column.label}
-            {getSortIcon(column.id as SortColumn)}
-          </Button>
-        ) : (
-          <span className="font-medium">{column.label}</span>
-        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-8 -ml-1 font-medium px-2 gap-1",
+                hasActiveFilter() && "text-primary"
+              )}
+            >
+              {column.label}
+              <ChevronDown className="h-3 w-3" />
+              {hasActiveFilter() && (
+                <Filter className="h-3 w-3 text-primary" />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56 bg-popover z-50">
+            {/* Sort options */}
+            {column.sortable && (
+              <>
+                <DropdownMenuItem onClick={() => { onSort(column.id as SortColumn); }}>
+                  <ArrowUp className="h-4 w-4 mr-2" />
+                  Sort Ascending
+                  {sortColumn === column.id && sortDirection === 'asc' && (
+                    <Check className="h-4 w-4 ml-auto" />
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { 
+                  if (sortColumn !== column.id || sortDirection !== 'desc') {
+                    onSort(column.id as SortColumn);
+                    if (sortDirection === 'asc') onSort(column.id as SortColumn);
+                  }
+                }}>
+                  <ArrowDown className="h-4 w-4 mr-2" />
+                  Sort Descending
+                  {sortColumn === column.id && sortDirection === 'desc' && (
+                    <Check className="h-4 w-4 ml-auto" />
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+
+            {/* Filter options based on column type */}
+            {column.id === 'assistant_type' && (
+              <>
+                <DropdownMenuItem 
+                  onClick={() => onFilterChange('assistantType', 'all')}
+                  className={filters.assistantType === 'all' ? 'bg-accent' : ''}
+                >
+                  <Check className={cn("h-4 w-4 mr-2", filters.assistantType !== 'all' && "opacity-0")} />
+                  All Types
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => onFilterChange('assistantType', 'formal')}
+                  className={filters.assistantType === 'formal' ? 'bg-accent' : ''}
+                >
+                  <Check className={cn("h-4 w-4 mr-2", filters.assistantType !== 'formal' && "opacity-0")} />
+                  <Badge variant="default" className="text-xs mr-2">formal</Badge>
+                  Formal Only
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => onFilterChange('assistantType', 'informal')}
+                  className={filters.assistantType === 'informal' ? 'bg-accent' : ''}
+                >
+                  <Check className={cn("h-4 w-4 mr-2", filters.assistantType !== 'informal' && "opacity-0")} />
+                  <Badge variant="secondary" className="text-xs mr-2">informal</Badge>
+                  Informal Only
+                </DropdownMenuItem>
+              </>
+            )}
+
+            {column.id === 'batch_label' && (
+              <>
+                <DropdownMenuItem 
+                  onClick={() => onFilterChange('batch', 'all')}
+                  className={filters.batch === 'all' ? 'bg-accent' : ''}
+                >
+                  <Check className={cn("h-4 w-4 mr-2", filters.batch !== 'all' && "opacity-0")} />
+                  All Batches
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => onFilterChange('batch', 'none')}
+                  className={filters.batch === 'none' ? 'bg-accent' : ''}
+                >
+                  <Check className={cn("h-4 w-4 mr-2", filters.batch !== 'none' && "opacity-0")} />
+                  <span className="text-muted-foreground italic">No Batch</span>
+                </DropdownMenuItem>
+                {availableBatches.length > 0 && <DropdownMenuSeparator />}
+                {availableBatches.map(batch => (
+                  <DropdownMenuItem 
+                    key={batch}
+                    onClick={() => onFilterChange('batch', batch)}
+                    className={filters.batch === batch ? 'bg-accent' : ''}
+                  >
+                    <Check className={cn("h-4 w-4 mr-2", filters.batch !== batch && "opacity-0")} />
+                    <Badge variant="outline" className="text-xs mr-2">{batch}</Badge>
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
+
+            {column.id === 'created_at' && (
+              <>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <CalendarIcon className="h-4 w-4 mr-2" />
+                    From Date
+                    {filters.dateFrom && (
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {format(filters.dateFrom, 'MM/dd')}
+                      </span>
+                    )}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuPortal>
+                    <DropdownMenuSubContent className="p-0 bg-popover">
+                      <Calendar
+                        mode="single"
+                        selected={filters.dateFrom}
+                        onSelect={(date) => onFilterChange('dateFrom', date)}
+                        initialFocus
+                        className={cn("p-3 pointer-events-auto")}
+                      />
+                    </DropdownMenuSubContent>
+                  </DropdownMenuPortal>
+                </DropdownMenuSub>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <CalendarIcon className="h-4 w-4 mr-2" />
+                    To Date
+                    {filters.dateTo && (
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {format(filters.dateTo, 'MM/dd')}
+                      </span>
+                    )}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuPortal>
+                    <DropdownMenuSubContent className="p-0 bg-popover">
+                      <Calendar
+                        mode="single"
+                        selected={filters.dateTo}
+                        onSelect={(date) => onFilterChange('dateTo', date)}
+                        initialFocus
+                        className={cn("p-3 pointer-events-auto")}
+                      />
+                    </DropdownMenuSubContent>
+                  </DropdownMenuPortal>
+                </DropdownMenuSub>
+                {(filters.dateFrom || filters.dateTo) && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => {
+                      onFilterChange('dateFrom', undefined);
+                      onFilterChange('dateTo', undefined);
+                    }}>
+                      <X className="h-4 w-4 mr-2" />
+                      Clear Date Filter
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </TableHead>
   );
@@ -190,12 +420,13 @@ export const ExperimentResponsesTable = () => {
   const { isSuperAdmin, user } = useResearcherAuth();
 
   // Filter states
-  const [filterAssistantType, setFilterAssistantType] = useState<string>('all');
-  const [filterBatch, setFilterBatch] = useState<string>('all');
-  const [filterDateFrom, setFilterDateFrom] = useState<Date | undefined>(undefined);
-  const [filterDateTo, setFilterDateTo] = useState<Date | undefined>(undefined);
+  const [filters, setFilters] = useState<FilterState>({
+    assistantType: 'all',
+    batch: 'all',
+    dateFrom: undefined,
+    dateTo: undefined,
+  });
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
-  const [showFilters, setShowFilters] = useState(false);
 
   // Column order state
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>([
@@ -203,15 +434,15 @@ export const ExperimentResponsesTable = () => {
   ]);
 
   const columns: ColumnDef[] = useMemo(() => [
-    { id: 'select', label: '', sortable: false, width: 'w-12' },
-    { id: 'prolific_id', label: 'Prolific ID', sortable: true },
-    { id: 'created_at', label: 'Created At', sortable: true },
-    { id: 'pets_total', label: 'PETS Total', sortable: true },
-    { id: 'tias_total', label: 'TIAS Total', sortable: true },
-    { id: 'formality', label: 'Formality', sortable: true },
-    { id: 'assistant_type', label: 'Assistant', sortable: true },
-    { id: 'batch_label', label: 'Batch', sortable: true },
-    { id: 'actions', label: 'Actions', sortable: false },
+    { id: 'select', label: '', sortable: false, filterable: false, width: 'w-12' },
+    { id: 'prolific_id', label: 'Prolific ID', sortable: true, filterable: false },
+    { id: 'created_at', label: 'Created At', sortable: true, filterable: true },
+    { id: 'pets_total', label: 'PETS Total', sortable: true, filterable: false },
+    { id: 'tias_total', label: 'TIAS Total', sortable: true, filterable: false },
+    { id: 'formality', label: 'Formality', sortable: true, filterable: false },
+    { id: 'assistant_type', label: 'Assistant', sortable: true, filterable: true },
+    { id: 'batch_label', label: 'Batch', sortable: true, filterable: true },
+    { id: 'actions', label: 'Actions', sortable: false, filterable: false },
   ], []);
 
   const orderedColumns = useMemo(() => {
@@ -235,6 +466,11 @@ export const ExperimentResponsesTable = () => {
         return arrayMove(items, oldIndex, newIndex);
       });
     }
+  };
+
+  const handleFilterChange = (key: keyof FilterState, value: any) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(0);
   };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -268,15 +504,6 @@ export const ExperimentResponsesTable = () => {
       setSortDirection('asc');
     }
     setCurrentPage(0);
-  };
-
-  const getSortIcon = (column: SortColumn) => {
-    if (sortColumn !== column || sortDirection === null) {
-      return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />;
-    }
-    return sortDirection === 'asc' 
-      ? <ArrowUp className="h-4 w-4 ml-1" />
-      : <ArrowDown className="h-4 w-4 ml-1" />;
   };
 
   // Fetch available batches for filter dropdown
@@ -321,25 +548,24 @@ export const ExperimentResponsesTable = () => {
       }
 
       // Apply filters
-      if (filterAssistantType !== 'all') {
-        query = query.eq('assistant_type', filterAssistantType);
+      if (filters.assistantType !== 'all') {
+        query = query.eq('assistant_type', filters.assistantType);
       }
 
-      if (filterBatch !== 'all') {
-        if (filterBatch === 'none') {
+      if (filters.batch !== 'all') {
+        if (filters.batch === 'none') {
           query = query.is('batch_label', null);
         } else {
-          query = query.eq('batch_label', filterBatch);
+          query = query.eq('batch_label', filters.batch);
         }
       }
 
-      if (filterDateFrom) {
-        query = query.gte('created_at', filterDateFrom.toISOString());
+      if (filters.dateFrom) {
+        query = query.gte('created_at', filters.dateFrom.toISOString());
       }
 
-      if (filterDateTo) {
-        // Set to end of day
-        const endOfDay = new Date(filterDateTo);
+      if (filters.dateTo) {
+        const endOfDay = new Date(filters.dateTo);
         endOfDay.setHours(23, 59, 59, 999);
         query = query.lte('created_at', endOfDay.toISOString());
       }
@@ -360,17 +586,19 @@ export const ExperimentResponsesTable = () => {
 
   useEffect(() => {
     fetchData();
-  }, [currentPage, searchTerm, pageSize, sortColumn, sortDirection, filterAssistantType, filterBatch, filterDateFrom, filterDateTo]);
+  }, [currentPage, searchTerm, pageSize, sortColumn, sortDirection, filters]);
 
   const clearFilters = () => {
-    setFilterAssistantType('all');
-    setFilterBatch('all');
-    setFilterDateFrom(undefined);
-    setFilterDateTo(undefined);
+    setFilters({
+      assistantType: 'all',
+      batch: 'all',
+      dateFrom: undefined,
+      dateTo: undefined,
+    });
     setCurrentPage(0);
   };
 
-  const hasActiveFilters = filterAssistantType !== 'all' || filterBatch !== 'all' || filterDateFrom || filterDateTo;
+  const hasActiveFilters = filters.assistantType !== 'all' || filters.batch !== 'all' || filters.dateFrom || filters.dateTo;
 
   const handleArchive = async () => {
     if (!deleteId || !user) return;
@@ -541,15 +769,13 @@ export const ExperimentResponsesTable = () => {
     setSelectedIds(newSelected);
   };
 
-  // Export only the currently displayed/filtered data
+  // Export only the currently filtered data
   const exportToCSV = async () => {
     try {
-      // Fetch ALL data matching current filters (not just current page)
       let query = supabase
         .from('experiment_responses')
         .select('*');
 
-      // Apply same filters as the table view
       if (sortColumn && sortDirection) {
         query = query.order(sortColumn, { ascending: sortDirection === 'asc', nullsFirst: false });
       } else {
@@ -560,24 +786,24 @@ export const ExperimentResponsesTable = () => {
         query = query.or(`prolific_id.ilike.%${searchTerm}%,call_id.ilike.%${searchTerm}%,batch_label.ilike.%${searchTerm}%`);
       }
 
-      if (filterAssistantType !== 'all') {
-        query = query.eq('assistant_type', filterAssistantType);
+      if (filters.assistantType !== 'all') {
+        query = query.eq('assistant_type', filters.assistantType);
       }
 
-      if (filterBatch !== 'all') {
-        if (filterBatch === 'none') {
+      if (filters.batch !== 'all') {
+        if (filters.batch === 'none') {
           query = query.is('batch_label', null);
         } else {
-          query = query.eq('batch_label', filterBatch);
+          query = query.eq('batch_label', filters.batch);
         }
       }
 
-      if (filterDateFrom) {
-        query = query.gte('created_at', filterDateFrom.toISOString());
+      if (filters.dateFrom) {
+        query = query.gte('created_at', filters.dateFrom.toISOString());
       }
 
-      if (filterDateTo) {
-        const endOfDay = new Date(filterDateTo);
+      if (filters.dateTo) {
+        const endOfDay = new Date(filters.dateTo);
         endOfDay.setHours(23, 59, 59, 999);
         query = query.lte('created_at', endOfDay.toISOString());
       }
@@ -619,10 +845,9 @@ export const ExperimentResponsesTable = () => {
       const a = document.createElement('a');
       a.href = url;
       
-      // Include filter info in filename
       let filename = `experiment_responses_${new Date().toISOString().split('T')[0]}`;
-      if (filterBatch !== 'all') filename += `_batch-${filterBatch}`;
-      if (filterAssistantType !== 'all') filename += `_${filterAssistantType}`;
+      if (filters.batch !== 'all') filename += `_batch-${filters.batch}`;
+      if (filters.assistantType !== 'all') filename += `_${filters.assistantType}`;
       filename += '.csv';
       
       a.download = filename;
@@ -686,7 +911,7 @@ export const ExperimentResponsesTable = () => {
                     )}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-popover">
                   <SelectItem value="formal">
                     <Badge variant="default" className="text-xs">formal</Badge>
                   </SelectItem>
@@ -776,151 +1001,102 @@ export const ExperimentResponsesTable = () => {
   return (
     <div className="space-y-4">
       {/* Controls */}
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by ID, Call ID, or Batch..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(0);
-              }}
-              className="pl-10"
-            />
-          </div>
+      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by ID, Call ID, or Batch..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(0);
+            }}
+            className="pl-10"
+          />
+        </div>
+        
+        <div className="flex items-center gap-2">
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="text-muted-foreground"
+            >
+              <X className="h-4 w-4 mr-1" />
+              Clear filters
+            </Button>
+          )}
           
           <div className="flex items-center gap-2">
-            <Button
-              variant={showFilters ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setShowFilters(!showFilters)}
+            <span className="text-sm text-muted-foreground">Show</span>
+            <Select
+              value={pageSize.toString()}
+              onValueChange={(value) => {
+                setPageSize(Number(value));
+                setCurrentPage(0);
+              }}
             >
-              <Filter className="h-4 w-4 mr-2" />
-              Filters
-              {hasActiveFilters && (
-                <Badge variant="default" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
-                  !
-                </Badge>
-              )}
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <SelectItem key={size} value={size.toString()}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {isSuperAdmin && (
+            <Button onClick={exportToCSV} variant="outline">
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
             </Button>
-            
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Show</span>
-              <Select
-                value={pageSize.toString()}
-                onValueChange={(value) => {
-                  setPageSize(Number(value));
-                  setCurrentPage(0);
-                }}
-              >
-                <SelectTrigger className="w-20">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <SelectItem key={size} value={size.toString()}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {isSuperAdmin && (
-              <Button onClick={exportToCSV} variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
-            )}
-          </div>
+          )}
         </div>
-
-        {/* Filter Panel */}
-        {showFilters && (
-          <div className="flex flex-wrap gap-4 p-4 bg-muted/50 rounded-lg border">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Assistant Type</label>
-              <Select value={filterAssistantType} onValueChange={(v) => { setFilterAssistantType(v); setCurrentPage(0); }}>
-                <SelectTrigger className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="formal">Formal</SelectItem>
-                  <SelectItem value="informal">Informal</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Batch</label>
-              <Select value={filterBatch} onValueChange={(v) => { setFilterBatch(v); setCurrentPage(0); }}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Batches</SelectItem>
-                  <SelectItem value="none">No Batch</SelectItem>
-                  {availableBatches.map(batch => (
-                    <SelectItem key={batch} value={batch}>{batch}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">From Date</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-40 justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {filterDateFrom ? format(filterDateFrom, 'PP') : <span className="text-muted-foreground">Pick date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={filterDateFrom}
-                    onSelect={(date) => { setFilterDateFrom(date); setCurrentPage(0); }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">To Date</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-40 justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {filterDateTo ? format(filterDateTo, 'PP') : <span className="text-muted-foreground">Pick date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={filterDateTo}
-                    onSelect={(date) => { setFilterDateTo(date); setCurrentPage(0); }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {hasActiveFilters && (
-              <div className="flex items-end">
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  <X className="h-4 w-4 mr-1" />
-                  Clear filters
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {/* Active Filters Display */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-sm text-muted-foreground">Active filters:</span>
+          {filters.assistantType !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              Assistant: {filters.assistantType}
+              <button onClick={() => handleFilterChange('assistantType', 'all')} className="ml-1 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.batch !== 'all' && (
+            <Badge variant="secondary" className="gap-1">
+              Batch: {filters.batch === 'none' ? 'No Batch' : filters.batch}
+              <button onClick={() => handleFilterChange('batch', 'all')} className="ml-1 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.dateFrom && (
+            <Badge variant="secondary" className="gap-1">
+              From: {format(filters.dateFrom, 'PP')}
+              <button onClick={() => handleFilterChange('dateFrom', undefined)} className="ml-1 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {filters.dateTo && (
+            <Badge variant="secondary" className="gap-1">
+              To: {format(filters.dateTo, 'PP')}
+              <button onClick={() => handleFilterChange('dateTo', undefined)} className="ml-1 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* Bulk Actions Bar */}
       {isSuperAdmin && selectedIds.size > 0 && (
@@ -974,17 +1150,34 @@ export const ExperimentResponsesTable = () => {
             >
               <TableRow>
                 <SortableContext items={columnOrder} strategy={horizontalListSortingStrategy}>
-                  {orderedColumns.map((column) => (
-                    <SortableHeaderCell
-                      key={column.id}
-                      column={column}
-                      sortColumn={sortColumn}
-                      sortDirection={sortDirection}
-                      onSort={handleSort}
-                      getSortIcon={getSortIcon}
-                      isSuperAdmin={isSuperAdmin}
-                    />
-                  ))}
+                  {orderedColumns.map((column) => {
+                    // Special handling for select column checkbox
+                    if (column.id === 'select') {
+                      return isSuperAdmin ? (
+                        <TableHead key={column.id} className="w-12">
+                          <Checkbox
+                            checked={data.length > 0 && selectedIds.size === data.length}
+                            onCheckedChange={toggleSelectAll}
+                            aria-label="Select all"
+                          />
+                        </TableHead>
+                      ) : null;
+                    }
+                    
+                    return (
+                      <FilterableHeaderCell
+                        key={column.id}
+                        column={column}
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={handleSort}
+                        filters={filters}
+                        onFilterChange={handleFilterChange}
+                        availableBatches={availableBatches}
+                        isSuperAdmin={isSuperAdmin}
+                      />
+                    );
+                  })}
                 </SortableContext>
               </TableRow>
             </DndContext>
