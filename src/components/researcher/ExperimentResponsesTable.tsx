@@ -74,6 +74,13 @@ import {
 } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Tables } from '@/integrations/supabase/types';
+
+type Demographics = Tables<'demographics'>;
+
+interface ExperimentResponseWithDemographics extends Tables<'experiment_responses'> {
+  demographics?: Demographics | null;
+}
+
 import {
   DndContext,
   closestCenter,
@@ -94,12 +101,12 @@ import { CSS } from '@dnd-kit/utilities';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
-type ExperimentResponse = Tables<'experiment_responses'>;
+type ExperimentResponse = ExperimentResponseWithDemographics;
 
-type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'assistant_type' | 'batch_label';
+type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'assistant_type' | 'batch_label' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total';
 type SortDirection = 'asc' | 'desc' | null;
 
-type ColumnId = 'select' | 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'assistant_type' | 'batch_label' | 'actions';
+type ColumnId = 'select' | 'prolific_id' | 'created_at' | 'age' | 'gender' | 'pets_total' | 'tias_total' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total' | 'formality' | 'assistant_type' | 'batch_label' | 'actions';
 
 interface ColumnDef {
   id: ColumnId;
@@ -430,15 +437,20 @@ export const ExperimentResponsesTable = () => {
 
   // Column order state
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>([
-    'select', 'prolific_id', 'created_at', 'pets_total', 'tias_total', 'formality', 'assistant_type', 'batch_label', 'actions'
+    'select', 'prolific_id', 'created_at', 'age', 'gender', 'pets_total', 'tias_total', 'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'formality', 'assistant_type', 'batch_label', 'actions'
   ]);
 
   const columns: ColumnDef[] = useMemo(() => [
     { id: 'select', label: '', sortable: false, filterable: false, width: 'w-12' },
     { id: 'prolific_id', label: 'Prolific ID', sortable: true, filterable: false },
     { id: 'created_at', label: 'Created At', sortable: true, filterable: true },
+    { id: 'age', label: 'Age', sortable: false, filterable: false },
+    { id: 'gender', label: 'Gender', sortable: false, filterable: false },
     { id: 'pets_total', label: 'PETS Total', sortable: true, filterable: false },
     { id: 'tias_total', label: 'TIAS Total', sortable: true, filterable: false },
+    { id: 'godspeed_anthro_total', label: 'GS Anthro', sortable: true, filterable: false },
+    { id: 'godspeed_like_total', label: 'GS Like', sortable: true, filterable: false },
+    { id: 'godspeed_intel_total', label: 'GS Intel', sortable: true, filterable: false },
     { id: 'formality', label: 'Formality', sortable: true, filterable: false },
     { id: 'assistant_type', label: 'Assistant', sortable: true, filterable: true },
     { id: 'batch_label', label: 'Batch', sortable: true, filterable: true },
@@ -574,7 +586,35 @@ export const ExperimentResponsesTable = () => {
 
       if (error) throw error;
 
-      setData(responses || []);
+      // Fetch demographics for each prolific_id
+      if (responses && responses.length > 0) {
+        const prolificIds = [...new Set(responses.map(r => r.prolific_id))];
+        const { data: demographicsData, error: demoError } = await supabase
+          .from('demographics')
+          .select('*')
+          .in('prolific_id', prolificIds);
+
+        if (demoError) {
+          console.error('Error fetching demographics:', demoError);
+        }
+
+        // Create a map for quick lookup
+        const demographicsMap = new Map<string, Demographics>();
+        demographicsData?.forEach(d => {
+          demographicsMap.set(d.prolific_id, d);
+        });
+
+        // Merge demographics with responses
+        const responsesWithDemographics = responses.map(r => ({
+          ...r,
+          demographics: demographicsMap.get(r.prolific_id) || null,
+        }));
+
+        setData(responsesWithDemographics);
+      } else {
+        setData([]);
+      }
+      
       setTotalCount(count || 0);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -817,27 +857,66 @@ export const ExperimentResponsesTable = () => {
         return;
       }
 
+      // Fetch demographics for export
+      const prolificIds = [...new Set(exportData.map(r => r.prolific_id))];
+      const { data: demographicsData } = await supabase
+        .from('demographics')
+        .select('*')
+        .in('prolific_id', prolificIds);
+
+      const demographicsMap = new Map<string, Demographics>();
+      demographicsData?.forEach(d => {
+        demographicsMap.set(d.prolific_id, d);
+      });
+
       const headers = [
-        'Prolific ID', 'Call ID', 'Created At', 'Assistant Type', 'Batch Label', 'PETS Total', 'PETS ER', 'PETS UT',
-        'TIAS Total', 'Formality', 'Intention 1', 'Intention 2'
+        'Prolific ID', 'Call ID', 'Created At', 'Assistant Type', 'Batch Label',
+        'Age', 'Gender', 'Native English', 'Ethnicity', 'VA Familiarity', 'VA Usage Frequency',
+        'PETS Total', 'PETS ER', 'PETS UT', 'TIAS Total',
+        'GS Anthro Total', 'GS Like Total', 'GS Intel Total',
+        'Formality', 'Intention 1', 'Intention 2'
       ];
+
+      const escapeCSV = (value: any) => {
+        if (value === null || value === undefined) return '';
+        const str = String(value);
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
       
       const csvContent = [
         headers.join(','),
-        ...exportData.map(row => [
-          row.prolific_id,
-          row.call_id,
-          row.created_at,
-          row.assistant_type || 'unknown',
-          row.batch_label || '',
-          row.pets_total,
-          row.pets_er,
-          row.pets_ut,
-          row.tias_total || '',
-          row.formality,
-          row.intention_1,
-          row.intention_2
-        ].join(','))
+        ...exportData.map(row => {
+          const demo = demographicsMap.get(row.prolific_id);
+          const ethnicityStr = demo?.ethnicity 
+            ? (Array.isArray(demo.ethnicity) ? (demo.ethnicity as string[]).join('; ') : String(demo.ethnicity))
+            : '';
+          return [
+            escapeCSV(row.prolific_id),
+            escapeCSV(row.call_id),
+            escapeCSV(row.created_at),
+            escapeCSV(row.assistant_type || 'unknown'),
+            escapeCSV(row.batch_label || ''),
+            escapeCSV(demo?.age || ''),
+            escapeCSV(demo?.gender || ''),
+            escapeCSV(demo?.native_english || ''),
+            escapeCSV(ethnicityStr),
+            escapeCSV(demo?.voice_assistant_familiarity ?? ''),
+            escapeCSV(demo?.voice_assistant_usage_frequency ?? ''),
+            escapeCSV(row.pets_total),
+            escapeCSV(row.pets_er),
+            escapeCSV(row.pets_ut),
+            escapeCSV(row.tias_total ?? ''),
+            escapeCSV(row.godspeed_anthro_total ?? ''),
+            escapeCSV(row.godspeed_like_total ?? ''),
+            escapeCSV(row.godspeed_intel_total ?? ''),
+            escapeCSV(row.formality),
+            escapeCSV(row.intention_1),
+            escapeCSV(row.intention_2)
+          ].join(',');
+        })
       ].join('\n');
 
       const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -879,11 +958,26 @@ export const ExperimentResponsesTable = () => {
       case 'created_at':
         return <TableCell>{new Date(row.created_at).toLocaleDateString()}</TableCell>;
 
+      case 'age':
+        return <TableCell className="text-sm">{row.demographics?.age || <span className="text-muted-foreground">-</span>}</TableCell>;
+
+      case 'gender':
+        return <TableCell className="text-sm">{row.demographics?.gender || <span className="text-muted-foreground">-</span>}</TableCell>;
+
       case 'pets_total':
         return <TableCell>{formatNumber(row.pets_total)}</TableCell>;
 
       case 'tias_total':
         return <TableCell>{formatNumber(row.tias_total)}</TableCell>;
+
+      case 'godspeed_anthro_total':
+        return <TableCell>{formatNumber(row.godspeed_anthro_total)}</TableCell>;
+
+      case 'godspeed_like_total':
+        return <TableCell>{formatNumber(row.godspeed_like_total)}</TableCell>;
+
+      case 'godspeed_intel_total':
+        return <TableCell>{formatNumber(row.godspeed_intel_total)}</TableCell>;
 
       case 'formality':
         return <TableCell>{formatNumber(row.formality)}</TableCell>;
@@ -1312,6 +1406,49 @@ export const ExperimentResponsesTable = () => {
                       </p>
                     </div>
                   </div>
+
+                  {/* Demographics Section */}
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-2">Demographics</h4>
+                    {viewItem.demographics ? (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm text-muted-foreground">Age</label>
+                          <p>{viewItem.demographics.age}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground">Gender</label>
+                          <p>{viewItem.demographics.gender}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground">Native English</label>
+                          <p>{viewItem.demographics.native_english}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground">Ethnicity</label>
+                          <p className="text-sm">
+                            {Array.isArray(viewItem.demographics.ethnicity) 
+                              ? (viewItem.demographics.ethnicity as string[]).join(', ')
+                              : String(viewItem.demographics.ethnicity)}
+                          </p>
+                        </div>
+                        {viewItem.demographics.voice_assistant_familiarity !== null && (
+                          <div>
+                            <label className="text-sm text-muted-foreground">VA Familiarity</label>
+                            <p>{formatNumber(viewItem.demographics.voice_assistant_familiarity)}</p>
+                          </div>
+                        )}
+                        {viewItem.demographics.voice_assistant_usage_frequency !== null && (
+                          <div>
+                            <label className="text-sm text-muted-foreground">VA Usage Frequency</label>
+                            <p>{formatNumber(viewItem.demographics.voice_assistant_usage_frequency)}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground italic text-sm">No demographic data available</p>
+                    )}
+                  </div>
                   
                   <div className="border-t pt-4">
                     <h4 className="font-medium mb-2">PETS Scores</h4>
@@ -1335,6 +1472,27 @@ export const ExperimentResponsesTable = () => {
                     <div className="border-t pt-4">
                       <h4 className="font-medium mb-2">TIAS Score</h4>
                       <p className="font-bold">{formatNumber(viewItem.tias_total)}</p>
+                    </div>
+                  )}
+
+                  {/* Godspeed Section */}
+                  {(viewItem.godspeed_anthro_total !== null || viewItem.godspeed_like_total !== null || viewItem.godspeed_intel_total !== null) && (
+                    <div className="border-t pt-4">
+                      <h4 className="font-medium mb-2">Godspeed Scores</h4>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="text-sm text-muted-foreground">Anthropomorphism</label>
+                          <p className="font-bold">{formatNumber(viewItem.godspeed_anthro_total)}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground">Likeability</label>
+                          <p className="font-bold">{formatNumber(viewItem.godspeed_like_total)}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground">Intelligence</label>
+                          <p className="font-bold">{formatNumber(viewItem.godspeed_intel_total)}</p>
+                        </div>
+                      </div>
                     </div>
                   )}
 
