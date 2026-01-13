@@ -15,8 +15,11 @@ export const ResearcherModeToggle = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Disable on no-consent page to allow normal typing
       if (location.pathname === '/no-consent') return;
-      // Disable on researcher pages
-      if (location.pathname.startsWith('/researcher')) return;
+      // Disable and hide on researcher pages
+      if (location.pathname.startsWith('/researcher')) {
+        setShowButton(false);
+        return;
+      }
       
       if (e.code === 'Space') {
         e.preventDefault();
