@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 import { 
   Trash2, 
   Search, 
@@ -51,7 +52,7 @@ import { Tables } from '@/integrations/supabase/types';
 
 type ExperimentResponse = Tables<'experiment_responses'>;
 
-type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality';
+type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'assistant_type';
 type SortDirection = 'asc' | 'desc' | null;
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -193,7 +194,7 @@ export const ExperimentResponsesTable = () => {
 
   const exportToCSV = () => {
     const headers = [
-      'Prolific ID', 'Call ID', 'Created At', 'PETS Total', 'PETS ER', 'PETS UT',
+      'Prolific ID', 'Call ID', 'Created At', 'Assistant Type', 'PETS Total', 'PETS ER', 'PETS UT',
       'TIAS Total', 'Formality', 'Intention 1', 'Intention 2'
     ];
     
@@ -203,6 +204,7 @@ export const ExperimentResponsesTable = () => {
         row.prolific_id,
         row.call_id,
         row.created_at,
+        row.assistant_type || 'unknown',
         row.pets_total,
         row.pets_er,
         row.pets_ut,
@@ -342,13 +344,24 @@ export const ExperimentResponsesTable = () => {
                   {getSortIcon('formality')}
                 </Button>
               </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 -ml-3 font-medium"
+                  onClick={() => handleSort('assistant_type')}
+                >
+                  Assistant
+                  {getSortIcon('assistant_type')}
+                </Button>
+              </TableHead>
               {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isSuperAdmin ? 6 : 5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isSuperAdmin ? 7 : 6} className="text-center py-8 text-muted-foreground">
                   No responses found
                 </TableCell>
               </TableRow>
@@ -367,6 +380,15 @@ export const ExperimentResponsesTable = () => {
                   <TableCell>{formatNumber(row.pets_total)}</TableCell>
                   <TableCell>{formatNumber(row.tias_total)}</TableCell>
                   <TableCell>{formatNumber(row.formality)}</TableCell>
+                  <TableCell>
+                    {row.assistant_type ? (
+                      <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'}>
+                        {row.assistant_type}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">Unknown</span>
+                    )}
+                  </TableCell>
                   {isSuperAdmin && (
                     <TableCell className="text-right">
                       <Button
@@ -463,6 +485,18 @@ export const ExperimentResponsesTable = () => {
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Call Attempt</label>
                       <p>{viewItem.call_attempt_number}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Assistant Type</label>
+                      <p>
+                        {viewItem.assistant_type ? (
+                          <Badge variant={viewItem.assistant_type === 'formal' ? 'default' : 'secondary'}>
+                            {viewItem.assistant_type}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">Unknown</span>
+                        )}
+                      </p>
                     </div>
                   </div>
                   
