@@ -20,6 +20,7 @@ const NoConsent = lazy(() => import("./pages/NoConsent"));
 const PracticeConversation = lazy(() => import("./pages/PracticeConversation"));
 const VoiceConversation = lazy(() => import("./pages/VoiceConversation"));
 const Questionnaire = lazy(() => import("./pages/Questionnaire"));
+const GodspeedQuestionnaire = lazy(() => import("./pages/GodspeedQuestionnaire"));
 const TiasQuestionnaire = lazy(() => import("./pages/TiasQuestionnaire"));
 const IntentionQuestionnaire = lazy(() => import("./pages/IntentionQuestionnaire"));
 const FormalityQuestionnaire = lazy(() => import("./pages/FormalityQuestionnaire"));
@@ -109,6 +110,7 @@ const App = () => (
                 <Route path="/practice" element={<SessionValidator><PracticeConversation /></SessionValidator>} />
                 <Route path="/voice-conversation" element={<SessionValidator><VoiceConversation /></SessionValidator>} />
                 <Route path="/questionnaire/pets" element={<SessionValidator><Questionnaire /></SessionValidator>} />
+                <Route path="/questionnaire/godspeed" element={<SessionValidator><GodspeedQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/tias" element={<SessionValidator><TiasQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/intention" element={<SessionValidator><IntentionQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/formality" element={<SessionValidator><FormalityQuestionnaire /></SessionValidator>} />
