@@ -473,6 +473,84 @@ export type Database = {
         }
         Relationships: []
       }
+      formality_calculations: {
+        Row: {
+          ai_only_mode: boolean
+          average_turn_score: number | null
+          batch_id: string | null
+          batch_name: string | null
+          category_data: Json
+          created_at: string
+          created_by: string
+          csv_row_index: number | null
+          custom_interpretation: string | null
+          f_score: number
+          formula_breakdown: Json
+          id: string
+          interpretation: string
+          interpretation_label: string
+          linked_call_id: string | null
+          linked_prolific_id: string | null
+          notes: string | null
+          original_transcript: string
+          per_turn_mode: boolean
+          per_turn_results: Json | null
+          tokens_data: Json | null
+          total_tokens: number
+          transcript_source: string
+        }
+        Insert: {
+          ai_only_mode?: boolean
+          average_turn_score?: number | null
+          batch_id?: string | null
+          batch_name?: string | null
+          category_data: Json
+          created_at?: string
+          created_by: string
+          csv_row_index?: number | null
+          custom_interpretation?: string | null
+          f_score: number
+          formula_breakdown: Json
+          id?: string
+          interpretation: string
+          interpretation_label: string
+          linked_call_id?: string | null
+          linked_prolific_id?: string | null
+          notes?: string | null
+          original_transcript: string
+          per_turn_mode?: boolean
+          per_turn_results?: Json | null
+          tokens_data?: Json | null
+          total_tokens: number
+          transcript_source?: string
+        }
+        Update: {
+          ai_only_mode?: boolean
+          average_turn_score?: number | null
+          batch_id?: string | null
+          batch_name?: string | null
+          category_data?: Json
+          created_at?: string
+          created_by?: string
+          csv_row_index?: number | null
+          custom_interpretation?: string | null
+          f_score?: number
+          formula_breakdown?: Json
+          id?: string
+          interpretation?: string
+          interpretation_label?: string
+          linked_call_id?: string | null
+          linked_prolific_id?: string | null
+          notes?: string | null
+          original_transcript?: string
+          per_turn_mode?: boolean
+          per_turn_results?: Json | null
+          tokens_data?: Json | null
+          total_tokens?: number
+          transcript_source?: string
+        }
+        Relationships: []
+      }
       intention: {
         Row: {
           call_id: string
