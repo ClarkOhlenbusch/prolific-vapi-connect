@@ -361,7 +361,6 @@ export function PromptLab() {
     setMergedText(newMerged);
     setSelectedRightPrompt('');
     setMergedLines(prev => new Map(prev).set(lineIndex, 'left'));
-    toast.success('Merged from left');
   };
   
   const mergeFromRight = (lineIndex: number) => {
@@ -384,7 +383,6 @@ export function PromptLab() {
     setMergedText(newMerged);
     setSelectedLeftPrompt('');
     setMergedLines(prev => new Map(prev).set(lineIndex, 'right'));
-    toast.success('Merged from right');
   };
   
   // Reset merged lines when texts change from user input
