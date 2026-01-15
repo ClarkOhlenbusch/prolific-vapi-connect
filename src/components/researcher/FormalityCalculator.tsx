@@ -200,10 +200,10 @@ export function FormalityCalculator() {
     originalTranscript: string,
     source: 'manual' | 'csv',
     batchId?: string
-  ) => {
-    if (!user) return;
+  ): Promise<string | null> => {
+    if (!user) return null;
     
-    const { error } = await supabase.from('formality_calculations').insert([{
+    const { data, error } = await supabase.from('formality_calculations').insert([{
       created_by: user.id,
       transcript_source: source,
       original_transcript: originalTranscript.substring(0, 10000), // Limit size
@@ -221,12 +221,14 @@ export function FormalityCalculator() {
       batch_id: batchId || null,
       batch_name: batchName || null,
       csv_row_index: result.rowIndex,
-    }]);
+    }]).select('id').single();
     
     if (error) {
       console.error('Failed to save calculation:', error);
       throw error;
     }
+    
+    return data?.id || null;
   };
   
   const processInBatches = async (
@@ -255,7 +257,10 @@ export function FormalityCalculator() {
         // Auto-save if enabled
         if (autoSave && user) {
           try {
-            await saveResultToDatabase(result, batch[j], 'csv', batchId);
+            const savedId = await saveResultToDatabase(result, batch[j], 'csv', batchId);
+            if (savedId) {
+              result.savedId = savedId;
+            }
           } catch (err) {
             console.error('Failed to auto-save result:', err);
           }
@@ -304,12 +309,17 @@ export function FormalityCalculator() {
           // Auto-save if enabled
           if (autoSave && user) {
             try {
-              await saveResultToDatabase(result, manualText, 'manual');
+              const savedId = await saveResultToDatabase(result, manualText, 'manual');
+              if (savedId) {
+                result.savedId = savedId;
+              }
               toast.success('Result saved to database');
             } catch (err) {
               toast.error('Failed to save result');
             }
           }
+          
+          setResults([result]);
         }
       } else {
         if (!csvData || csvData.transcripts.length === 0) {
@@ -343,7 +353,11 @@ export function FormalityCalculator() {
     setSavingStates(prev => ({ ...prev, [index]: true }));
     
     try {
-      await saveResultToDatabase(result, result.originalTranscript, mode === 'csv' ? 'csv' : 'manual');
+      const savedId = await saveResultToDatabase(result, result.originalTranscript, mode === 'csv' ? 'csv' : 'manual');
+      if (savedId) {
+        // Update the result with the saved ID
+        setResults(prev => prev.map((r, i) => i === index ? { ...r, savedId } : r));
+      }
       toast.success('Result saved to database');
     } catch (err) {
       toast.error('Failed to save result');
@@ -788,6 +802,7 @@ export function FormalityCalculator() {
                         isSaving={savingStates[idx]}
                         linkedCallId={result.callId}
                         linkedProlificId={result.prolificId}
+                        savedId={result.savedId}
                       />
                     ))}
                   </div>
@@ -1083,6 +1098,7 @@ interface ResultCardProps {
   isSaving?: boolean;
   linkedCallId?: string;
   linkedProlificId?: string;
+  savedId?: string;
 }
 
 function ResultCard({ 
@@ -1096,14 +1112,32 @@ function ResultCard({
   onSave,
   isSaving,
   linkedCallId,
-  linkedProlificId
+  linkedProlificId,
+  savedId
 }: ResultCardProps) {
+  const handleCardClick = () => {
+    if (savedId) {
+      window.location.href = `/researcher/formality/${savedId}`;
+    }
+  };
+
   return (
-    <div className="border rounded-lg p-4 space-y-4">
+    <div 
+      className={`border rounded-lg p-4 space-y-4 ${savedId ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}
+      onClick={savedId ? handleCardClick : undefined}
+    >
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h4 className="font-medium">{title}</h4>
+          <div className="flex items-center gap-2">
+            <h4 className="font-medium">{title}</h4>
+            {savedId && (
+              <Badge variant="secondary" className="text-xs">
+                <ExternalLink className="h-3 w-3 mr-1" />
+                View Details
+              </Badge>
+            )}
+          </div>
           {subtitle && (
             <p className="text-sm text-muted-foreground truncate max-w-md">{subtitle}</p>
           )}
@@ -1130,7 +1164,10 @@ function ResultCard({
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={onSave}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSave();
+              }}
               disabled={isSaving}
             >
               {isSaving ? (
