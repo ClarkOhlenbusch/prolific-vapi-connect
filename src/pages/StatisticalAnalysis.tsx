@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ArrowLeft, Download, Info, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
+import { ArrowLeft, Download, Info, CheckCircle2, AlertTriangle, XCircle, HelpCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Separator } from '@/components/ui/separator';
 import {
   Table,
   TableBody,
@@ -40,10 +41,59 @@ interface DependentVariable {
   description: string;
 }
 
-const DEPENDENT_VARIABLES: DependentVariable[] = [
-  { key: 'pets_total', label: 'PETS Total', scale: '10-70', description: 'Privacy and Emotional Trust Scale' },
+// Hypothesis structure
+interface Hypothesis {
+  id: string;
+  label: string;
+  description: string;
+  direction: 'formal_higher' | 'informal_higher' | 'exploratory';
+  dvKeys: string[];
+  rq: 'RQ1' | 'RQ2' | 'exploratory';
+}
+
+const HYPOTHESES: Hypothesis[] = [
+  {
+    id: 'H1',
+    label: 'H1: Empathy',
+    description: 'Participants will perceive the informal assistant as more empathic.',
+    direction: 'informal_higher',
+    dvKeys: ['pets_er'],
+    rq: 'RQ1',
+  },
+  {
+    id: 'H2',
+    label: 'H2: Trust',
+    description: 'Participants will perceive the formal assistant as more trustworthy.',
+    direction: 'formal_higher',
+    dvKeys: ['pets_ut', 'tias_total'],
+    rq: 'RQ1',
+  },
+  {
+    id: 'H3',
+    label: 'H3: Intention to Use',
+    description: 'Participants will report higher intention to use the informal assistant.',
+    direction: 'informal_higher',
+    dvKeys: ['intention_1', 'intention_2'],
+    rq: 'RQ1',
+  },
+];
+
+const EXPLORATORY_DVS: DependentVariable[] = [
+  { key: 'godspeed_anthro_total', label: 'Godspeed Anthropomorphism', scale: '4-20', description: 'Perceived human-likeness of the assistant' },
+  { key: 'godspeed_like_total', label: 'Godspeed Likeability', scale: '5-25', description: 'Perceived likeability of the assistant' },
+  { key: 'godspeed_intel_total', label: 'Godspeed Intelligence', scale: '5-25', description: 'Perceived intelligence of the assistant' },
+  { key: 'pets_total', label: 'PETS Total', scale: '10-70', description: 'Overall Privacy and Emotional Trust Scale score' },
+];
+
+const MANIPULATION_CHECKS: DependentVariable[] = [
+  { key: 'formality', label: 'Perceived Formality', scale: '1-7', description: 'User-rated perception of assistant formality' },
+  { key: 'ai_formality_score', label: 'F-Score (AI Formality)', scale: '0-100', description: 'Calculated linguistic formality from transcript' },
+];
+
+const ALL_DVS: DependentVariable[] = [
   { key: 'pets_er', label: 'PETS-ER', scale: '6-42', description: 'Emotional Relationship subscale' },
   { key: 'pets_ut', label: 'PETS-UT', scale: '4-28', description: 'Utilitarian Trust subscale' },
+  { key: 'pets_total', label: 'PETS Total', scale: '10-70', description: 'Privacy and Emotional Trust Scale' },
   { key: 'tias_total', label: 'TIAS Total', scale: '12-84', description: 'Trust in AI Scale' },
   { key: 'godspeed_anthro_total', label: 'Godspeed Anthropomorphism', scale: '4-20', description: 'Perceived human-likeness' },
   { key: 'godspeed_like_total', label: 'Godspeed Likeability', scale: '5-25', description: 'Perceived likeability' },
@@ -65,18 +115,22 @@ interface AnalysisResult {
   levene: LeveneResult;
   shapiroFormal: ShapiroResult;
   shapiroInformal: ShapiroResult;
-}
-
-interface MultipleComparisonResult extends AnalysisResult {
   adjustedP: number;
   significant: boolean;
+}
+
+interface HypothesisResult {
+  hypothesis: Hypothesis;
+  dvResults: AnalysisResult[];
+  supported: 'yes' | 'partial' | 'no' | 'opposite';
+  summary: string;
 }
 
 const StatisticalAnalysis = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [responses, setResponses] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('hypotheses');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -97,11 +151,11 @@ const StatisticalAnalysis = () => {
     fetchData();
   }, []);
 
-  const { formalResponses, informalResponses, analysisResults, multipleComparisons } = useMemo(() => {
+  const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults } = useMemo(() => {
     const formal = responses.filter(r => r.assistant_type === 'formal');
     const informal = responses.filter(r => r.assistant_type === 'informal');
 
-    const results: AnalysisResult[] = DEPENDENT_VARIABLES.map(dv => {
+    const computeResult = (dv: DependentVariable): Omit<AnalysisResult, 'adjustedP' | 'significant'> => {
       const formalData = formal
         .map(r => r[dv.key])
         .filter((v): v is number => v !== null && v !== undefined);
@@ -127,39 +181,95 @@ const StatisticalAnalysis = () => {
         shapiroFormal: formalData.length >= 3 ? shapiroWilk(formalData) : { W: 1, pValue: 1, isNormal: true },
         shapiroInformal: informalData.length >= 3 ? shapiroWilk(informalData) : { W: 1, pValue: 1, isNormal: true },
       };
-    });
+    };
 
+    // Compute all results
+    const allResults = ALL_DVS.map(dv => computeResult(dv));
+    
     // Apply Holm correction
-    const pValues = results.map(r => r.tTest.pValue);
+    const pValues = allResults.map(r => r.tTest.pValue);
     const adjustedPs = holmCorrection(pValues);
-
-    const multipleComp: MultipleComparisonResult[] = results.map((r, i) => ({
+    
+    const results: AnalysisResult[] = allResults.map((r, i) => ({
       ...r,
       adjustedP: adjustedPs[i],
       significant: adjustedPs[i] < 0.05,
     }));
 
+    // Map results to hypotheses
+    const hypResults: HypothesisResult[] = HYPOTHESES.map(hyp => {
+      const dvResults = hyp.dvKeys
+        .map(key => results.find(r => r.dv.key === key))
+        .filter((r): r is AnalysisResult => r !== undefined);
+      
+      // Determine if hypothesis is supported
+      let supported: 'yes' | 'partial' | 'no' | 'opposite' = 'no';
+      let summary = '';
+      
+      const significantCount = dvResults.filter(r => r.significant).length;
+      const correctDirectionCount = dvResults.filter(r => {
+        if (!r.significant) return false;
+        const formalHigher = r.tTest.meanDiff > 0;
+        return hyp.direction === 'formal_higher' ? formalHigher : !formalHigher;
+      }).length;
+      
+      const oppositeDirectionCount = dvResults.filter(r => {
+        if (!r.significant) return false;
+        const formalHigher = r.tTest.meanDiff > 0;
+        return hyp.direction === 'formal_higher' ? !formalHigher : formalHigher;
+      }).length;
+
+      if (correctDirectionCount === dvResults.length && significantCount > 0) {
+        supported = 'yes';
+        summary = `Supported: All ${significantCount} measure(s) significant in predicted direction`;
+      } else if (correctDirectionCount > 0) {
+        supported = 'partial';
+        summary = `Partially supported: ${correctDirectionCount}/${dvResults.length} significant in predicted direction`;
+      } else if (oppositeDirectionCount > 0) {
+        supported = 'opposite';
+        summary = `Opposite effect: ${oppositeDirectionCount} measure(s) significant in opposite direction`;
+      } else {
+        supported = 'no';
+        summary = 'Not supported: No significant differences found';
+      }
+
+      return { hypothesis: hyp, dvResults, supported, summary };
+    });
+
+    // Manipulation checks
+    const manipResults = MANIPULATION_CHECKS
+      .map(dv => results.find(r => r.dv.key === dv.key))
+      .filter((r): r is AnalysisResult => r !== undefined);
+
+    // Exploratory
+    const expResults = EXPLORATORY_DVS
+      .map(dv => results.find(r => r.dv.key === dv.key))
+      .filter((r): r is AnalysisResult => r !== undefined);
+
     return {
       formalResponses: formal,
       informalResponses: informal,
       analysisResults: results,
-      multipleComparisons: multipleComp,
+      hypothesisResults: hypResults,
+      manipulationResults: manipResults,
+      exploratoryResults: expResults,
     };
   }, [responses]);
-
-  const significantResults = multipleComparisons.filter(r => r.significant);
 
   const generatePythonScript = () => {
     const script = `"""
 Statistical Analysis Script for Between-Subjects Experiment
-Generated from Lovable Research Dashboard
+Organized by Research Questions and Hypotheses
 
-This script performs:
-1. MANOVA (if multivariate analysis is needed)
-2. Univariate ANOVAs/Welch's t-tests
-3. Mann-Whitney U tests (robustness checks)
-4. Effect size calculations
-5. Assumption checks
+RQ1: How does formality affect perceptions and behavioral intentions?
+  H1: Informal → higher empathy (PETS-ER)
+  H2: Formal → higher trust (PETS-UT, TIAS)
+  H3: Informal → higher intention to use
+
+RQ2: Does prior VA experience moderate these effects?
+  H4: More experienced users show attenuated effects
+
+Exploratory: Godspeed subscales (Anthropomorphism, Likeability, Intelligence)
 
 Requirements: pip install pandas numpy scipy pingouin statsmodels
 """
@@ -168,149 +278,207 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 import pingouin as pg
-from statsmodels.multivariate.manova import MANOVA
 from statsmodels.formula.api import ols
 import statsmodels.api as sm
 from statsmodels.stats.multicomp import multipletests
 
-# Load your data (replace with your actual data file)
-# df = pd.read_csv("experiment_data.csv")
+# Define hypothesis mappings
+HYPOTHESES = {
+    'H1': {
+        'name': 'Empathy',
+        'dvs': ['pets_er'],
+        'direction': 'informal_higher',
+        'description': 'Informal assistant perceived as more empathic'
+    },
+    'H2': {
+        'name': 'Trust', 
+        'dvs': ['pets_ut', 'tias_total'],
+        'direction': 'formal_higher',
+        'description': 'Formal assistant perceived as more trustworthy'
+    },
+    'H3': {
+        'name': 'Intention to Use',
+        'dvs': ['intention_1', 'intention_2'],
+        'direction': 'informal_higher',
+        'description': 'Higher intention to use informal assistant'
+    }
+}
 
-# For this example, create sample structure based on your database schema
-# Your data should have columns: assistant_type (formal/informal), and DV columns
+EXPLORATORY = ['godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'pets_total']
+MANIPULATION_CHECKS = ['formality', 'ai_formality_score']
+MODERATOR = 'voice_assistant_familiarity'  # For RQ2/H4
 
-# Define dependent variables
-dvs = [
-    'pets_total', 'pets_er', 'pets_ut', 'tias_total',
-    'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total',
-    'intention_1', 'intention_2', 'formality', 'ai_formality_score'
-]
-
-def run_analysis(df):
-    """Main analysis function"""
+def run_hypothesis_tests(df):
+    """Test each hypothesis with appropriate corrections"""
     
-    # Filter to only formal and informal conditions
     df_analysis = df[df['assistant_type'].isin(['formal', 'informal'])].copy()
     
-    print("=" * 60)
-    print("DESCRIPTIVE STATISTICS")
-    print("=" * 60)
+    print("=" * 70)
+    print("MANIPULATION CHECKS")
+    print("=" * 70)
     
-    for dv in dvs:
-        if dv in df_analysis.columns:
-            print(f"\\n{dv}:")
-            print(df_analysis.groupby('assistant_type')[dv].describe())
-    
-    print("\\n" + "=" * 60)
-    print("ASSUMPTION CHECKS")
-    print("=" * 60)
-    
-    # Normality tests (Shapiro-Wilk)
-    print("\\nShapiro-Wilk Normality Tests:")
-    for dv in dvs:
-        if dv in df_analysis.columns:
-            for condition in ['formal', 'informal']:
-                data = df_analysis[df_analysis['assistant_type'] == condition][dv].dropna()
-                if len(data) >= 3:
-                    stat, p = stats.shapiro(data)
-                    print(f"  {dv} ({condition}): W={stat:.4f}, p={p:.4f}")
-    
-    # Levene's test for equality of variances
-    print("\\nLevene's Test for Equality of Variances:")
-    for dv in dvs:
+    for dv in MANIPULATION_CHECKS:
         if dv in df_analysis.columns:
             formal = df_analysis[df_analysis['assistant_type'] == 'formal'][dv].dropna()
             informal = df_analysis[df_analysis['assistant_type'] == 'informal'][dv].dropna()
             if len(formal) >= 2 and len(informal) >= 2:
-                stat, p = stats.levene(formal, informal)
-                print(f"  {dv}: W={stat:.4f}, p={p:.4f}")
-    
-    print("\\n" + "=" * 60)
-    print("PRIMARY ANALYSIS: Welch's t-tests")
-    print("=" * 60)
-    
-    results = []
-    for dv in dvs:
-        if dv in df_analysis.columns:
-            formal = df_analysis[df_analysis['assistant_type'] == 'formal'][dv].dropna()
-            informal = df_analysis[df_analysis['assistant_type'] == 'informal'][dv].dropna()
-            
-            if len(formal) >= 2 and len(informal) >= 2:
-                # Welch's t-test
                 t_stat, p_val = stats.ttest_ind(formal, informal, equal_var=False)
+                d = pg.compute_effsize(formal, informal, eftype='cohen')
+                print(f"\\n{dv}:")
+                print(f"  Formal: M={formal.mean():.2f}, SD={formal.std():.2f}")
+                print(f"  Informal: M={informal.mean():.2f}, SD={informal.std():.2f}")
+                print(f"  t={t_stat:.3f}, p={p_val:.4f}, d={d:.3f}")
                 
-                # Cohen's d
-                cohens_d = pg.compute_effsize(formal, informal, eftype='cohen')
-                
-                results.append({
-                    'DV': dv,
-                    't': t_stat,
-                    'p': p_val,
-                    'Cohen_d': cohens_d,
-                    'Mean_Formal': formal.mean(),
-                    'Mean_Informal': informal.mean(),
-                    'Diff': formal.mean() - informal.mean()
-                })
+                # Check if manipulation worked (formal should have higher formality scores)
+                if 'formality' in dv or 'f_score' in dv.lower():
+                    if formal.mean() > informal.mean() and p_val < 0.05:
+                        print("  ✓ Manipulation successful")
+                    else:
+                        print("  ⚠ Manipulation may not have worked as expected")
     
-    results_df = pd.DataFrame(results)
+    print("\\n" + "=" * 70)
+    print("HYPOTHESIS TESTS (RQ1)")
+    print("=" * 70)
+    
+    all_p_values = []
+    all_results = []
+    
+    for hyp_id, hyp in HYPOTHESES.items():
+        print(f"\\n{hyp_id}: {hyp['description']}")
+        print("-" * 50)
+        
+        for dv in hyp['dvs']:
+            if dv in df_analysis.columns:
+                formal = df_analysis[df_analysis['assistant_type'] == 'formal'][dv].dropna()
+                informal = df_analysis[df_analysis['assistant_type'] == 'informal'][dv].dropna()
+                
+                if len(formal) >= 2 and len(informal) >= 2:
+                    t_stat, p_val = stats.ttest_ind(formal, informal, equal_var=False)
+                    d = pg.compute_effsize(formal, informal, eftype='cohen')
+                    
+                    all_p_values.append(p_val)
+                    all_results.append({
+                        'hypothesis': hyp_id,
+                        'dv': dv,
+                        't': t_stat,
+                        'p': p_val,
+                        'd': d,
+                        'formal_mean': formal.mean(),
+                        'informal_mean': informal.mean(),
+                        'direction': hyp['direction']
+                    })
+                    
+                    print(f"  {dv}:")
+                    print(f"    Formal: M={formal.mean():.2f}, SD={formal.std():.2f}")
+                    print(f"    Informal: M={informal.mean():.2f}, SD={informal.std():.2f}")
+                    print(f"    t={t_stat:.3f}, p={p_val:.4f}, d={d:.3f}")
+                    
+                    # Check direction
+                    if hyp['direction'] == 'formal_higher':
+                        correct = formal.mean() > informal.mean()
+                    else:
+                        correct = informal.mean() > formal.mean()
+                    
+                    if p_val < 0.05:
+                        if correct:
+                            print(f"    ✓ Significant in predicted direction")
+                        else:
+                            print(f"    ✗ Significant but OPPOSITE direction")
+                    else:
+                        print(f"    - Not significant")
     
     # Apply Holm correction
-    _, p_adjusted, _, _ = multipletests(results_df['p'], method='holm')
-    results_df['p_adjusted'] = p_adjusted
-    results_df['Significant'] = results_df['p_adjusted'] < 0.05
+    if all_p_values:
+        _, p_adjusted, _, _ = multipletests(all_p_values, method='holm')
+        print("\\n" + "=" * 70)
+        print("HOLM-CORRECTED P-VALUES")
+        print("=" * 70)
+        for i, result in enumerate(all_results):
+            result['p_adjusted'] = p_adjusted[i]
+            print(f"{result['hypothesis']} - {result['dv']}: p_adj = {p_adjusted[i]:.4f}")
     
-    print(results_df.to_string(index=False))
+    print("\\n" + "=" * 70)
+    print("EXPLORATORY ANALYSES (Godspeed)")
+    print("=" * 70)
+    print("Note: These are exploratory and should be interpreted with caution.\\n")
     
-    print("\\n" + "=" * 60)
-    print("ROBUSTNESS CHECKS: Mann-Whitney U Tests")
-    print("=" * 60)
-    
-    for dv in dvs:
+    for dv in EXPLORATORY:
         if dv in df_analysis.columns:
             formal = df_analysis[df_analysis['assistant_type'] == 'formal'][dv].dropna()
             informal = df_analysis[df_analysis['assistant_type'] == 'informal'][dv].dropna()
-            
             if len(formal) >= 2 and len(informal) >= 2:
-                mwu = pg.mwu(formal, informal)
+                t_stat, p_val = stats.ttest_ind(formal, informal, equal_var=False)
+                d = pg.compute_effsize(formal, informal, eftype='cohen')
+                print(f"{dv}:")
+                print(f"  Formal: M={formal.mean():.2f}, SD={formal.std():.2f}")
+                print(f"  Informal: M={informal.mean():.2f}, SD={informal.std():.2f}")
+                print(f"  t={t_stat:.3f}, p={p_val:.4f}, d={d:.3f}\\n")
+    
+    return all_results
+
+def run_moderation_analysis(df):
+    """Test RQ2/H4: Does prior VA experience moderate effects?"""
+    
+    print("\\n" + "=" * 70)
+    print("MODERATION ANALYSIS (RQ2/H4)")
+    print("=" * 70)
+    print("Testing: More experienced users show attenuated sensitivity to style\\n")
+    
+    df_analysis = df[df['assistant_type'].isin(['formal', 'informal'])].copy()
+    
+    # Need to merge with demographics for VA experience
+    # Assuming voice_assistant_familiarity is available
+    
+    if MODERATOR not in df_analysis.columns:
+        print(f"Note: {MODERATOR} not found in experiment_responses.")
+        print("You may need to join with demographics table.\\n")
+        print("Example moderation analysis code:\\n")
+        print('''
+# After merging demographics:
+from statsmodels.formula.api import ols
+
+# Create interaction term
+df_analysis['condition_numeric'] = (df_analysis['assistant_type'] == 'formal').astype(int)
+
+for dv in ['pets_er', 'pets_ut', 'tias_total']:
+    formula = f'{dv} ~ condition_numeric * {MODERATOR}'
+    model = ols(formula, data=df_analysis).fit()
+    print(f"\\n{dv}:")
+    print(model.summary().tables[1])
+    
+    # Check interaction term
+    interaction_p = model.pvalues[f'condition_numeric:{MODERATOR}']
+    if interaction_p < 0.05:
+        print(f"✓ Significant moderation (p = {interaction_p:.4f})")
+    else:
+        print(f"No significant moderation (p = {interaction_p:.4f})")
+''')
+        return
+    
+    # If moderator is available, run the analysis
+    df_analysis['condition_numeric'] = (df_analysis['assistant_type'] == 'formal').astype(int)
+    
+    for dv in ['pets_er', 'pets_ut', 'tias_total', 'intention_1']:
+        if dv in df_analysis.columns:
+            formula = f'{dv} ~ condition_numeric * {MODERATOR}'
+            try:
+                model = ols(formula, data=df_analysis.dropna(subset=[dv, MODERATOR])).fit()
                 print(f"\\n{dv}:")
-                print(mwu)
-    
-    print("\\n" + "=" * 60)
-    print("MANOVA (if you want multivariate analysis)")
-    print("=" * 60)
-    print("""
-    Note: MANOVA requires complete cases across all DVs.
-    Only run if you have theoretical justification for treating DVs as a set.
-    
-    Example code:
-    
-    # Select DVs for MANOVA
-    manova_dvs = ['pets_total', 'tias_total', 'godspeed_anthro_total']
-    df_complete = df_analysis[['assistant_type'] + manova_dvs].dropna()
-    
-    formula = ' + '.join(manova_dvs) + ' ~ assistant_type'
-    manova = MANOVA.from_formula(formula, data=df_complete)
-    print(manova.mv_test())
-    """)
-    
-    return results_df
+                print(model.summary().tables[1])
+            except Exception as e:
+                print(f"Error fitting {dv}: {e}")
 
-# Run analysis
-# results = run_analysis(df)
-
-print("""
-USAGE INSTRUCTIONS:
-1. Load your data from CSV or database
-2. Ensure 'assistant_type' column has 'formal' and 'informal' values
-3. Call run_analysis(df) with your DataFrame
-""")
+# Run: 
+# df = pd.read_csv("your_data.csv")
+# results = run_hypothesis_tests(df)
+# run_moderation_analysis(df)
 `;
 
     const blob = new Blob([script], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'statistical_analysis.py';
+    a.download = 'statistical_analysis_by_hypothesis.py';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -318,162 +486,227 @@ USAGE INSTRUCTIONS:
   };
 
   const generateRScript = () => {
-    const script = `# Statistical Analysis Script for Between-Subjects Experiment
-# Generated from Lovable Research Dashboard
-
-# Install packages if needed
-# install.packages(c("dplyr", "effsize", "car", "stats"))
+    const script = `# Statistical Analysis Script - Organized by Hypotheses
+# 
+# RQ1: How does formality affect perceptions and behavioral intentions?
+#   H1: Informal → higher empathy (PETS-ER)
+#   H2: Formal → higher trust (PETS-UT, TIAS)
+#   H3: Informal → higher intention to use
+#
+# RQ2: Does prior VA experience moderate these effects?
+#   H4: More experienced users show attenuated effects
+#
+# Exploratory: Godspeed subscales
 
 library(dplyr)
 library(effsize)
 library(car)
 
-# Load your data
-# df <- read.csv("experiment_data.csv")
-
-# Define dependent variables
-dvs <- c(
-  'pets_total', 'pets_er', 'pets_ut', 'tias_total',
-  'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total',
-  'intention_1', 'intention_2', 'formality', 'ai_formality_score'
+# Define hypothesis structure
+hypotheses <- list(
+  H1 = list(
+    name = "Empathy",
+    dvs = c("pets_er"),
+    direction = "informal_higher",
+    desc = "Informal assistant perceived as more empathic"
+  ),
+  H2 = list(
+    name = "Trust",
+    dvs = c("pets_ut", "tias_total"),
+    direction = "formal_higher", 
+    desc = "Formal assistant perceived as more trustworthy"
+  ),
+  H3 = list(
+    name = "Intention",
+    dvs = c("intention_1", "intention_2"),
+    direction = "informal_higher",
+    desc = "Higher intention to use informal assistant"
+  )
 )
 
-run_analysis <- function(df) {
-  # Filter to formal and informal conditions
-  df_analysis <- df %>% filter(assistant_type %in% c('formal', 'informal'))
+exploratory_dvs <- c("godspeed_anthro_total", "godspeed_like_total", "godspeed_intel_total", "pets_total")
+manipulation_checks <- c("formality", "ai_formality_score")
+
+run_hypothesis_tests <- function(df) {
+  df_analysis <- df %>% filter(assistant_type %in% c("formal", "informal"))
   
-  cat("\\n", strrep("=", 60), "\\n")
-  cat("DESCRIPTIVE STATISTICS\\n")
-  cat(strrep("=", 60), "\\n")
+  cat("\\n", strrep("=", 70), "\\n")
+  cat("MANIPULATION CHECKS\\n")
+  cat(strrep("=", 70), "\\n")
   
-  for (dv in dvs) {
+  for (dv in manipulation_checks) {
     if (dv %in% names(df_analysis)) {
-      cat("\\n", dv, ":\\n")
-      print(df_analysis %>% 
-              group_by(assistant_type) %>% 
-              summarise(
-                n = n(),
-                mean = mean(get(dv), na.rm = TRUE),
-                sd = sd(get(dv), na.rm = TRUE),
-                min = min(get(dv), na.rm = TRUE),
-                max = max(get(dv), na.rm = TRUE)
-              ))
+      formal <- df_analysis %>% filter(assistant_type == "formal") %>% pull(!!sym(dv)) %>% na.omit()
+      informal <- df_analysis %>% filter(assistant_type == "informal") %>% pull(!!sym(dv)) %>% na.omit()
+      
+      if (length(formal) >= 2 && length(informal) >= 2) {
+        test <- t.test(formal, informal, var.equal = FALSE)
+        d <- cohen.d(formal, informal)
+        
+        cat(sprintf("\\n%s:\\n", dv))
+        cat(sprintf("  Formal: M=%.2f, SD=%.2f\\n", mean(formal), sd(formal)))
+        cat(sprintf("  Informal: M=%.2f, SD=%.2f\\n", mean(informal), sd(informal)))
+        cat(sprintf("  t=%.3f, p=%.4f, d=%.3f\\n", test$statistic, test$p.value, d$estimate))
+      }
     }
   }
   
-  cat("\\n", strrep("=", 60), "\\n")
-  cat("ASSUMPTION CHECKS\\n")
-  cat(strrep("=", 60), "\\n")
+  cat("\\n", strrep("=", 70), "\\n")
+  cat("HYPOTHESIS TESTS (RQ1)\\n")
+  cat(strrep("=", 70), "\\n")
   
-  # Shapiro-Wilk tests
-  cat("\\nShapiro-Wilk Normality Tests:\\n")
-  for (dv in dvs) {
-    if (dv %in% names(df_analysis)) {
-      for (condition in c('formal', 'informal')) {
-        data <- df_analysis %>% 
-          filter(assistant_type == condition) %>% 
-          pull(!!sym(dv)) %>% 
-          na.omit()
-        if (length(data) >= 3 && length(data) <= 5000) {
-          test <- shapiro.test(data)
-          cat(sprintf("  %s (%s): W=%.4f, p=%.4f\\n", dv, condition, test$statistic, test$p.value))
+  all_p <- c()
+  results <- list()
+  
+  for (hyp_id in names(hypotheses)) {
+    hyp <- hypotheses[[hyp_id]]
+    cat(sprintf("\\n%s: %s\\n", hyp_id, hyp$desc))
+    cat(strrep("-", 50), "\\n")
+    
+    for (dv in hyp$dvs) {
+      if (dv %in% names(df_analysis)) {
+        formal <- df_analysis %>% filter(assistant_type == "formal") %>% pull(!!sym(dv)) %>% na.omit()
+        informal <- df_analysis %>% filter(assistant_type == "informal") %>% pull(!!sym(dv)) %>% na.omit()
+        
+        if (length(formal) >= 2 && length(informal) >= 2) {
+          test <- t.test(formal, informal, var.equal = FALSE)
+          d <- cohen.d(formal, informal)
+          
+          all_p <- c(all_p, test$p.value)
+          
+          cat(sprintf("  %s:\\n", dv))
+          cat(sprintf("    Formal: M=%.2f, SD=%.2f\\n", mean(formal), sd(formal)))
+          cat(sprintf("    Informal: M=%.2f, SD=%.2f\\n", mean(informal), sd(informal)))
+          cat(sprintf("    t=%.3f, p=%.4f, d=%.3f\\n", test$statistic, test$p.value, d$estimate))
+          
+          correct <- if (hyp$direction == "formal_higher") mean(formal) > mean(informal) else mean(informal) > mean(formal)
+          
+          if (test$p.value < 0.05) {
+            if (correct) {
+              cat("    ✓ Significant in predicted direction\\n")
+            } else {
+              cat("    ✗ Significant but OPPOSITE direction\\n")
+            }
+          } else {
+            cat("    - Not significant\\n")
+          }
         }
       }
     }
   }
   
-  # Levene's tests
-  cat("\\nLevene's Test for Equality of Variances:\\n")
-  for (dv in dvs) {
-    if (dv %in% names(df_analysis)) {
-      tryCatch({
-        test <- leveneTest(as.formula(paste(dv, "~ assistant_type")), data = df_analysis)
-        cat(sprintf("  %s: F=%.4f, p=%.4f\\n", dv, test$\`F value\`[1], test$\`Pr(>F)\`[1]))
-      }, error = function(e) {})
-    }
+  # Holm correction
+  if (length(all_p) > 0) {
+    p_adj <- p.adjust(all_p, method = "holm")
+    cat("\\n", strrep("=", 70), "\\n")
+    cat("HOLM-CORRECTED P-VALUES\\n")
+    cat(strrep("=", 70), "\\n")
+    print(data.frame(p_original = all_p, p_adjusted = p_adj))
   }
   
-  cat("\\n", strrep("=", 60), "\\n")
-  cat("PRIMARY ANALYSIS: Welch's t-tests\\n")
-  cat(strrep("=", 60), "\\n")
+  cat("\\n", strrep("=", 70), "\\n")
+  cat("EXPLORATORY ANALYSES (Godspeed)\\n")
+  cat(strrep("=", 70), "\\n")
+  cat("Note: These are exploratory and should be interpreted with caution.\\n\\n")
   
-  results <- data.frame()
-  
-  for (dv in dvs) {
+  for (dv in exploratory_dvs) {
     if (dv %in% names(df_analysis)) {
-      formal <- df_analysis %>% filter(assistant_type == 'formal') %>% pull(!!sym(dv)) %>% na.omit()
-      informal <- df_analysis %>% filter(assistant_type == 'informal') %>% pull(!!sym(dv)) %>% na.omit()
+      formal <- df_analysis %>% filter(assistant_type == "formal") %>% pull(!!sym(dv)) %>% na.omit()
+      informal <- df_analysis %>% filter(assistant_type == "informal") %>% pull(!!sym(dv)) %>% na.omit()
       
       if (length(formal) >= 2 && length(informal) >= 2) {
-        # Welch's t-test
-        t_test <- t.test(formal, informal, var.equal = FALSE)
-        
-        # Cohen's d
+        test <- t.test(formal, informal, var.equal = FALSE)
         d <- cohen.d(formal, informal)
         
-        results <- rbind(results, data.frame(
-          DV = dv,
-          t = t_test$statistic,
-          df = t_test$parameter,
-          p = t_test$p.value,
-          Cohen_d = d$estimate,
-          Mean_Formal = mean(formal),
-          Mean_Informal = mean(informal),
-          Diff = mean(formal) - mean(informal)
-        ))
+        cat(sprintf("%s:\\n", dv))
+        cat(sprintf("  Formal: M=%.2f, SD=%.2f\\n", mean(formal), sd(formal)))
+        cat(sprintf("  Informal: M=%.2f, SD=%.2f\\n", mean(informal), sd(informal)))
+        cat(sprintf("  t=%.3f, p=%.4f, d=%.3f\\n\\n", test$statistic, test$p.value, d$estimate))
       }
     }
   }
-  
-  # Holm correction
-  results$p_adjusted <- p.adjust(results$p, method = "holm")
-  results$Significant <- results$p_adjusted < 0.05
-  
-  print(results)
-  
-  cat("\\n", strrep("=", 60), "\\n")
-  cat("ROBUSTNESS CHECKS: Mann-Whitney U Tests\\n")
-  cat(strrep("=", 60), "\\n")
-  
-  for (dv in dvs) {
-    if (dv %in% names(df_analysis)) {
-      formal <- df_analysis %>% filter(assistant_type == 'formal') %>% pull(!!sym(dv)) %>% na.omit()
-      informal <- df_analysis %>% filter(assistant_type == 'informal') %>% pull(!!sym(dv)) %>% na.omit()
-      
-      if (length(formal) >= 2 && length(informal) >= 2) {
-        test <- wilcox.test(formal, informal)
-        # Rank-biserial correlation
-        n1 <- length(formal)
-        n2 <- length(informal)
-        r <- 1 - (2 * test$statistic) / (n1 * n2)
-        cat(sprintf("\\n%s: U=%.2f, p=%.4f, r=%.4f\\n", dv, test$statistic, test$p.value, r))
-      }
-    }
-  }
-  
-  return(results)
 }
 
-# Run: results <- run_analysis(df)
+run_moderation_analysis <- function(df) {
+  cat("\\n", strrep("=", 70), "\\n")
+  cat("MODERATION ANALYSIS (RQ2/H4)\\n")
+  cat(strrep("=", 70), "\\n")
+  
+  df_analysis <- df %>% 
+    filter(assistant_type %in% c("formal", "informal")) %>%
+    mutate(condition_numeric = as.numeric(assistant_type == "formal"))
+  
+  moderator <- "voice_assistant_familiarity"
+  
+  for (dv in c("pets_er", "pets_ut", "tias_total", "intention_1")) {
+    if (dv %in% names(df_analysis) && moderator %in% names(df_analysis)) {
+      formula <- as.formula(paste(dv, "~ condition_numeric *", moderator))
+      model <- lm(formula, data = df_analysis)
+      
+      cat(sprintf("\\n%s:\\n", dv))
+      print(summary(model)$coefficients)
+      
+      interaction_term <- paste0("condition_numeric:", moderator)
+      if (interaction_term %in% rownames(summary(model)$coefficients)) {
+        p_int <- summary(model)$coefficients[interaction_term, "Pr(>|t|)"]
+        if (p_int < 0.05) {
+          cat(sprintf("✓ Significant moderation (p = %.4f)\\n", p_int))
+        } else {
+          cat(sprintf("No significant moderation (p = %.4f)\\n", p_int))
+        }
+      }
+    }
+  }
+}
+
+# Usage:
+# df <- read.csv("your_data.csv")
+# run_hypothesis_tests(df)
+# run_moderation_analysis(df)
 `;
 
     const blob = new Blob([script], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'statistical_analysis.R';
+    a.download = 'statistical_analysis_by_hypothesis.R';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const getSignificanceIcon = (pValue: number, adjusted: boolean = false) => {
-    const threshold = 0.05;
-    if (pValue < 0.001) return <CheckCircle2 className="h-4 w-4 text-green-600" />;
-    if (pValue < threshold) return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-    if (pValue < 0.1) return <AlertTriangle className="h-4 w-4 text-amber-500" />;
-    return <XCircle className="h-4 w-4 text-muted-foreground" />;
+  const getSupportBadge = (supported: 'yes' | 'partial' | 'no' | 'opposite') => {
+    switch (supported) {
+      case 'yes':
+        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">✓ Supported</Badge>;
+      case 'partial':
+        return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">◐ Partial</Badge>;
+      case 'opposite':
+        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">✗ Opposite</Badge>;
+      default:
+        return <Badge variant="secondary">○ Not Supported</Badge>;
+    }
+  };
+
+  const getDirectionIcon = (result: AnalysisResult, expectedDirection: 'formal_higher' | 'informal_higher' | 'exploratory') => {
+    const formalHigher = result.tTest.meanDiff > 0;
+    
+    if (expectedDirection === 'exploratory') {
+      return formalHigher ? 
+        <TrendingUp className="h-4 w-4 text-blue-500" /> : 
+        <TrendingDown className="h-4 w-4 text-amber-500" />;
+    }
+    
+    const correctDirection = expectedDirection === 'formal_higher' ? formalHigher : !formalHigher;
+    
+    if (result.significant) {
+      return correctDirection ? 
+        <CheckCircle2 className="h-4 w-4 text-green-600" /> : 
+        <XCircle className="h-4 w-4 text-red-500" />;
+    }
+    
+    return <HelpCircle className="h-4 w-4 text-muted-foreground" />;
   };
 
   const formatP = (p: number) => {
@@ -505,14 +738,14 @@ run_analysis <- function(df) {
             <div>
               <h1 className="text-2xl font-bold">Statistical Analysis</h1>
               <p className="text-muted-foreground">
-                Between-subjects comparison: Formal (n={formalResponses.length}) vs Informal (n={informalResponses.length})
+                Formal (n={formalResponses.length}) vs Informal (n={informalResponses.length})
               </p>
             </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={generatePythonScript}>
               <Download className="h-4 w-4 mr-2" />
-              Python Script
+              Python
             </Button>
             <Button variant="outline" onClick={generateRScript}>
               <Download className="h-4 w-4 mr-2" />
@@ -521,78 +754,111 @@ run_analysis <- function(df) {
           </div>
         </div>
 
-        {/* Interpretation Guide */}
-        <Alert>
-          <Info className="h-4 w-4" />
-          <AlertTitle>Analysis Approach</AlertTitle>
-          <AlertDescription className="space-y-2">
-            <p>
-              This analysis uses <strong>Welch's t-tests</strong> as the primary method (robust to unequal variances),
-              with <strong>Holm-Bonferroni correction</strong> for multiple comparisons. <strong>Mann-Whitney U tests</strong> are
-              provided as robustness checks for ordinal/non-normal data.
-            </p>
-            <p className="text-sm">
-              <strong>Effect size interpretation:</strong> Cohen's d: |d| &lt; 0.2 negligible, 0.2-0.5 small, 0.5-0.8 medium, &gt; 0.8 large
-            </p>
-          </AlertDescription>
-        </Alert>
-
-        {/* Summary of Significant Results */}
-        {significantResults.length > 0 && (
-          <Card className="border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20">
-            <CardHeader>
-              <CardTitle className="text-green-700 dark:text-green-400 flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5" />
-                Significant Results (after Holm correction)
-              </CardTitle>
+        {/* Research Questions Overview */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">RQ1: Main Effects</CardTitle>
+              <CardDescription>
+                How does conversational formality affect older adults' perceptions of empathy, trust, and intention to use?
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {significantResults.map(r => (
-                  <Badge key={r.dv.key} variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                    {r.dv.label}: d = {r.tTest.cohensD.toFixed(2)} ({interpretCohensD(r.tTest.cohensD)})
-                  </Badge>
+              <div className="space-y-2">
+                {hypothesisResults.map(hr => (
+                  <div key={hr.hypothesis.id} className="flex items-center justify-between py-1">
+                    <span className="text-sm font-medium">{hr.hypothesis.id}: {hr.hypothesis.label.split(': ')[1]}</span>
+                    {getSupportBadge(hr.supported)}
+                  </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-        )}
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">RQ2: Moderation</CardTitle>
+              <CardDescription>
+                Does prior VA experience moderate the relationship between formality and outcomes?
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-sm font-medium">H4: Experience moderates effects</span>
+                  <Badge variant="outline">
+                    <HelpCircle className="h-3 w-3 mr-1" />
+                    Requires moderation analysis
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Download Python/R scripts for full moderation analysis with interaction terms.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="descriptive">Descriptive Stats</TabsTrigger>
-            <TabsTrigger value="inferential">Inferential Tests</TabsTrigger>
-            <TabsTrigger value="assumptions">Assumption Checks</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
+            <TabsTrigger value="manipulation">Manipulation Check</TabsTrigger>
+            <TabsTrigger value="exploratory">Exploratory</TabsTrigger>
+            <TabsTrigger value="descriptive">Descriptive</TabsTrigger>
+            <TabsTrigger value="assumptions">Assumptions</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Primary Analysis Results</CardTitle>
-                <CardDescription>
-                  Welch's t-tests with Holm-Bonferroni correction for multiple comparisons
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
+          {/* Hypotheses Tab */}
+          <TabsContent value="hypotheses" className="space-y-6">
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>Analysis Approach</AlertTitle>
+              <AlertDescription>
+                Primary analysis uses <strong>Welch's t-tests</strong> with <strong>Holm-Bonferroni correction</strong>. 
+                Effect sizes reported as Cohen's d. Hypotheses marked as supported if p_adj &lt; .05 in the predicted direction.
+              </AlertDescription>
+            </Alert>
+
+            {hypothesisResults.map((hr) => (
+              <Card key={hr.hypothesis.id} className={
+                hr.supported === 'yes' ? 'border-green-200 bg-green-50/30 dark:border-green-900 dark:bg-green-950/20' :
+                hr.supported === 'partial' ? 'border-amber-200 bg-amber-50/30 dark:border-amber-900 dark:bg-amber-950/20' :
+                hr.supported === 'opposite' ? 'border-red-200 bg-red-50/30 dark:border-red-900 dark:bg-red-950/20' :
+                ''
+              }>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        {hr.hypothesis.label}
+                        {getSupportBadge(hr.supported)}
+                      </CardTitle>
+                      <CardDescription className="mt-1">{hr.hypothesis.description}</CardDescription>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {hr.hypothesis.direction === 'formal_higher' ? 'Formal > Informal' : 'Informal > Formal'}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">{hr.summary}</p>
+                  
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Variable</TableHead>
-                        <TableHead className="text-center">Formal (M ± SD)</TableHead>
-                        <TableHead className="text-center">Informal (M ± SD)</TableHead>
+                        <TableHead>Measure</TableHead>
+                        <TableHead className="text-center bg-blue-50/50 dark:bg-blue-950/30">Formal (M ± SD)</TableHead>
+                        <TableHead className="text-center bg-amber-50/50 dark:bg-amber-950/30">Informal (M ± SD)</TableHead>
                         <TableHead className="text-center">t</TableHead>
                         <TableHead className="text-center">p</TableHead>
                         <TableHead className="text-center">p (adj)</TableHead>
                         <TableHead className="text-center">Cohen's d</TableHead>
-                        <TableHead className="text-center">Effect</TableHead>
-                        <TableHead className="text-center">Sig</TableHead>
+                        <TableHead className="text-center">Result</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {multipleComparisons.map((result) => (
-                        <TableRow key={result.dv.key} className={result.significant ? 'bg-green-50/50 dark:bg-green-950/20' : ''}>
+                      {hr.dvResults.map((result) => (
+                        <TableRow key={result.dv.key}>
                           <TableCell className="font-medium">
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -600,14 +866,14 @@ run_analysis <- function(df) {
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>{result.dv.description}</p>
-                                <p className="text-xs text-muted-foreground">Scale: {result.dv.scale}</p>
+                                <p className="text-xs">Scale: {result.dv.scale}</p>
                               </TooltipContent>
                             </Tooltip>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center bg-blue-50/30 dark:bg-blue-950/10">
                             {result.formalStats.mean.toFixed(2)} ± {result.formalStats.std.toFixed(2)}
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center bg-amber-50/30 dark:bg-amber-950/10">
                             {result.informalStats.mean.toFixed(2)} ± {result.informalStats.std.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-center font-mono text-sm">
@@ -616,84 +882,183 @@ run_analysis <- function(df) {
                           <TableCell className="text-center font-mono text-sm">
                             {formatP(result.tTest.pValue)}
                           </TableCell>
-                          <TableCell className="text-center font-mono text-sm">
-                            <span className={result.significant ? 'font-bold text-green-600' : ''}>
+                          <TableCell className="text-center font-mono text-sm font-medium">
+                            <span className={result.significant ? 'text-green-600' : ''}>
                               {formatP(result.adjustedP)}
                             </span>
                           </TableCell>
-                          <TableCell className="text-center font-mono text-sm">
-                            {result.tTest.cohensD.toFixed(2)}
+                          <TableCell className="text-center">
+                            <span className="font-mono text-sm">{result.tTest.cohensD.toFixed(2)}</span>
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ({interpretCohensD(result.tTest.cohensD)})
+                            </span>
                           </TableCell>
                           <TableCell className="text-center">
-                            <Badge variant="outline" className="text-xs">
-                              {interpretCohensD(result.tTest.cohensD)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {getSignificanceIcon(result.adjustedP)}
+                            {getDirectionIcon(result, hr.hypothesis.direction)}
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            ))}
+          </TabsContent>
+
+          {/* Manipulation Check Tab */}
+          <TabsContent value="manipulation" className="space-y-6">
+            <Alert>
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertTitle>Manipulation Check</AlertTitle>
+              <AlertDescription>
+                Verifying that participants in the formal condition perceived higher formality than those in the informal condition.
+                A successful manipulation shows significantly higher scores for the formal condition.
+              </AlertDescription>
+            </Alert>
 
             <Card>
               <CardHeader>
-                <CardTitle>Robustness Checks: Mann-Whitney U</CardTitle>
+                <CardTitle>Formality Perception Verification</CardTitle>
                 <CardDescription>
-                  Non-parametric tests as sensitivity analyses (not primary inference)
+                  Both user-rated (Perceived Formality) and AI-calculated (F-Score) measures should show formal &gt; informal
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Variable</TableHead>
-                        <TableHead className="text-center">U</TableHead>
-                        <TableHead className="text-center">z</TableHead>
-                        <TableHead className="text-center">p</TableHead>
-                        <TableHead className="text-center">Rank-biserial r</TableHead>
-                        <TableHead className="text-center">Effect</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {analysisResults.map((result) => (
-                        <TableRow key={result.dv.key}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Measure</TableHead>
+                      <TableHead className="text-center bg-blue-50/50 dark:bg-blue-950/30">Formal (M ± SD)</TableHead>
+                      <TableHead className="text-center bg-amber-50/50 dark:bg-amber-950/30">Informal (M ± SD)</TableHead>
+                      <TableHead className="text-center">Difference</TableHead>
+                      <TableHead className="text-center">t</TableHead>
+                      <TableHead className="text-center">p</TableHead>
+                      <TableHead className="text-center">Cohen's d</TableHead>
+                      <TableHead className="text-center">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {manipulationResults.map((result) => {
+                      const manipulationWorked = result.significant && result.tTest.meanDiff > 0;
+                      return (
+                        <TableRow key={result.dv.key} className={manipulationWorked ? 'bg-green-50/50 dark:bg-green-950/20' : 'bg-red-50/50 dark:bg-red-950/20'}>
                           <TableCell className="font-medium">{result.dv.label}</TableCell>
-                          <TableCell className="text-center font-mono text-sm">
-                            {result.mannWhitney.U.toFixed(0)}
+                          <TableCell className="text-center bg-blue-50/30 dark:bg-blue-950/10">
+                            {result.formalStats.mean.toFixed(2)} ± {result.formalStats.std.toFixed(2)}
                           </TableCell>
-                          <TableCell className="text-center font-mono text-sm">
-                            {result.mannWhitney.z.toFixed(2)}
+                          <TableCell className="text-center bg-amber-50/30 dark:bg-amber-950/10">
+                            {result.informalStats.mean.toFixed(2)} ± {result.informalStats.std.toFixed(2)}
                           </TableCell>
-                          <TableCell className="text-center font-mono text-sm">
-                            {formatP(result.mannWhitney.pValue)}
+                          <TableCell className="text-center font-mono">
+                            {result.tTest.meanDiff > 0 ? '+' : ''}{result.tTest.meanDiff.toFixed(2)}
                           </TableCell>
-                          <TableCell className="text-center font-mono text-sm">
-                            {result.mannWhitney.rankBiserialR.toFixed(3)}
-                          </TableCell>
+                          <TableCell className="text-center font-mono">{result.tTest.t.toFixed(2)}</TableCell>
+                          <TableCell className="text-center font-mono">{formatP(result.tTest.pValue)}</TableCell>
+                          <TableCell className="text-center font-mono">{result.tTest.cohensD.toFixed(2)}</TableCell>
                           <TableCell className="text-center">
-                            <Badge variant="outline" className="text-xs">
-                              {interpretRankBiserial(result.mannWhitney.rankBiserialR)}
-                            </Badge>
+                            {manipulationWorked ? (
+                              <Badge className="bg-green-100 text-green-800">✓ Successful</Badge>
+                            ) : (
+                              <Badge variant="destructive">⚠ Check Required</Badge>
+                            )}
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Exploratory Tab */}
+          <TabsContent value="exploratory" className="space-y-6">
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Exploratory Analyses</AlertTitle>
+              <AlertDescription>
+                <strong>Godspeed subscales</strong> are examined as exploratory outcomes to characterize how formality affects 
+                broader perceptions of the voice assistant. These findings should be interpreted with caution and 
+                framed as hypothesis-generating rather than confirmatory.
+              </AlertDescription>
+            </Alert>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Godspeed Questionnaire Subscales</CardTitle>
+                <CardDescription>
+                  Exploring effects on anthropomorphism, likeability, and perceived intelligence
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Subscale</TableHead>
+                      <TableHead className="text-center bg-blue-50/50 dark:bg-blue-950/30">Formal (M ± SD)</TableHead>
+                      <TableHead className="text-center bg-amber-50/50 dark:bg-amber-950/30">Informal (M ± SD)</TableHead>
+                      <TableHead className="text-center">t</TableHead>
+                      <TableHead className="text-center">p</TableHead>
+                      <TableHead className="text-center">Cohen's d</TableHead>
+                      <TableHead className="text-center">Direction</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {exploratoryResults.map((result) => (
+                      <TableRow key={result.dv.key}>
+                        <TableCell>
+                          <div>
+                            <span className="font-medium">{result.dv.label}</span>
+                            <p className="text-xs text-muted-foreground">{result.dv.description}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center bg-blue-50/30 dark:bg-blue-950/10">
+                          {result.formalStats.mean.toFixed(2)} ± {result.formalStats.std.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-center bg-amber-50/30 dark:bg-amber-950/10">
+                          {result.informalStats.mean.toFixed(2)} ± {result.informalStats.std.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-center font-mono">{result.tTest.t.toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-mono">
+                          <span className={result.tTest.pValue < 0.05 ? 'font-bold' : ''}>
+                            {formatP(result.tTest.pValue)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-mono">{result.tTest.cohensD.toFixed(2)}</span>
+                          <Badge variant="outline" className="ml-2 text-xs">
+                            {interpretCohensD(result.tTest.cohensD)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {result.tTest.meanDiff > 0 ? (
+                            <span className="text-blue-600 text-sm">Formal ↑</span>
+                          ) : (
+                            <span className="text-amber-600 text-sm">Informal ↑</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                
+                <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                  <h4 className="font-medium text-sm mb-2">Interpretation Notes</h4>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>• These analyses are <strong>not corrected</strong> for multiple comparisons (exploratory)</li>
+                    <li>• Significant findings should be replicated in future confirmatory studies</li>
+                    <li>• Consider these as potential mediators or additional outcomes for future research</li>
+                  </ul>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
+          {/* Descriptive Tab */}
           <TabsContent value="descriptive" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Descriptive Statistics by Condition</CardTitle>
+                <CardTitle>Complete Descriptive Statistics</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -701,40 +1066,95 @@ run_analysis <- function(df) {
                     <TableHeader>
                       <TableRow>
                         <TableHead rowSpan={2}>Variable</TableHead>
-                        <TableHead colSpan={5} className="text-center border-l bg-blue-50 dark:bg-blue-950/30">Formal</TableHead>
-                        <TableHead colSpan={5} className="text-center border-l bg-amber-50 dark:bg-amber-950/30">Informal</TableHead>
+                        <TableHead rowSpan={2}>Category</TableHead>
+                        <TableHead colSpan={4} className="text-center border-l bg-blue-50 dark:bg-blue-950/30">Formal (n={formalResponses.length})</TableHead>
+                        <TableHead colSpan={4} className="text-center border-l bg-amber-50 dark:bg-amber-950/30">Informal (n={informalResponses.length})</TableHead>
                       </TableRow>
                       <TableRow>
-                        <TableHead className="text-center border-l bg-blue-50 dark:bg-blue-950/30">n</TableHead>
-                        <TableHead className="text-center bg-blue-50 dark:bg-blue-950/30">M</TableHead>
+                        <TableHead className="text-center border-l bg-blue-50 dark:bg-blue-950/30">M</TableHead>
                         <TableHead className="text-center bg-blue-50 dark:bg-blue-950/30">SD</TableHead>
                         <TableHead className="text-center bg-blue-50 dark:bg-blue-950/30">Mdn</TableHead>
                         <TableHead className="text-center bg-blue-50 dark:bg-blue-950/30">Range</TableHead>
-                        <TableHead className="text-center border-l bg-amber-50 dark:bg-amber-950/30">n</TableHead>
-                        <TableHead className="text-center bg-amber-50 dark:bg-amber-950/30">M</TableHead>
+                        <TableHead className="text-center border-l bg-amber-50 dark:bg-amber-950/30">M</TableHead>
                         <TableHead className="text-center bg-amber-50 dark:bg-amber-950/30">SD</TableHead>
                         <TableHead className="text-center bg-amber-50 dark:bg-amber-950/30">Mdn</TableHead>
                         <TableHead className="text-center bg-amber-50 dark:bg-amber-950/30">Range</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {analysisResults.map((result) => (
+                      {/* H1 - Empathy */}
+                      {analysisResults.filter(r => r.dv.key === 'pets_er').map((result) => (
+                        <TableRow key={result.dv.key} className="bg-green-50/20 dark:bg-green-950/10">
+                          <TableCell className="font-medium">{result.dv.label}</TableCell>
+                          <TableCell><Badge variant="outline" className="text-xs">H1</Badge></TableCell>
+                          <TableCell className="text-center border-l">{result.formalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.formalStats.min.toFixed(0)}-{result.formalStats.max.toFixed(0)}</TableCell>
+                          <TableCell className="text-center border-l">{result.informalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.informalStats.min.toFixed(0)}-{result.informalStats.max.toFixed(0)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {/* H2 - Trust */}
+                      {analysisResults.filter(r => ['pets_ut', 'tias_total'].includes(r.dv.key)).map((result) => (
+                        <TableRow key={result.dv.key} className="bg-blue-50/20 dark:bg-blue-950/10">
+                          <TableCell className="font-medium">{result.dv.label}</TableCell>
+                          <TableCell><Badge variant="outline" className="text-xs">H2</Badge></TableCell>
+                          <TableCell className="text-center border-l">{result.formalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.formalStats.min.toFixed(0)}-{result.formalStats.max.toFixed(0)}</TableCell>
+                          <TableCell className="text-center border-l">{result.informalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.informalStats.min.toFixed(0)}-{result.informalStats.max.toFixed(0)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {/* H3 - Intention */}
+                      {analysisResults.filter(r => ['intention_1', 'intention_2'].includes(r.dv.key)).map((result) => (
+                        <TableRow key={result.dv.key} className="bg-purple-50/20 dark:bg-purple-950/10">
+                          <TableCell className="font-medium">{result.dv.label}</TableCell>
+                          <TableCell><Badge variant="outline" className="text-xs">H3</Badge></TableCell>
+                          <TableCell className="text-center border-l">{result.formalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.formalStats.min.toFixed(0)}-{result.formalStats.max.toFixed(0)}</TableCell>
+                          <TableCell className="text-center border-l">{result.informalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.informalStats.min.toFixed(0)}-{result.informalStats.max.toFixed(0)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {/* Exploratory */}
+                      {analysisResults.filter(r => ['godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'pets_total'].includes(r.dv.key)).map((result) => (
                         <TableRow key={result.dv.key}>
                           <TableCell className="font-medium">{result.dv.label}</TableCell>
-                          <TableCell className="text-center border-l bg-blue-50/30 dark:bg-blue-950/10">{result.formalStats.n}</TableCell>
-                          <TableCell className="text-center bg-blue-50/30 dark:bg-blue-950/10">{result.formalStats.mean.toFixed(2)}</TableCell>
-                          <TableCell className="text-center bg-blue-50/30 dark:bg-blue-950/10">{result.formalStats.std.toFixed(2)}</TableCell>
-                          <TableCell className="text-center bg-blue-50/30 dark:bg-blue-950/10">{result.formalStats.median.toFixed(2)}</TableCell>
-                          <TableCell className="text-center bg-blue-50/30 dark:bg-blue-950/10 text-xs">
-                            {result.formalStats.min.toFixed(1)}-{result.formalStats.max.toFixed(1)}
-                          </TableCell>
-                          <TableCell className="text-center border-l bg-amber-50/30 dark:bg-amber-950/10">{result.informalStats.n}</TableCell>
-                          <TableCell className="text-center bg-amber-50/30 dark:bg-amber-950/10">{result.informalStats.mean.toFixed(2)}</TableCell>
-                          <TableCell className="text-center bg-amber-50/30 dark:bg-amber-950/10">{result.informalStats.std.toFixed(2)}</TableCell>
-                          <TableCell className="text-center bg-amber-50/30 dark:bg-amber-950/10">{result.informalStats.median.toFixed(2)}</TableCell>
-                          <TableCell className="text-center bg-amber-50/30 dark:bg-amber-950/10 text-xs">
-                            {result.informalStats.min.toFixed(1)}-{result.informalStats.max.toFixed(1)}
-                          </TableCell>
+                          <TableCell><Badge variant="secondary" className="text-xs">Exp</Badge></TableCell>
+                          <TableCell className="text-center border-l">{result.formalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.formalStats.min.toFixed(0)}-{result.formalStats.max.toFixed(0)}</TableCell>
+                          <TableCell className="text-center border-l">{result.informalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.informalStats.min.toFixed(0)}-{result.informalStats.max.toFixed(0)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {/* Manipulation checks */}
+                      {analysisResults.filter(r => ['formality', 'ai_formality_score'].includes(r.dv.key)).map((result) => (
+                        <TableRow key={result.dv.key} className="bg-slate-50/50 dark:bg-slate-950/20">
+                          <TableCell className="font-medium">{result.dv.label}</TableCell>
+                          <TableCell><Badge variant="outline" className="text-xs">Check</Badge></TableCell>
+                          <TableCell className="text-center border-l">{result.formalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.formalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.formalStats.min.toFixed(0)}-{result.formalStats.max.toFixed(0)}</TableCell>
+                          <TableCell className="text-center border-l">{result.informalStats.mean.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.std.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">{result.informalStats.median.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-xs">{result.informalStats.min.toFixed(0)}-{result.informalStats.max.toFixed(0)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -744,58 +1164,23 @@ run_analysis <- function(df) {
             </Card>
           </TabsContent>
 
-          <TabsContent value="inferential" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              {analysisResults.map((result) => (
-                <Card key={result.dv.key}>
-                  <CardHeader>
-                    <CardTitle className="text-lg">{result.dv.label}</CardTitle>
-                    <CardDescription>{result.dv.description}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
-                        <p className="text-xs text-muted-foreground">Formal</p>
-                        <p className="text-lg font-bold">{result.formalStats.mean.toFixed(2)}</p>
-                        <p className="text-xs">SD = {result.formalStats.std.toFixed(2)}</p>
-                      </div>
-                      <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30">
-                        <p className="text-xs text-muted-foreground">Informal</p>
-                        <p className="text-lg font-bold">{result.informalStats.mean.toFixed(2)}</p>
-                        <p className="text-xs">SD = {result.informalStats.std.toFixed(2)}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2 text-sm">
-                      <p><strong>Welch's t-test:</strong> t({result.tTest.df.toFixed(1)}) = {result.tTest.t.toFixed(2)}, p = {formatP(result.tTest.pValue)}</p>
-                      <p><strong>Cohen's d:</strong> {result.tTest.cohensD.toFixed(3)} ({interpretCohensD(result.tTest.cohensD)})</p>
-                      <p><strong>95% CI:</strong> [{result.tTest.ci95[0].toFixed(2)}, {result.tTest.ci95[1].toFixed(2)}]</p>
-                      <p className="text-muted-foreground">
-                        <strong>Mann-Whitney U:</strong> {result.mannWhitney.U.toFixed(0)}, z = {result.mannWhitney.z.toFixed(2)}, 
-                        p = {formatP(result.mannWhitney.pValue)}, r = {result.mannWhitney.rankBiserialR.toFixed(3)}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
+          {/* Assumptions Tab */}
           <TabsContent value="assumptions" className="space-y-6">
             <Alert variant="default">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Interpreting Assumption Checks</AlertTitle>
+              <AlertTitle>Assumption Check Interpretation</AlertTitle>
               <AlertDescription>
-                Welch's t-test is robust to violations of equal variances. For normality violations with n &gt; 30, 
-                the Central Limit Theorem provides robustness. Mann-Whitney U tests are provided as non-parametric alternatives.
+                Welch's t-test is robust to variance inequality. With n &gt; 30 per group, the Central Limit Theorem 
+                provides robustness to non-normality. Mann-Whitney U tests in the downloadable scripts serve as 
+                non-parametric alternatives if needed.
               </AlertDescription>
             </Alert>
 
             <div className="grid gap-6 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Levene's Test (Equality of Variances)</CardTitle>
-                  <CardDescription>H₀: Variances are equal. p &gt; .05 suggests equal variances.</CardDescription>
+                  <CardTitle>Levene's Test (Variance Equality)</CardTitle>
+                  <CardDescription>p &gt; .05 suggests equal variances</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Table>
@@ -804,20 +1189,20 @@ run_analysis <- function(df) {
                         <TableHead>Variable</TableHead>
                         <TableHead className="text-center">W</TableHead>
                         <TableHead className="text-center">p</TableHead>
-                        <TableHead className="text-center">Result</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {analysisResults.map((result) => (
                         <TableRow key={result.dv.key}>
-                          <TableCell>{result.dv.label}</TableCell>
-                          <TableCell className="text-center font-mono">{result.levene.W.toFixed(2)}</TableCell>
-                          <TableCell className="text-center font-mono">{formatP(result.levene.pValue)}</TableCell>
+                          <TableCell className="text-sm">{result.dv.label}</TableCell>
+                          <TableCell className="text-center font-mono text-sm">{result.levene.W.toFixed(2)}</TableCell>
+                          <TableCell className="text-center font-mono text-sm">{formatP(result.levene.pValue)}</TableCell>
                           <TableCell className="text-center">
                             {result.levene.pValue > 0.05 ? (
-                              <Badge variant="outline" className="bg-green-50 text-green-700">Equal</Badge>
+                              <CheckCircle2 className="h-4 w-4 text-green-600 mx-auto" />
                             ) : (
-                              <Badge variant="outline" className="bg-amber-50 text-amber-700">Unequal</Badge>
+                              <AlertTriangle className="h-4 w-4 text-amber-500 mx-auto" />
                             )}
                           </TableCell>
                         </TableRow>
@@ -830,7 +1215,7 @@ run_analysis <- function(df) {
               <Card>
                 <CardHeader>
                   <CardTitle>Shapiro-Wilk Test (Normality)</CardTitle>
-                  <CardDescription>H₀: Data is normally distributed. p &gt; .05 suggests normality.</CardDescription>
+                  <CardDescription>p &gt; .05 suggests normal distribution</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Table>
@@ -844,14 +1229,14 @@ run_analysis <- function(df) {
                     <TableBody>
                       {analysisResults.map((result) => (
                         <TableRow key={result.dv.key}>
-                          <TableCell>{result.dv.label}</TableCell>
+                          <TableCell className="text-sm">{result.dv.label}</TableCell>
                           <TableCell className="text-center">
-                            <span className={result.shapiroFormal.isNormal ? 'text-green-600' : 'text-amber-600'}>
+                            <span className={`font-mono text-sm ${result.shapiroFormal.isNormal ? 'text-green-600' : 'text-amber-600'}`}>
                               {formatP(result.shapiroFormal.pValue)}
                             </span>
                           </TableCell>
                           <TableCell className="text-center">
-                            <span className={result.shapiroInformal.isNormal ? 'text-green-600' : 'text-amber-600'}>
+                            <span className={`font-mono text-sm ${result.shapiroInformal.isNormal ? 'text-green-600' : 'text-amber-600'}`}>
                               {formatP(result.shapiroInformal.pValue)}
                             </span>
                           </TableCell>
@@ -865,35 +1250,30 @@ run_analysis <- function(df) {
           </TabsContent>
         </Tabs>
 
-        {/* Interpretation Section */}
+        {/* Summary Card */}
         <Card>
           <CardHeader>
-            <CardTitle>Interpretation Guide</CardTitle>
+            <CardTitle>Summary for Thesis Write-up</CardTitle>
           </CardHeader>
-          <CardContent className="prose dark:prose-invert max-w-none">
-            <h4>What the Analysis Tests</h4>
-            <p>
-              This analysis examines whether participants in the <strong>Formal</strong> condition differ significantly 
-              from participants in the <strong>Informal</strong> condition across multiple dependent variables 
-              (trust scales, perceptions, and behavioral intentions).
-            </p>
-
-            <h4>When Follow-ups Are Needed</h4>
-            <p>
-              If conducting a MANOVA first, follow-up univariate tests (shown here) are only interpreted if the 
-              multivariate test is significant. The downloadable scripts include MANOVA code for this purpose.
-            </p>
-
-            <h4>How to Interpret Effect Sizes</h4>
+          <CardContent className="prose dark:prose-invert max-w-none text-sm">
+            <h4>RQ1: Main Effects of Formality</h4>
             <ul>
-              <li><strong>Cohen's d:</strong> Standardized mean difference. |d| &lt; 0.2 negligible, 0.2-0.5 small, 0.5-0.8 medium, &gt; 0.8 large</li>
-              <li><strong>Rank-biserial r:</strong> Non-parametric effect size. Same thresholds as correlation coefficients.</li>
+              <li><strong>H1 (Empathy):</strong> {hypothesisResults.find(h => h.hypothesis.id === 'H1')?.summary}</li>
+              <li><strong>H2 (Trust):</strong> {hypothesisResults.find(h => h.hypothesis.id === 'H2')?.summary}</li>
+              <li><strong>H3 (Intention):</strong> {hypothesisResults.find(h => h.hypothesis.id === 'H3')?.summary}</li>
             </ul>
 
-            <h4>Multiple Comparisons</h4>
+            <h4>RQ2: Moderation by Prior Experience</h4>
             <p>
-              Holm-Bonferroni correction controls family-wise error rate while being less conservative than Bonferroni. 
-              The adjusted p-values should be used for determining statistical significance.
+              H4 requires moderation analysis with interaction terms. Download the Python or R scripts 
+              for complete moderation analysis including voice_assistant_familiarity × condition interactions.
+            </p>
+
+            <h4>Exploratory: Godspeed Subscales</h4>
+            <p>
+              Godspeed subscales (Anthropomorphism, Likeability, Intelligence) were examined as exploratory 
+              outcomes. These findings are presented without correction for multiple comparisons and should 
+              be interpreted as hypothesis-generating for future research.
             </p>
           </CardContent>
         </Card>
