@@ -340,36 +340,46 @@ export function PromptLab() {
   };
   
   const mergeFromLeft = (lineIndex: number) => {
-    const lines = mergedText.split('\n');
+    const leftLines = leftText.split('\n');
+    const rightLines = rightText.split('\n');
     const leftLine = diffResult.left[lineIndex]?.content || '';
     
-    if (lineIndex < lines.length) {
-      lines[lineIndex] = leftLine;
+    // Update right side to match left at this line
+    if (lineIndex < rightLines.length) {
+      rightLines[lineIndex] = leftLine;
     } else {
-      while (lines.length < lineIndex) {
-        lines.push('');
+      while (rightLines.length < lineIndex) {
+        rightLines.push('');
       }
-      lines.push(leftLine);
+      rightLines.push(leftLine);
     }
     
-    setMergedText(lines.join('\n'));
+    const newMerged = rightLines.join('\n');
+    setRightText(newMerged);
+    setMergedText(newMerged);
+    setSelectedRightPrompt('');
     toast.success('Merged from left');
   };
   
   const mergeFromRight = (lineIndex: number) => {
-    const lines = mergedText.split('\n');
+    const leftLines = leftText.split('\n');
+    const rightLines = rightText.split('\n');
     const rightLine = diffResult.right[lineIndex]?.content || '';
     
-    if (lineIndex < lines.length) {
-      lines[lineIndex] = rightLine;
+    // Update left side to match right at this line
+    if (lineIndex < leftLines.length) {
+      leftLines[lineIndex] = rightLine;
     } else {
-      while (lines.length < lineIndex) {
-        lines.push('');
+      while (leftLines.length < lineIndex) {
+        leftLines.push('');
       }
-      lines.push(rightLine);
+      leftLines.push(rightLine);
     }
     
-    setMergedText(lines.join('\n'));
+    const newMerged = leftLines.join('\n');
+    setLeftText(newMerged);
+    setMergedText(newMerged);
+    setSelectedLeftPrompt('');
     toast.success('Merged from right');
   };
   
