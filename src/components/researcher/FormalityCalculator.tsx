@@ -99,6 +99,8 @@ export function FormalityCalculator() {
   
   // Saved calculations
   const [savedCalculations, setSavedCalculations] = useState<SavedCalculation[]>([]);
+  const [linkedCallIds, setLinkedCallIds] = useState<Set<string>>(new Set());
+  const [showLinkedOnly, setShowLinkedOnly] = useState(false);
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   const [activeTab, setActiveTab] = useState('calculate');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -123,14 +125,23 @@ export function FormalityCalculator() {
   const loadSavedCalculations = async () => {
     setIsLoadingSaved(true);
     try {
-      const { data, error } = await supabase
-        .from('formality_calculations')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
+      // Fetch calculations and experiment response call_ids in parallel
+      const [calcResult, responsesResult] = await Promise.all([
+        supabase
+          .from('formality_calculations')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('experiment_responses')
+          .select('call_id')
+      ]);
       
-      if (error) throw error;
-      setSavedCalculations(data || []);
+      if (calcResult.error) throw calcResult.error;
+      if (responsesResult.error) throw responsesResult.error;
+      
+      setSavedCalculations(calcResult.data || []);
+      setLinkedCallIds(new Set((responsesResult.data || []).map(r => r.call_id)));
     } catch (err) {
       console.error('Failed to load saved calculations:', err);
       toast.error('Failed to load saved calculations');
@@ -947,10 +958,24 @@ export function FormalityCalculator() {
           
           <Card>
             <CardHeader>
-              <CardTitle>Saved Calculations</CardTitle>
-              <CardDescription>
-                View previously saved F-score calculations and their linked experiment data
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Saved Calculations</CardTitle>
+                  <CardDescription>
+                    View previously saved F-score calculations and their linked experiment data
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="show-linked-only"
+                    checked={showLinkedOnly}
+                    onCheckedChange={setShowLinkedOnly}
+                  />
+                  <Label htmlFor="show-linked-only" className="text-sm whitespace-nowrap">
+                    Linked to responses only
+                  </Label>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoadingSaved ? (
@@ -980,7 +1005,9 @@ export function FormalityCalculator() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {savedCalculations.map((calc) => (
+                      {savedCalculations
+                        .filter((calc) => !showLinkedOnly || (calc.linked_call_id && linkedCallIds.has(calc.linked_call_id)))
+                        .map((calc) => (
                         <TableRow 
                           key={calc.id} 
                           className="cursor-pointer hover:bg-muted/50 transition-colors"
