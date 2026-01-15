@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -8,6 +8,8 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Upload, 
   FileText, 
@@ -17,11 +19,18 @@ import {
   ChevronUp,
   Copy,
   Check,
-  Info
+  Info,
+  Save,
+  History,
+  Link,
+  ExternalLink,
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import {
   FScoreResult,
   PerTurnResult,
+  CSVParseResult,
   parseCSV,
   processTranscript,
   processTranscriptPerTurn,
@@ -39,17 +48,46 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { supabase } from '@/integrations/supabase/client';
+import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import type { Json } from '@/integrations/supabase/types';
+
+interface SavedCalculation {
+  id: string;
+  created_at: string;
+  f_score: number;
+  total_tokens: number;
+  interpretation: string;
+  interpretation_label: string;
+  linked_call_id: string | null;
+  linked_prolific_id: string | null;
+  notes: string | null;
+  custom_interpretation: string | null;
+  ai_only_mode: boolean;
+  per_turn_mode: boolean;
+  batch_name: string | null;
+  transcript_source: string;
+  original_transcript: string;
+}
 
 export function FormalityCalculator() {
   // Input state
   const [mode, setMode] = useState<'csv' | 'manual'>('manual');
   const [manualText, setManualText] = useState('');
   const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [csvTranscripts, setCsvTranscripts] = useState<string[]>([]);
+  const [csvData, setCsvData] = useState<CSVParseResult | null>(null);
+  
+  // Manual linking
+  const [manualCallId, setManualCallId] = useState('');
+  const [manualProlificId, setManualProlificId] = useState('');
   
   // Options
   const [aiOnly, setAiOnly] = useState(false);
   const [perTurnScoring, setPerTurnScoring] = useState(false);
+  const [autoSave, setAutoSave] = useState(true);
+  const [batchName, setBatchName] = useState('');
   
   // Results state
   const [results, setResults] = useState<FScoreResult[]>([]);
@@ -59,27 +97,72 @@ export function FormalityCalculator() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   
+  // Saved calculations
+  const [savedCalculations, setSavedCalculations] = useState<SavedCalculation[]>([]);
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
+  const [activeTab, setActiveTab] = useState('calculate');
+  
   // UI state
   const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set());
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [showReproducibility, setShowReproducibility] = useState(false);
+  const [savingStates, setSavingStates] = useState<Record<number, boolean>>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useResearcherAuth();
+  
+  // Load saved calculations when switching to history tab
+  useEffect(() => {
+    if (activeTab === 'history') {
+      loadSavedCalculations();
+    }
+  }, [activeTab]);
+  
+  const loadSavedCalculations = async () => {
+    setIsLoadingSaved(true);
+    try {
+      const { data, error } = await supabase
+        .from('formality_calculations')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      
+      if (error) throw error;
+      setSavedCalculations(data || []);
+    } catch (err) {
+      console.error('Failed to load saved calculations:', err);
+      toast.error('Failed to load saved calculations');
+    } finally {
+      setIsLoadingSaved(false);
+    }
+  };
   
   const handleFileUpload = useCallback(async (file: File) => {
     setError(null);
     setCsvFile(file);
     
     const content = await file.text();
-    const { transcripts, error: parseError } = parseCSV(content);
+    const parsed = parseCSV(content);
     
-    if (parseError) {
-      setError(parseError);
-      setCsvTranscripts([]);
+    if (parsed.error) {
+      setError(parsed.error);
+      setCsvData(null);
       return;
     }
     
-    setCsvTranscripts(transcripts);
+    setCsvData(parsed);
+    
+    // Show info about linked data
+    const hasCallIds = parsed.callIds.some(id => id.length > 0);
+    const hasProlificIds = parsed.prolificIds.some(id => id.length > 0);
+    
+    if (hasCallIds || hasProlificIds) {
+      toast.success(
+        `Found ${parsed.transcripts.length} transcripts` +
+        (hasCallIds ? ` with ${parsed.callIds.filter(id => id).length} call IDs` : '') +
+        (hasProlificIds ? ` and ${parsed.prolificIds.filter(id => id).length} prolific IDs` : '')
+      );
+    }
   }, []);
   
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -99,15 +182,71 @@ export function FormalityCalculator() {
     }
   }, [handleFileUpload]);
   
-  const processInBatches = async (transcripts: string[], batchSize: number = 10) => {
+  const saveResultToDatabase = async (
+    result: FScoreResult, 
+    originalTranscript: string,
+    source: 'manual' | 'csv',
+    batchId?: string
+  ) => {
+    if (!user) return;
+    
+    const { error } = await supabase.from('formality_calculations').insert([{
+      created_by: user.id,
+      transcript_source: source,
+      original_transcript: originalTranscript.substring(0, 10000), // Limit size
+      linked_call_id: result.callId || null,
+      linked_prolific_id: result.prolificId || null,
+      f_score: result.fScore,
+      total_tokens: result.totalTokens,
+      interpretation: result.interpretation,
+      interpretation_label: result.interpretationLabel,
+      category_data: JSON.parse(JSON.stringify(result.categories)) as Json,
+      formula_breakdown: JSON.parse(JSON.stringify(result.formulaBreakdown)) as Json,
+      tokens_data: JSON.parse(JSON.stringify(result.tokens.slice(0, 500))) as Json,
+      ai_only_mode: aiOnly,
+      per_turn_mode: perTurnScoring,
+      batch_id: batchId || null,
+      batch_name: batchName || null,
+      csv_row_index: result.rowIndex,
+    }]);
+    
+    if (error) {
+      console.error('Failed to save calculation:', error);
+      throw error;
+    }
+  };
+  
+  const processInBatches = async (
+    transcripts: string[], 
+    callIds: string[], 
+    prolificIds: string[],
+    batchSize: number = 10
+  ) => {
     const allResults: FScoreResult[] = [];
+    const batchId = crypto.randomUUID();
     
     for (let i = 0; i < transcripts.length; i += batchSize) {
       const batch = transcripts.slice(i, i + batchSize);
       
       for (let j = 0; j < batch.length; j++) {
-        const result = processTranscript(batch[j], aiOnly, i + j);
+        const idx = i + j;
+        const result = processTranscript(batch[j], aiOnly, idx);
+        
+        // Attach linked data
+        result.callId = callIds[idx] || undefined;
+        result.prolificId = prolificIds[idx] || undefined;
+        result.originalTranscript = batch[j];
+        
         allResults.push(result);
+        
+        // Auto-save if enabled
+        if (autoSave && user) {
+          try {
+            await saveResultToDatabase(result, batch[j], 'csv', batchId);
+          } catch (err) {
+            console.error('Failed to auto-save result:', err);
+          }
+        }
       }
       
       setProgress(Math.round(((i + batch.length) / transcripts.length) * 100));
@@ -141,17 +280,41 @@ export function FormalityCalculator() {
           setAverageScore(calculateAverageFromTurns(turnResults));
         } else {
           const result = processTranscript(manualText, aiOnly, 0);
+          
+          // Attach manual linking data
+          result.callId = manualCallId || undefined;
+          result.prolificId = manualProlificId || undefined;
+          result.originalTranscript = manualText;
+          
           setResults([result]);
+          
+          // Auto-save if enabled
+          if (autoSave && user) {
+            try {
+              await saveResultToDatabase(result, manualText, 'manual');
+              toast.success('Result saved to database');
+            } catch (err) {
+              toast.error('Failed to save result');
+            }
+          }
         }
       } else {
-        if (csvTranscripts.length === 0) {
+        if (!csvData || csvData.transcripts.length === 0) {
           setError('No transcripts found in CSV');
           setIsProcessing(false);
           return;
         }
         
-        const processedResults = await processInBatches(csvTranscripts);
+        const processedResults = await processInBatches(
+          csvData.transcripts, 
+          csvData.callIds, 
+          csvData.prolificIds
+        );
         setResults(processedResults);
+        
+        if (autoSave && user) {
+          toast.success(`${processedResults.length} results saved to database`);
+        }
       }
     } catch (err) {
       setError(`Processing error: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -159,6 +322,37 @@ export function FormalityCalculator() {
     
     setIsProcessing(false);
     setProgress(100);
+  };
+  
+  const handleManualSave = async (result: FScoreResult, index: number) => {
+    if (!user || !result.originalTranscript) return;
+    
+    setSavingStates(prev => ({ ...prev, [index]: true }));
+    
+    try {
+      await saveResultToDatabase(result, result.originalTranscript, mode === 'csv' ? 'csv' : 'manual');
+      toast.success('Result saved to database');
+    } catch (err) {
+      toast.error('Failed to save result');
+    } finally {
+      setSavingStates(prev => ({ ...prev, [index]: false }));
+    }
+  };
+  
+  const handleDeleteCalculation = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('formality_calculations')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      setSavedCalculations(prev => prev.filter(c => c.id !== id));
+      toast.success('Calculation deleted');
+    } catch (err) {
+      toast.error('Failed to delete calculation');
+    }
   };
   
   const downloadCSV = (content: string, filename: string) => {
@@ -213,325 +407,507 @@ export function FormalityCalculator() {
   
   return (
     <div className="space-y-6">
-      {/* Header Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Transcript Formality (F-score) Calculator</CardTitle>
-          <CardDescription>
-            Compute the Heylighen & Dewaele (1999) F-score using POS tag distributions. 
-            Upload a CSV or paste a transcript to analyze formality.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Mode Selection */}
-          <div className="flex gap-4">
-            <Button
-              variant={mode === 'manual' ? 'default' : 'outline'}
-              onClick={() => setMode('manual')}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Manual Input
-            </Button>
-            <Button
-              variant={mode === 'csv' ? 'default' : 'outline'}
-              onClick={() => setMode('csv')}
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              Upload CSV
-            </Button>
-          </div>
-          
-          {/* Input Area */}
-          {mode === 'manual' ? (
-            <div className="space-y-2">
-              <Label htmlFor="transcript">Transcript</Label>
-              <Textarea
-                id="transcript"
-                placeholder="Paste your transcript here...&#10;&#10;For AI-only analysis, format each AI turn as:&#10;AI: Hello, how can I help you today?&#10;User: I need help with...&#10;AI: Of course, let me assist you."
-                className="min-h-[200px] font-mono text-sm"
-                value={manualText}
-                onChange={(e) => setManualText(e.target.value)}
-              />
-            </div>
-          ) : (
-            <div
-              className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-              <Upload className="h-10 w-10 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground mb-2">
-                Drag and drop a CSV file, or click to browse
-              </p>
-              <p className="text-xs text-muted-foreground">
-                CSV must have a column named "Transcript"
-              </p>
-              {csvFile && (
-                <div className="mt-4 p-2 bg-muted rounded">
-                  <p className="text-sm font-medium">{csvFile.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {csvTranscripts.length} transcripts found
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          
-          {/* Options */}
-          <div className="flex flex-wrap gap-6">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="ai-only"
-                checked={aiOnly}
-                onCheckedChange={setAiOnly}
-              />
-              <Label htmlFor="ai-only" className="cursor-pointer">
-                Use AI utterances only
-                <span className="block text-xs text-muted-foreground">
-                  Keep only lines starting with "AI:"
-                </span>
-              </Label>
-            </div>
-            
-            {mode === 'manual' && (
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="per-turn"
-                  checked={perTurnScoring}
-                  onCheckedChange={setPerTurnScoring}
-                />
-                <Label htmlFor="per-turn" className="cursor-pointer">
-                  Per-turn scoring
-                  <span className="block text-xs text-muted-foreground">
-                    Score each AI turn separately
-                  </span>
-                </Label>
-              </div>
-            )}
-          </div>
-          
-          {/* Error Display */}
-          {error && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          
-          {/* Process Button */}
-          <Button 
-            onClick={handleProcess} 
-            disabled={isProcessing}
-            className="w-full sm:w-auto"
-          >
-            {isProcessing ? 'Processing...' : 'Calculate F-Score'}
-          </Button>
-          
-          {/* Progress Bar */}
-          {isProcessing && (
-            <div className="space-y-2">
-              <Progress value={progress} />
-              <p className="text-sm text-muted-foreground text-center">
-                Processing... {progress}%
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      
-      {/* Results Section */}
-      {(results.length > 0 || perTurnResults.length > 0) && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Results</CardTitle>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="calculate">
+            <FileText className="h-4 w-4 mr-2" />
+            Calculate
+          </TabsTrigger>
+          <TabsTrigger value="history">
+            <History className="h-4 w-4 mr-2" />
+            History
+          </TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="calculate" className="space-y-6">
+          {/* Header Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Transcript Formality (F-score) Calculator</CardTitle>
               <CardDescription>
-                {results.length > 0 && `${results.length} transcript(s) analyzed`}
-                {perTurnResults.length > 0 && `${perTurnResults.length} turns analyzed`}
+                Compute the Heylighen & Dewaele (1999) F-score using POS tag distributions. 
+                Upload a CSV or paste a transcript to analyze formality.
               </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              {results.length > 0 && (
-                <Button variant="outline" size="sm" onClick={handleDownloadResults}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download CSV
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Mode Selection */}
+              <div className="flex gap-4">
+                <Button
+                  variant={mode === 'manual' ? 'default' : 'outline'}
+                  onClick={() => setMode('manual')}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Manual Input
                 </Button>
-              )}
-              {perTurnResults.length > 0 && (
-                <Button variant="outline" size="sm" onClick={handleDownloadPerTurn}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download Per-Turn CSV
+                <Button
+                  variant={mode === 'csv' ? 'default' : 'outline'}
+                  onClick={() => setMode('csv')}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload CSV
                 </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Average Score for Per-Turn */}
-            {averageScore !== null && (
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Average F-Score across all turns:</strong> {averageScore}
-                </AlertDescription>
-              </Alert>
-            )}
-            
-            {/* Per-Turn Results */}
-            {perTurnResults.length > 0 && (
-              <div className="space-y-3">
-                {perTurnResults.map((turn, idx) => (
-                  <ResultCard
-                    key={idx}
-                    result={turn.result}
-                    title={`Turn ${turn.turnIndex + 1}`}
-                    subtitle={turn.turnText}
-                    isExpanded={expandedResults.has(idx)}
-                    onToggle={() => toggleResultExpansion(idx)}
-                    getInterpretationColor={getInterpretationColor}
-                  />
-                ))}
               </div>
-            )}
-            
-            {/* Standard Results */}
-            {results.length > 0 && (
-              <div className="space-y-3">
-                {results.map((result, idx) => (
-                  <ResultCard
-                    key={idx}
-                    result={result}
-                    title={`Transcript ${result.rowIndex + 1}`}
-                    isExpanded={expandedResults.has(idx)}
-                    onToggle={() => toggleResultExpansion(idx)}
-                    getInterpretationColor={getInterpretationColor}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-      
-      {/* Reproducibility Panel */}
-      <Card>
-        <CardHeader>
-          <Collapsible open={showReproducibility} onOpenChange={setShowReproducibility}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
-                <CardTitle className="text-lg">Reproducibility</CardTitle>
-                {showReproducibility ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent className="pt-4 space-y-6">
-                {/* Tagger Info */}
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <h4 className="font-medium mb-2">POS Tagger</h4>
-                    <p className="text-sm text-muted-foreground">
-                      <strong>{taggerInfo.name}</strong> v{taggerInfo.version}
-                    </p>
-                    <p className="text-sm text-muted-foreground">{taggerInfo.type}</p>
-                    <a 
-                      href={taggerInfo.documentation} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Documentation →
-                    </a>
+              
+              {/* Input Area */}
+              {mode === 'manual' ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="transcript">Transcript</Label>
+                    <Textarea
+                      id="transcript"
+                      placeholder="Paste your transcript here...&#10;&#10;For AI-only analysis, format each AI turn as:&#10;AI: Hello, how can I help you today?&#10;User: I need help with...&#10;AI: Of course, let me assist you."
+                      className="min-h-[200px] font-mono text-sm"
+                      value={manualText}
+                      onChange={(e) => setManualText(e.target.value)}
+                    />
                   </div>
                   
-                  <div>
-                    <h4 className="font-medium mb-2">Article List</h4>
-                    <div className="flex gap-2">
-                      {taggerInfo.articleList.map(art => (
-                        <Badge key={art} variant="secondary">{art}</Badge>
-                      ))}
+                  {/* Manual Linking */}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="call-id">
+                        <Link className="h-3 w-3 inline mr-1" />
+                        Link to Call ID (optional)
+                      </Label>
+                      <Input
+                        id="call-id"
+                        placeholder="VAPI call ID"
+                        value={manualCallId}
+                        onChange={(e) => setManualCallId(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="prolific-id">
+                        <Link className="h-3 w-3 inline mr-1" />
+                        Link to Prolific ID (optional)
+                      </Label>
+                      <Input
+                        id="prolific-id"
+                        placeholder="Prolific participant ID"
+                        value={manualProlificId}
+                        onChange={(e) => setManualProlificId(e.target.value)}
+                      />
                     </div>
                   </div>
                 </div>
-                
-                {/* Tokenization Rules */}
-                <div>
-                  <h4 className="font-medium mb-2">Tokenization Rules</h4>
-                  <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-                    {taggerInfo.tokenizationRules.map((rule, idx) => (
-                      <li key={idx}>{rule}</li>
-                    ))}
-                  </ul>
+              ) : (
+                <div className="space-y-4">
+                  <div
+                    className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
+                    onDrop={handleDrop}
+                    onDragOver={(e) => e.preventDefault()}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                    <Upload className="h-10 w-10 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Drag and drop a CSV file, or click to browse
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Required: "Transcript" column. Optional: "call_id" and "prolific_id" columns for auto-linking
+                    </p>
+                    {csvFile && csvData && (
+                      <div className="mt-4 p-3 bg-muted rounded text-left">
+                        <p className="text-sm font-medium">{csvFile.name}</p>
+                        <div className="text-xs text-muted-foreground mt-1 space-y-1">
+                          <p>✓ {csvData.transcripts.length} transcripts found</p>
+                          {csvData.callIds.some(id => id) && (
+                            <p className="text-green-600 dark:text-green-400">
+                              ✓ {csvData.callIds.filter(id => id).length} call IDs found (auto-linking enabled)
+                            </p>
+                          )}
+                          {csvData.prolificIds.some(id => id) && (
+                            <p className="text-green-600 dark:text-green-400">
+                              ✓ {csvData.prolificIds.filter(id => id).length} prolific IDs found (auto-linking enabled)
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Batch Name */}
+                  <div className="space-y-2">
+                    <Label htmlFor="batch-name">Batch Name (optional)</Label>
+                    <Input
+                      id="batch-name"
+                      placeholder="e.g., 'Pilot Study 1', 'Wave 2 Data'"
+                      value={batchName}
+                      onChange={(e) => setBatchName(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Give this batch a name for easier identification in history
+                    </p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Options */}
+              <div className="flex flex-wrap gap-6">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="ai-only"
+                    checked={aiOnly}
+                    onCheckedChange={setAiOnly}
+                  />
+                  <Label htmlFor="ai-only" className="cursor-pointer">
+                    Use AI utterances only
+                    <span className="block text-xs text-muted-foreground">
+                      Keep only lines starting with "AI:"
+                    </span>
+                  </Label>
                 </div>
                 
-                {/* Category Mapping */}
+                {mode === 'manual' && (
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="per-turn"
+                      checked={perTurnScoring}
+                      onCheckedChange={setPerTurnScoring}
+                    />
+                    <Label htmlFor="per-turn" className="cursor-pointer">
+                      Per-turn scoring
+                      <span className="block text-xs text-muted-foreground">
+                        Score each AI turn separately
+                      </span>
+                    </Label>
+                  </div>
+                )}
+                
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="auto-save"
+                    checked={autoSave}
+                    onCheckedChange={setAutoSave}
+                  />
+                  <Label htmlFor="auto-save" className="cursor-pointer">
+                    Auto-save results
+                    <span className="block text-xs text-muted-foreground">
+                      Save calculations to database automatically
+                    </span>
+                  </Label>
+                </div>
+              </div>
+              
+              {/* Error Display */}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              
+              {/* Process Button */}
+              <Button 
+                onClick={handleProcess} 
+                disabled={isProcessing}
+                className="w-full sm:w-auto"
+              >
+                {isProcessing ? 'Processing...' : 'Calculate F-Score'}
+              </Button>
+              
+              {/* Progress Bar */}
+              {isProcessing && (
+                <div className="space-y-2">
+                  <Progress value={progress} />
+                  <p className="text-sm text-muted-foreground text-center">
+                    Processing... {progress}%
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* Results Section */}
+          {(results.length > 0 || perTurnResults.length > 0) && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <h4 className="font-medium mb-2">Category Mapping</h4>
+                  <CardTitle>Results</CardTitle>
+                  <CardDescription>
+                    {results.length > 0 && `${results.length} transcript(s) analyzed`}
+                    {perTurnResults.length > 0 && `${perTurnResults.length} turns analyzed`}
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  {results.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={handleDownloadResults}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download CSV
+                    </Button>
+                  )}
+                  {perTurnResults.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={handleDownloadPerTurn}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download Per-Turn CSV
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Average Score for Per-Turn */}
+                {averageScore !== null && (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Average F-Score across all turns:</strong> {averageScore}
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
+                {/* Per-Turn Results */}
+                {perTurnResults.length > 0 && (
+                  <div className="space-y-3">
+                    {perTurnResults.map((turn, idx) => (
+                      <ResultCard
+                        key={idx}
+                        result={turn.result}
+                        title={`Turn ${turn.turnIndex + 1}`}
+                        subtitle={turn.turnText}
+                        isExpanded={expandedResults.has(idx)}
+                        onToggle={() => toggleResultExpansion(idx)}
+                        getInterpretationColor={getInterpretationColor}
+                        showSaveButton={!autoSave}
+                        onSave={() => handleManualSave(turn.result, idx)}
+                        isSaving={savingStates[idx]}
+                      />
+                    ))}
+                  </div>
+                )}
+                
+                {/* Standard Results */}
+                {results.length > 0 && (
+                  <div className="space-y-3">
+                    {results.map((result, idx) => (
+                      <ResultCard
+                        key={idx}
+                        result={result}
+                        title={`Transcript ${result.rowIndex + 1}`}
+                        subtitle={result.callId ? `Call ID: ${result.callId}` : undefined}
+                        isExpanded={expandedResults.has(idx)}
+                        onToggle={() => toggleResultExpansion(idx)}
+                        getInterpretationColor={getInterpretationColor}
+                        showSaveButton={!autoSave}
+                        onSave={() => handleManualSave(result, idx)}
+                        isSaving={savingStates[idx]}
+                        linkedCallId={result.callId}
+                        linkedProlificId={result.prolificId}
+                      />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Reproducibility Panel */}
+          <Card>
+            <CardHeader>
+              <Collapsible open={showReproducibility} onOpenChange={setShowReproducibility}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
+                    <CardTitle className="text-lg">Reproducibility</CardTitle>
+                    {showReproducibility ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="pt-4 space-y-6">
+                    {/* Tagger Info */}
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <h4 className="font-medium mb-2">POS Tagger</h4>
+                        <p className="text-sm text-muted-foreground">
+                          <strong>{taggerInfo.name}</strong> v{taggerInfo.version}
+                        </p>
+                        <p className="text-sm text-muted-foreground">{taggerInfo.type}</p>
+                        <a 
+                          href={taggerInfo.documentation} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline"
+                        >
+                          Documentation →
+                        </a>
+                      </div>
+                      
+                      <div>
+                        <h4 className="font-medium mb-2">Article List</h4>
+                        <div className="flex gap-2">
+                          {taggerInfo.articleList.map(art => (
+                            <Badge key={art} variant="secondary">{art}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Tokenization Rules */}
+                    <div>
+                      <h4 className="font-medium mb-2">Tokenization Rules</h4>
+                      <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                        {taggerInfo.tokenizationRules.map((rule, idx) => (
+                          <li key={idx}>{rule}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    
+                    {/* Category Mapping */}
+                    <div>
+                      <h4 className="font-medium mb-2">Category Mapping</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Category</TableHead>
+                            <TableHead>Compromise Tags</TableHead>
+                            <TableHead>F-Score</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {taggerInfo.categoryMapping.map((cat, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="font-medium">{cat.category}</TableCell>
+                              <TableCell className="text-sm">{cat.tags}</TableCell>
+                              <TableCell>
+                                <Badge variant={cat.fScoreSign === '+' ? 'default' : 'destructive'}>
+                                  {cat.fScoreSign}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    
+                    {/* Formula */}
+                    <div>
+                      <h4 className="font-medium mb-2">Formula</h4>
+                      <code className="block bg-muted p-3 rounded text-sm">
+                        {taggerInfo.formula}
+                      </code>
+                    </div>
+                    
+                    {/* Code Snippet */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-medium">Reproduction Code Snippet</h4>
+                        <Button variant="outline" size="sm" onClick={copyReproductionSnippet}>
+                          {copiedSnippet ? (
+                            <>
+                              <Check className="h-4 w-4 mr-2" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-4 w-4 mr-2" />
+                              Copy
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <pre className="bg-muted p-4 rounded text-xs overflow-x-auto max-h-64">
+                        {getReproductionSnippet()}
+                      </pre>
+                    </div>
+                  </CardContent>
+                </CollapsibleContent>
+              </Collapsible>
+            </CardHeader>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="history" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Saved Calculations</CardTitle>
+              <CardDescription>
+                View previously saved F-score calculations and their linked experiment data
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingSaved ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : savedCalculations.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <History className="h-10 w-10 mx-auto mb-4 opacity-50" />
+                  <p>No saved calculations yet</p>
+                  <p className="text-sm">Calculations will appear here when you process transcripts with auto-save enabled</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Compromise Tags</TableHead>
+                        <TableHead>Date</TableHead>
                         <TableHead>F-Score</TableHead>
+                        <TableHead>Interpretation</TableHead>
+                        <TableHead>Tokens</TableHead>
+                        <TableHead>Call ID</TableHead>
+                        <TableHead>Prolific ID</TableHead>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Batch</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {taggerInfo.categoryMapping.map((cat, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell className="font-medium">{cat.category}</TableCell>
-                          <TableCell className="text-sm">{cat.tags}</TableCell>
+                      {savedCalculations.map((calc) => (
+                        <TableRow key={calc.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {format(new Date(calc.created_at), 'MMM d, yyyy HH:mm')}
+                          </TableCell>
+                          <TableCell className="font-bold">{calc.f_score}</TableCell>
                           <TableCell>
-                            <Badge variant={cat.fScoreSign === '+' ? 'default' : 'destructive'}>
-                              {cat.fScoreSign}
+                            <Badge className={getInterpretationColor(calc.interpretation)}>
+                              {calc.interpretation_label}
                             </Badge>
+                          </TableCell>
+                          <TableCell>{calc.total_tokens}</TableCell>
+                          <TableCell>
+                            {calc.linked_call_id ? (
+                              <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                                {calc.linked_call_id.substring(0, 12)}...
+                              </code>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {calc.linked_prolific_id || <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {calc.transcript_source}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {calc.batch_name || <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteCalculation(calc.id)}
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
-                
-                {/* Formula */}
-                <div>
-                  <h4 className="font-medium mb-2">Formula</h4>
-                  <code className="block bg-muted p-3 rounded text-sm">
-                    {taggerInfo.formula}
-                  </code>
-                </div>
-                
-                {/* Code Snippet */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium">Reproduction Code Snippet</h4>
-                    <Button variant="outline" size="sm" onClick={copyReproductionSnippet}>
-                      {copiedSnippet ? (
-                        <>
-                          <Check className="h-4 w-4 mr-2" />
-                          Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Copy
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                  <pre className="bg-muted p-4 rounded text-xs overflow-x-auto max-h-64">
-                    {getReproductionSnippet()}
-                  </pre>
-                </div>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </CardHeader>
-      </Card>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -544,9 +920,26 @@ interface ResultCardProps {
   isExpanded: boolean;
   onToggle: () => void;
   getInterpretationColor: (interpretation: string) => string;
+  showSaveButton?: boolean;
+  onSave?: () => void;
+  isSaving?: boolean;
+  linkedCallId?: string;
+  linkedProlificId?: string;
 }
 
-function ResultCard({ result, title, subtitle, isExpanded, onToggle, getInterpretationColor }: ResultCardProps) {
+function ResultCard({ 
+  result, 
+  title, 
+  subtitle, 
+  isExpanded, 
+  onToggle, 
+  getInterpretationColor,
+  showSaveButton,
+  onSave,
+  isSaving,
+  linkedCallId,
+  linkedProlificId
+}: ResultCardProps) {
   return (
     <div className="border rounded-lg p-4 space-y-4">
       {/* Header */}
@@ -556,8 +949,42 @@ function ResultCard({ result, title, subtitle, isExpanded, onToggle, getInterpre
           {subtitle && (
             <p className="text-sm text-muted-foreground truncate max-w-md">{subtitle}</p>
           )}
+          {/* Linked Data Badges */}
+          {(linkedCallId || linkedProlificId) && (
+            <div className="flex gap-2 mt-1">
+              {linkedCallId && (
+                <Badge variant="outline" className="text-xs">
+                  <Link className="h-3 w-3 mr-1" />
+                  Call: {linkedCallId.substring(0, 8)}...
+                </Badge>
+              )}
+              {linkedProlificId && (
+                <Badge variant="outline" className="text-xs">
+                  <ExternalLink className="h-3 w-3 mr-1" />
+                  Prolific: {linkedProlificId}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
+          {showSaveButton && onSave && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={onSave}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save
+                </>
+              )}
+            </Button>
+          )}
           <div className="text-right">
             <p className="text-2xl font-bold">{result.fScore}</p>
             <Badge className={getInterpretationColor(result.interpretation)}>

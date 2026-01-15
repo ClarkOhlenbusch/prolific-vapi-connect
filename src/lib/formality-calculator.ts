@@ -47,12 +47,23 @@ export interface FScoreResult {
     intermediateSum: number;
   };
   warning?: string;
+  // Linked data from CSV
+  callId?: string;
+  prolificId?: string;
+  originalTranscript?: string;
 }
 
 export interface PerTurnResult {
   turnIndex: number;
   turnText: string;
   result: FScoreResult;
+}
+
+export interface CSVParseResult {
+  transcripts: string[];
+  callIds: string[];
+  prolificIds: string[];
+  error?: string;
 }
 
 // Articles list for F-score calculation
@@ -382,15 +393,15 @@ export function calculateAverageFromTurns(turns: PerTurnResult[]): number {
 }
 
 /**
- * Parse CSV and extract Transcript column
+ * Parse CSV and extract Transcript, Call ID, and Prolific ID columns
  */
-export function parseCSV(csvContent: string): { transcripts: string[]; error?: string } {
+export function parseCSV(csvContent: string): CSVParseResult {
   const lines = csvContent.split(/\r?\n/);
   if (lines.length < 2) {
-    return { transcripts: [], error: 'CSV must have at least a header row and one data row' };
+    return { transcripts: [], callIds: [], prolificIds: [], error: 'CSV must have at least a header row and one data row' };
   }
   
-  // Parse header to find Transcript column
+  // Parse header to find columns
   const header = lines[0];
   const columns = parseCSVLine(header);
   
@@ -398,15 +409,30 @@ export function parseCSV(csvContent: string): { transcripts: string[]; error?: s
     col => col.toLowerCase().trim() === 'transcript'
   );
   
+  // Look for call_id column (various naming conventions)
+  const callIdIndex = columns.findIndex(
+    col => ['call_id', 'callid', 'call id', 'vapi_call_id', 'vapicallid'].includes(col.toLowerCase().trim())
+  );
+  
+  // Look for prolific_id column
+  const prolificIdIndex = columns.findIndex(
+    col => ['prolific_id', 'prolificid', 'prolific id', 'participant_id'].includes(col.toLowerCase().trim())
+  );
+  
   if (transcriptIndex === -1) {
     return { 
       transcripts: [], 
+      callIds: [],
+      prolificIds: [],
       error: 'Could not find "Transcript" column in CSV. Please ensure your CSV has a column named "Transcript".' 
     };
   }
   
-  // Extract transcripts
+  // Extract data
   const transcripts: string[] = [];
+  const callIds: string[] = [];
+  const prolificIds: string[] = [];
+  
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (line.length === 0) continue;
@@ -416,11 +442,25 @@ export function parseCSV(csvContent: string): { transcripts: string[]; error?: s
       const transcript = values[transcriptIndex].trim();
       if (transcript.length > 0) {
         transcripts.push(transcript);
+        
+        // Extract call_id if available
+        if (callIdIndex !== -1 && callIdIndex < values.length) {
+          callIds.push(values[callIdIndex].trim());
+        } else {
+          callIds.push('');
+        }
+        
+        // Extract prolific_id if available
+        if (prolificIdIndex !== -1 && prolificIdIndex < values.length) {
+          prolificIds.push(values[prolificIdIndex].trim());
+        } else {
+          prolificIds.push('');
+        }
       }
     }
   }
   
-  return { transcripts };
+  return { transcripts, callIds, prolificIds };
 }
 
 /**
