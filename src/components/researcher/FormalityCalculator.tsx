@@ -981,7 +981,11 @@ export function FormalityCalculator() {
                     </TableHeader>
                     <TableBody>
                       {savedCalculations.map((calc) => (
-                        <TableRow key={calc.id}>
+                        <TableRow 
+                          key={calc.id} 
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => window.location.href = `/researcher/formality/${calc.id}`}
+                        >
                           <TableCell className="whitespace-nowrap">
                             {format(new Date(calc.created_at), 'MMM d, yyyy HH:mm')}
                           </TableCell>
@@ -1016,7 +1020,10 @@ export function FormalityCalculator() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleDeleteCalculation(calc.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCalculation(calc.id);
+                              }}
                               className="h-8 w-8 text-destructive hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4" />
