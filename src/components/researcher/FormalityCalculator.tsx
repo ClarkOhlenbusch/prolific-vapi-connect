@@ -100,8 +100,22 @@ export function FormalityCalculator() {
   const [csvData, setCsvData] = useState<CSVParseResult | null>(null);
   
   // Compare mode state
-  const [compareTexts, setCompareTexts] = useState<string[]>(['', '']);
+  const [compareTexts, setCompareTexts] = useState<string[]>(() => {
+    const saved = localStorage.getItem('formality-compare-texts');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= 2) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return ['', ''];
+  });
   const [compareResults, setCompareResults] = useState<FScoreResult[]>([]);
+  const [compareVersionId, setCompareVersionId] = useState<string | null>(() => {
+    return localStorage.getItem('formality-compare-version-id');
+  });
   
   // Manual linking
   const [manualCallId, setManualCallId] = useState('');
@@ -166,6 +180,23 @@ export function FormalityCalculator() {
     setCompareTexts(newTexts);
   };
   
+  const saveCompareAsNewVersion = () => {
+    const newVersionId = crypto.randomUUID();
+    setCompareVersionId(newVersionId);
+    localStorage.setItem('formality-compare-version-id', newVersionId);
+    localStorage.setItem('formality-compare-texts', JSON.stringify(compareTexts));
+    toast.success('Comparison saved as new version');
+  };
+  
+  const clearComparison = () => {
+    setCompareTexts(['', '']);
+    setCompareResults([]);
+    setCompareVersionId(null);
+    localStorage.removeItem('formality-compare-texts');
+    localStorage.removeItem('formality-compare-version-id');
+    toast.success('Comparison cleared');
+  };
+  
   // Live F-score calculation for manual input
   const liveManualResult = useMemo(() => {
     if (mode !== 'manual' || !manualText.trim() || manualText.trim().length < 3) {
@@ -197,6 +228,13 @@ export function FormalityCalculator() {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useResearcherAuth();
+  
+  // Auto-save compare texts to localStorage
+  useEffect(() => {
+    if (mode === 'compare') {
+      localStorage.setItem('formality-compare-texts', JSON.stringify(compareTexts));
+    }
+  }, [compareTexts, mode]);
   
   // Load saved calculations when switching to history tab
   useEffect(() => {
@@ -912,20 +950,47 @@ export function FormalityCalculator() {
                 </div>
               ) : mode === 'compare' ? (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label>Compare Texts</Label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={addCompareText}
-                      disabled={compareTexts.length >= 6}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Text
-                    </Button>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Label>Compare Texts</Label>
+                      {compareVersionId && (
+                        <Badge variant="outline" className="text-xs">
+                          Auto-saved
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={saveCompareAsNewVersion}
+                        disabled={!compareTexts.some(t => t.trim())}
+                      >
+                        <Save className="h-4 w-4 mr-1" />
+                        Save as New Version
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearComparison}
+                        disabled={!compareTexts.some(t => t.trim())}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Clear
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addCompareText}
+                        disabled={compareTexts.length >= 6}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add Text
+                      </Button>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Enter 2-6 texts/sentences to compare their formality scores side by side
+                    Enter 2-6 texts/sentences to compare their formality scores side by side. Changes auto-save to browser.
                   </p>
                   <div className="grid gap-4 md:grid-cols-2">
                     {compareTexts.map((text, index) => (
