@@ -533,115 +533,115 @@ export function PromptLab() {
           </TabsList>
           
           {activeTab === 'prompts' && (
-            <Dialog open={showAddDialog} onOpenChange={(open) => {
-              setShowAddDialog(open);
-              if (!open) resetForm();
-            }}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Prompt
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>{editingPrompt ? 'Edit Prompt' : 'Add New Prompt'}</DialogTitle>
-                  <DialogDescription>
-                    Store VAPI assistant prompts with condition and batch metadata
-                  </DialogDescription>
-                </DialogHeader>
-                
-                <div className="space-y-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="prompt-name">Name *</Label>
-                      <Input
-                        id="prompt-name"
-                        placeholder="e.g., Formal V2"
-                        value={formName}
-                        onChange={(e) => setFormName(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="prompt-condition">Condition *</Label>
-                      <Select value={formCondition} onValueChange={(v) => setFormCondition(v as 'formal' | 'informal')}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="formal">Formal</SelectItem>
-                          <SelectItem value="informal">Informal</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="prompt-batch">Batch Label</Label>
-                      <Input
-                        id="prompt-batch"
-                        placeholder="e.g., Pilot 1, Wave 2"
-                        value={formBatch}
-                        onChange={(e) => setFormBatch(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="prompt-vapi-id">VAPI Assistant ID</Label>
-                      <Input
-                        id="prompt-vapi-id"
-                        placeholder="e.g., asst_abc123..."
-                        value={formVapiId}
-                        onChange={(e) => setFormVapiId(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  
+            <Button onClick={() => setShowAddDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Prompt
+            </Button>
+          )}
+          
+          {/* Dialog rendered outside tab conditional so it can be triggered from diff tab */}
+          <Dialog open={showAddDialog} onOpenChange={(open) => {
+            setShowAddDialog(open);
+            if (!open) resetForm();
+          }}>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingPrompt ? 'Edit Prompt' : 'Add New Prompt'}</DialogTitle>
+                <DialogDescription>
+                  Store VAPI assistant prompts with condition and batch metadata
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="prompt-vapi-name">VAPI Assistant Name</Label>
+                    <Label htmlFor="prompt-name">Name *</Label>
                     <Input
-                      id="prompt-vapi-name"
-                      placeholder="Name as shown in VAPI dashboard"
-                      value={formVapiName}
-                      onChange={(e) => setFormVapiName(e.target.value)}
+                      id="prompt-name"
+                      placeholder="e.g., Formal V2"
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
                     />
                   </div>
-                  
                   <div className="space-y-2">
-                    <Label htmlFor="prompt-text">Prompt Text *</Label>
-                    <Textarea
-                      id="prompt-text"
-                      placeholder="Paste the full system prompt here..."
-                      className="min-h-[300px] font-mono text-sm"
-                      value={formText}
-                      onChange={(e) => setFormText(e.target.value)}
+                    <Label htmlFor="prompt-condition">Condition *</Label>
+                    <Select value={formCondition} onValueChange={(v) => setFormCondition(v as 'formal' | 'informal')}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="formal">Formal</SelectItem>
+                        <SelectItem value="informal">Informal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="prompt-batch">Batch Label</Label>
+                    <Input
+                      id="prompt-batch"
+                      placeholder="e.g., Pilot 1, Wave 2"
+                      value={formBatch}
+                      onChange={(e) => setFormBatch(e.target.value)}
                     />
                   </div>
-                  
                   <div className="space-y-2">
-                    <Label htmlFor="prompt-notes">Notes</Label>
-                    <Textarea
-                      id="prompt-notes"
-                      placeholder="Any additional notes about this prompt..."
-                      className="min-h-[80px]"
-                      value={formNotes}
-                      onChange={(e) => setFormNotes(e.target.value)}
+                    <Label htmlFor="prompt-vapi-id">VAPI Assistant ID</Label>
+                    <Input
+                      id="prompt-vapi-id"
+                      placeholder="e.g., asst_abc123..."
+                      value={formVapiId}
+                      onChange={(e) => setFormVapiId(e.target.value)}
                     />
                   </div>
                 </div>
                 
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleSavePrompt} disabled={isSaving}>
-                    {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    {editingPrompt ? 'Update' : 'Save'} Prompt
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+                <div className="space-y-2">
+                  <Label htmlFor="prompt-vapi-name">VAPI Assistant Name</Label>
+                  <Input
+                    id="prompt-vapi-name"
+                    placeholder="Name as shown in VAPI dashboard"
+                    value={formVapiName}
+                    onChange={(e) => setFormVapiName(e.target.value)}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="prompt-text">Prompt Text *</Label>
+                  <Textarea
+                    id="prompt-text"
+                    placeholder="Paste the full system prompt here..."
+                    className="min-h-[300px] font-mono text-sm"
+                    value={formText}
+                    onChange={(e) => setFormText(e.target.value)}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="prompt-notes">Notes</Label>
+                  <Textarea
+                    id="prompt-notes"
+                    placeholder="Any additional notes about this prompt..."
+                    className="min-h-[80px]"
+                    value={formNotes}
+                    onChange={(e) => setFormNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSavePrompt} disabled={isSaving}>
+                  {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {editingPrompt ? 'Update' : 'Save'} Prompt
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
         
         <TabsContent value="prompts" className="space-y-4">
