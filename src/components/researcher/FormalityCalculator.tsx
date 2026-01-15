@@ -28,6 +28,12 @@ import {
   Trash2
 } from 'lucide-react';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   FScoreResult,
   PerTurnResult,
   CSVParseResult,
@@ -1024,9 +1030,45 @@ export function FormalityCalculator() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Date</TableHead>
-                        <TableHead>Assistant Type</TableHead>
-                        <TableHead>AI Formality</TableHead>
-                        <TableHead>User Perception</TableHead>
+                        <TableHead>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger className="flex items-center gap-1 cursor-help">
+                                Assistant Type
+                                <Info className="h-3 w-3 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>One of the two experimental conditions (formal or informal), determined by the voice assistant prompt used during the call.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableHead>
+                        <TableHead>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger className="flex items-center gap-1 cursor-help">
+                                F-Score
+                                <Info className="h-3 w-3 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>Calculated using Heylighen & Dewaele's F-measure formula based on part-of-speech tagging of the AI's utterances in the transcript.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableHead>
+                        <TableHead>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger className="flex items-center gap-1 cursor-help">
+                                Perceived Formality
+                                <Info className="h-3 w-3 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>Participant's self-reported perception of the assistant's formality on a scale from 1 (very informal) to 7 (very formal).</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableHead>
                         <TableHead>Interpretation</TableHead>
                         <TableHead>Tokens</TableHead>
                         <TableHead>Call ID</TableHead>
