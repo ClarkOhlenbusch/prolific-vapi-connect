@@ -40,6 +40,7 @@ interface AssistantTypeStats {
   avgPetsUT: number;
   avgTiasTotal: number;
   avgFormality: number;
+  avgFScore: number;
   avgIntention1: number;
   avgIntention2: number;
   avgGodspeedAnthro: number;
@@ -62,6 +63,7 @@ const calculateStats = (responses: any[]): AssistantTypeStats => {
       avgPetsUT: 0,
       avgTiasTotal: 0,
       avgFormality: 0,
+      avgFScore: 0,
       avgIntention1: 0,
       avgIntention2: 0,
       avgGodspeedAnthro: 0,
@@ -72,6 +74,7 @@ const calculateStats = (responses: any[]): AssistantTypeStats => {
 
   const tiasResponses = responses.filter(r => r.tias_total !== null);
   const godspeedResponses = responses.filter(r => r.godspeed_anthro_total !== null);
+  const fScoreResponses = responses.filter(r => r.ai_formality_score !== null);
 
   return {
     count: responses.length,
@@ -82,6 +85,9 @@ const calculateStats = (responses: any[]): AssistantTypeStats => {
       ? tiasResponses.reduce((sum, r) => sum + (r.tias_total || 0), 0) / tiasResponses.length
       : 0,
     avgFormality: responses.reduce((sum, r) => sum + (r.formality || 0), 0) / responses.length,
+    avgFScore: fScoreResponses.length > 0
+      ? fScoreResponses.reduce((sum, r) => sum + (r.ai_formality_score || 0), 0) / fScoreResponses.length
+      : 0,
     avgIntention1: responses.reduce((sum, r) => sum + (r.intention_1 || 0), 0) / responses.length,
     avgIntention2: responses.reduce((sum, r) => sum + (r.intention_2 || 0), 0) / responses.length,
     avgGodspeedAnthro: godspeedResponses.length > 0
@@ -481,7 +487,19 @@ export const DataSummary = () => {
                     </thead>
                     <tbody className="divide-y divide-border">
                       <tr>
-                        <td className="p-3 text-sm font-medium">Formality Rating</td>
+                        <td className="p-3 text-sm font-medium">F-Score (AI Formality)</td>
+                        <td className="p-3 text-center text-sm">{comparison.formal.avgFScore.toFixed(2)}</td>
+                        <td className="p-3 text-center text-sm">{comparison.informal.avgFScore.toFixed(2)}</td>
+                        <td className="p-3 text-center text-sm">
+                          {formatDiff(comparison.formal.avgFScore, comparison.informal.avgFScore) && (
+                            <span className={comparison.formal.avgFScore > comparison.informal.avgFScore ? 'text-blue-600' : 'text-amber-600'}>
+                              {formatDiff(comparison.formal.avgFScore, comparison.informal.avgFScore)}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 text-sm font-medium">Perceived Formality (User Rating)</td>
                         <td className="p-3 text-center text-sm">{comparison.formal.avgFormality.toFixed(2)}</td>
                         <td className="p-3 text-center text-sm">{comparison.informal.avgFormality.toFixed(2)}</td>
                         <td className="p-3 text-center text-sm">
