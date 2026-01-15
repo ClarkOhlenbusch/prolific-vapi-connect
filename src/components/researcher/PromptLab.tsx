@@ -385,6 +385,30 @@ export function PromptLab() {
     setMergedLines(prev => new Map(prev).set(lineIndex, 'right'));
   };
   
+  const mergeAllFromLeft = () => {
+    // Accept all changes from left side
+    const newMergedLines = new Map(mergedLines);
+    changeIndices.forEach(idx => {
+      newMergedLines.set(idx, 'left');
+    });
+    setRightText(leftText);
+    setMergedText(leftText);
+    setSelectedRightPrompt('');
+    setMergedLines(newMergedLines);
+  };
+  
+  const mergeAllFromRight = () => {
+    // Accept all changes from right side
+    const newMergedLines = new Map(mergedLines);
+    changeIndices.forEach(idx => {
+      newMergedLines.set(idx, 'right');
+    });
+    setLeftText(rightText);
+    setMergedText(rightText);
+    setSelectedLeftPrompt('');
+    setMergedLines(newMergedLines);
+  };
+  
   // Reset merged lines when texts change from user input
   const handleLeftTextChange = (value: string) => {
     setLeftText(value);
@@ -831,10 +855,34 @@ export function PromptLab() {
               {/* Diff visualization */}
               {(leftText || rightText) && (
                 <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-muted px-4 py-2 border-b flex items-center justify-between">
-                    <span className="text-sm font-medium">
-                      {diffResult.changes} difference{diffResult.changes !== 1 ? 's' : ''} found
-                    </span>
+                  <div className="bg-muted px-4 py-2 border-b flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium">
+                        {diffResult.changes} difference{diffResult.changes !== 1 ? 's' : ''} found
+                      </span>
+                      {diffResult.changes > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={mergeAllFromLeft}
+                          >
+                            <ArrowRight className="h-3 w-3 mr-1" />
+                            Accept All Left
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={mergeAllFromRight}
+                          >
+                            <ArrowLeft className="h-3 w-3 mr-1" />
+                            Accept All Right
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 text-xs">
                       <span className="flex items-center gap-1">
                         <span className="w-3 h-3 rounded bg-red-200 dark:bg-red-900"></span>
