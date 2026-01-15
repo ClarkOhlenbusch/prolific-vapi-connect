@@ -866,24 +866,23 @@ export function PromptLab() {
                             <span className="w-10 px-2 py-1 text-right text-muted-foreground bg-muted/50 border-r shrink-0">
                               {line.leftLineNumber || ''}
                             </span>
-                            <pre className="flex-1 px-2 py-1 whitespace-pre-wrap break-all">{line.content || ' '}</pre>
-                            {line.type !== 'unchanged' ? (
-                              mergedLines.get(idx) === 'left' ? (
-                                <span className="flex items-center px-2 py-1 shrink-0 text-green-600 dark:text-green-400" title="Accepted">
-                                  <Check className="h-3 w-3" />
-                                </span>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-auto px-2 py-1 shrink-0"
-                                  onClick={() => mergeFromLeft(idx)}
-                                  title="Use this version"
-                                >
-                                  <ArrowRight className="h-3 w-3" />
-                                </Button>
-                              )
-                            ) : null}
+                            <pre className="flex-1 px-2 py-1 whitespace-pre-wrap break-all">
+                              {line.content || ' '}
+                              {mergedLines.get(idx) === 'left' && (
+                                <Check className="inline-block h-3 w-3 ml-1 text-green-600 dark:text-green-400" />
+                              )}
+                            </pre>
+                            {line.type !== 'unchanged' && !mergedLines.has(idx) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-auto px-2 py-1 shrink-0"
+                                onClick={() => mergeFromLeft(idx)}
+                                title="Use this version"
+                              >
+                                <ArrowRight className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -896,27 +895,26 @@ export function PromptLab() {
                               changeIndices[currentChangeIndex] === idx ? 'ring-2 ring-primary ring-inset' : ''
                             }`}
                           >
-                            {line.type !== 'unchanged' ? (
-                              mergedLines.get(idx) === 'right' ? (
-                                <span className="flex items-center px-2 py-1 shrink-0 text-green-600 dark:text-green-400" title="Accepted">
-                                  <Check className="h-3 w-3" />
-                                </span>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-auto px-2 py-1 shrink-0"
-                                  onClick={() => mergeFromRight(idx)}
-                                  title="Use this version"
-                                >
-                                  <ArrowLeft className="h-3 w-3" />
-                                </Button>
-                              )
-                            ) : null}
+                            {line.type !== 'unchanged' && !mergedLines.has(idx) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-auto px-2 py-1 shrink-0"
+                                onClick={() => mergeFromRight(idx)}
+                                title="Use this version"
+                              >
+                                <ArrowLeft className="h-3 w-3" />
+                              </Button>
+                            )}
                             <span className="w-10 px-2 py-1 text-right text-muted-foreground bg-muted/50 border-r shrink-0">
                               {line.rightLineNumber || ''}
                             </span>
-                            <pre className="flex-1 px-2 py-1 whitespace-pre-wrap break-all">{line.content || ' '}</pre>
+                            <pre className="flex-1 px-2 py-1 whitespace-pre-wrap break-all">
+                              {line.content || ' '}
+                              {mergedLines.get(idx) === 'right' && (
+                                <Check className="inline-block h-3 w-3 ml-1 text-green-600 dark:text-green-400" />
+                              )}
+                            </pre>
                           </div>
                         ))}
                       </div>
