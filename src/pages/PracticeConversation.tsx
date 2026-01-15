@@ -8,6 +8,7 @@ import { Mic, Phone } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
+import { supabase } from '@/integrations/supabase/client';
 
 const PracticeConversation = () => {
   const [searchParams] = useSearchParams();
@@ -17,6 +18,7 @@ const PracticeConversation = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showPreCallModal, setShowPreCallModal] = useState(false);
   const [showAudioConfirmModal, setShowAudioConfirmModal] = useState(false);
+  const [practiceAssistantId, setPracticeAssistantId] = useState<string | null>(null);
   const vapiRef = useRef<Vapi | null>(null);
   const navigate = useNavigate();
   const {
@@ -25,6 +27,25 @@ const PracticeConversation = () => {
   const {
     isResearcherMode
   } = useResearcherMode();
+  // Fetch experiment config to get practice assistant ID
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-experiment-config');
+        if (error) {
+          console.error('Error fetching experiment config:', error);
+          return;
+        }
+        if (data?.practiceAssistantId) {
+          setPracticeAssistantId(data.practiceAssistantId);
+        }
+      } catch (err) {
+        console.error('Failed to fetch experiment config:', err);
+      }
+    };
+    fetchConfig();
+  }, []);
+
   useEffect(() => {
     // Load IDs from URL or sessionStorage, no validation/redirects
     const prolificIdFromUrl = searchParams.get('prolificId');
@@ -104,11 +125,10 @@ const PracticeConversation = () => {
     setShowPreCallModal(false);
     setIsConnecting(true);
     try {
-      const practiceAssistantId = import.meta.env.VITE_VAPI_PRACTICE_ASSISTANT_ID;
-      if (!practiceAssistantId || practiceAssistantId === 'YOUR_PRACTICE_ASSISTANT_ID_HERE') {
+      if (!practiceAssistantId) {
         toast({
           title: "Configuration Error",
-          description: "Practice assistant not configured. Please set VITE_VAPI_PRACTICE_ASSISTANT_ID.",
+          description: "Practice assistant not configured. Please try again.",
           variant: "destructive"
         });
         setIsConnecting(false);
