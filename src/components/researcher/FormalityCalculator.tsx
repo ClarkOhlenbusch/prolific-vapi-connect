@@ -628,6 +628,26 @@ export function FormalityCalculator() {
     }
   };
 
+  // Get token category type for coloring
+  const getTokenFormalityType = (category: string | null): 'formal' | 'informal' | 'neutral' => {
+    if (!category) return 'neutral';
+    // Formal categories (positive F-score contribution): nouns, adjectives, prepositions, articles
+    if (['noun', 'adjective', 'preposition', 'article'].includes(category)) return 'formal';
+    // Informal categories (negative F-score contribution): verbs, adverbs, pronouns, interjections
+    if (['verb', 'adverb', 'pronoun', 'interjection'].includes(category)) return 'informal';
+    return 'neutral';
+  };
+
+  // Get token color classes
+  const getTokenColorClass = (category: string | null): string => {
+    const type = getTokenFormalityType(category);
+    switch (type) {
+      case 'formal': return 'text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50';
+      case 'informal': return 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50';
+      case 'neutral': return 'text-gray-500 dark:text-gray-400';
+    }
+  };
+
   const getFScoreType = (score: number): 'formal' | 'informal' | 'neutral' => {
     if (score >= 50) return 'formal';
     if (score < 50) return 'informal';
@@ -817,7 +837,7 @@ export function FormalityCalculator() {
                           ? 'bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800'
                           : 'bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800'
                       }`}>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-3">
                             <span className={`text-2xl font-bold ${
                               liveManualResult.fScore >= 50 ? 'text-blue-700 dark:text-blue-300' : 'text-amber-700 dark:text-amber-300'
@@ -839,7 +859,24 @@ export function FormalityCalculator() {
                           </div>
                           <div className="text-right text-xs text-muted-foreground">
                             <p>Live preview</p>
+                            <div className="flex gap-2 mt-1 justify-end">
+                              <span className="text-blue-600 dark:text-blue-400">■ Formal</span>
+                              <span className="text-amber-600 dark:text-amber-400">■ Informal</span>
+                              <span className="text-gray-400">■ Neutral</span>
+                            </div>
                           </div>
+                        </div>
+                        {/* Color-coded tokens */}
+                        <div className="flex flex-wrap gap-1 text-sm leading-relaxed">
+                          {liveManualResult.tokens.map((token, idx) => (
+                            <span
+                              key={idx}
+                              className={`px-1 rounded ${getTokenColorClass(token.category)}`}
+                              title={token.category ? `${token.category} (${token.posTag})` : token.posTag}
+                            >
+                              {token.token}
+                            </span>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -915,12 +952,26 @@ export function FormalityCalculator() {
                         />
                         {/* Live F-score for this text */}
                         {liveCompareResults[index] && (
-                          <div className={`p-2 rounded text-sm font-medium text-center ${
+                          <div className={`p-2 rounded border ${
                             liveCompareResults[index]!.fScore >= 50 
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                              ? 'bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800'
+                              : 'bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800'
                           }`}>
-                            F-Score: {liveCompareResults[index]!.fScore} ({liveCompareResults[index]!.interpretationLabel}) • {liveCompareResults[index]!.totalTokens} tokens
+                            <div className="text-sm font-medium text-center mb-2">
+                              F-Score: {liveCompareResults[index]!.fScore} ({liveCompareResults[index]!.interpretationLabel}) • {liveCompareResults[index]!.totalTokens} tokens
+                            </div>
+                            {/* Color-coded tokens */}
+                            <div className="flex flex-wrap gap-1 text-xs leading-relaxed">
+                              {liveCompareResults[index]!.tokens.map((token, tidx) => (
+                                <span
+                                  key={tidx}
+                                  className={`px-0.5 rounded ${getTokenColorClass(token.category)}`}
+                                  title={token.category ? `${token.category} (${token.posTag})` : token.posTag}
+                                >
+                                  {token.token}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
