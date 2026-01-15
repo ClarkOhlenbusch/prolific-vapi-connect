@@ -518,13 +518,43 @@ export function FormalityCalculator() {
     });
   };
   
+  // Unified color scheme: Blue for formal, Amber for informal, Gray for neutral
+  const getFormalityColor = (type: 'formal' | 'informal' | 'neutral') => {
+    switch (type) {
+      case 'formal': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border-blue-300';
+      case 'informal': return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 border-amber-300';
+      case 'neutral': return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-300';
+    }
+  };
+
+  const getFScoreType = (score: number): 'formal' | 'informal' | 'neutral' => {
+    if (score >= 50) return 'formal';
+    if (score < 50) return 'informal';
+    return 'neutral';
+  };
+
+  const getPerceivedFormalityType = (score: number): 'formal' | 'informal' | 'neutral' => {
+    if (score >= 5) return 'formal';
+    if (score <= 3) return 'informal';
+    return 'neutral';
+  };
+
+  const getAssistantTypeColor = (type: string | null | undefined) => {
+    if (type === 'formal') return getFormalityColor('formal');
+    if (type === 'informal') return getFormalityColor('informal');
+    return getFormalityColor('neutral');
+  };
+
   const getInterpretationColor = (interpretation: string) => {
     switch (interpretation) {
-      case 'very-informal': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'conversational': return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
-      case 'moderately-formal': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'highly-formal': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      default: return 'bg-muted text-muted-foreground';
+      case 'very-informal': 
+      case 'conversational': 
+        return getFormalityColor('informal');
+      case 'moderately-formal': 
+      case 'highly-formal': 
+        return getFormalityColor('formal');
+      default: 
+        return getFormalityColor('neutral');
     }
   };
   
@@ -1025,7 +1055,25 @@ export function FormalityCalculator() {
                   <p className="text-sm">Calculations will appear here when you process transcripts with auto-save enabled</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="space-y-4">
+                  {/* Legend */}
+                  <div className="flex flex-wrap items-center gap-4 p-3 bg-muted/50 rounded-lg text-sm">
+                    <span className="font-medium">Legend:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`inline-block w-3 h-3 rounded ${getFormalityColor('formal').split(' ')[0]}`}></span>
+                      <span>Formal (F-Score ≥50, Perceived 5-7)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`inline-block w-3 h-3 rounded ${getFormalityColor('informal').split(' ')[0]}`}></span>
+                      <span>Informal (F-Score &lt;50, Perceived 1-3)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`inline-block w-3 h-3 rounded ${getFormalityColor('neutral').split(' ')[0]}`}></span>
+                      <span>Neutral (Perceived 4)</span>
+                    </div>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1033,9 +1081,11 @@ export function FormalityCalculator() {
                         <TableHead>
                           <TooltipProvider>
                             <Tooltip>
-                              <TooltipTrigger className="flex items-center gap-1 cursor-help">
-                                Assistant Type
-                                <Info className="h-3 w-3 text-muted-foreground" />
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center gap-1 cursor-help">
+                                  Assistant Type
+                                  <Info className="h-3 w-3 text-muted-foreground" />
+                                </span>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
                                 <p>One of the two experimental conditions (formal or informal), determined by the voice assistant prompt used during the call.</p>
@@ -1046,12 +1096,14 @@ export function FormalityCalculator() {
                         <TableHead>
                           <TooltipProvider>
                             <Tooltip>
-                              <TooltipTrigger className="flex items-center gap-1 cursor-help">
-                                F-Score
-                                <Info className="h-3 w-3 text-muted-foreground" />
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center gap-1 cursor-help">
+                                  F-Score
+                                  <Info className="h-3 w-3 text-muted-foreground" />
+                                </span>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
-                                <p>Calculated using Heylighen & Dewaele's F-measure formula based on part-of-speech tagging of the AI's utterances in the transcript.</p>
+                                <p>Calculated using Heylighen & Dewaele's F-measure. Scores ≥50 indicate formal language, &lt;50 indicate informal.</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -1059,12 +1111,14 @@ export function FormalityCalculator() {
                         <TableHead>
                           <TooltipProvider>
                             <Tooltip>
-                              <TooltipTrigger className="flex items-center gap-1 cursor-help">
-                                Perceived Formality
-                                <Info className="h-3 w-3 text-muted-foreground" />
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center gap-1 cursor-help">
+                                  Perceived Formality
+                                  <Info className="h-3 w-3 text-muted-foreground" />
+                                </span>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
-                                <p>Participant's self-reported perception of the assistant's formality on a scale from 1 (very informal) to 7 (very formal).</p>
+                                <p>Participant's self-reported perception on a 1-7 scale: 1-3 = informal, 4 = neutral, 5-7 = formal.</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -1081,7 +1135,9 @@ export function FormalityCalculator() {
                     <TableBody>
                       {savedCalculations
                         .filter((calc) => !showLinkedOnly || (calc.linked_call_id && linkedCallIds.has(calc.linked_call_id)))
-                        .map((calc) => (
+                        .map((calc) => {
+                          const expData = calc.linked_call_id ? experimentDataMap.get(calc.linked_call_id) : null;
+                          return (
                         <TableRow 
                           key={calc.id} 
                           className="cursor-pointer hover:bg-muted/50 transition-colors"
@@ -1091,18 +1147,24 @@ export function FormalityCalculator() {
                             {format(new Date(calc.created_at), 'MMM d, yyyy HH:mm')}
                           </TableCell>
                           <TableCell>
-                            {calc.linked_call_id && experimentDataMap.get(calc.linked_call_id)?.assistantType ? (
-                              <Badge variant={experimentDataMap.get(calc.linked_call_id)?.assistantType === 'formal' ? 'default' : 'secondary'}>
-                                {experimentDataMap.get(calc.linked_call_id)?.assistantType}
+                            {expData?.assistantType ? (
+                              <Badge className={getAssistantTypeColor(expData.assistantType)}>
+                                {expData.assistantType}
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
                           </TableCell>
-                          <TableCell className="font-bold">{calc.f_score}</TableCell>
                           <TableCell>
-                            {calc.linked_call_id && experimentDataMap.has(calc.linked_call_id) ? (
-                              <span className="font-medium">{experimentDataMap.get(calc.linked_call_id)?.formality}</span>
+                            <Badge className={getFormalityColor(getFScoreType(calc.f_score))}>
+                              {calc.f_score}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {expData?.formality != null ? (
+                              <Badge className={getFormalityColor(getPerceivedFormalityType(expData.formality))}>
+                                {expData.formality}
+                              </Badge>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
@@ -1147,9 +1209,11 @@ export function FormalityCalculator() {
                             </Button>
                           </TableCell>
                         </TableRow>
-                      ))}
+                          );
+                        })}
                     </TableBody>
                   </Table>
+                </div>
                 </div>
               )}
             </CardContent>
