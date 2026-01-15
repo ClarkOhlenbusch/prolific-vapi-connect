@@ -122,10 +122,13 @@ export function FormalityCalculator() {
     }
   }, [activeTab]);
   
+  // Map of call_id -> user perception formality
+  const [userPerceptionMap, setUserPerceptionMap] = useState<Map<string, number>>(new Map());
+  
   const loadSavedCalculations = async () => {
     setIsLoadingSaved(true);
     try {
-      // Fetch calculations and experiment response call_ids in parallel
+      // Fetch calculations and experiment response call_ids + formality in parallel
       const [calcResult, responsesResult] = await Promise.all([
         supabase
           .from('formality_calculations')
@@ -134,7 +137,7 @@ export function FormalityCalculator() {
           .limit(100),
         supabase
           .from('experiment_responses')
-          .select('call_id')
+          .select('call_id, formality')
       ]);
       
       if (calcResult.error) throw calcResult.error;
@@ -142,6 +145,15 @@ export function FormalityCalculator() {
       
       setSavedCalculations(calcResult.data || []);
       setLinkedCallIds(new Set((responsesResult.data || []).map(r => r.call_id)));
+      
+      // Build map of call_id -> user perception formality
+      const perceptionMap = new Map<string, number>();
+      (responsesResult.data || []).forEach(r => {
+        if (r.call_id && r.formality != null) {
+          perceptionMap.set(r.call_id, r.formality);
+        }
+      });
+      setUserPerceptionMap(perceptionMap);
     } catch (err) {
       console.error('Failed to load saved calculations:', err);
       toast.error('Failed to load saved calculations');
@@ -1009,7 +1021,8 @@ export function FormalityCalculator() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Date</TableHead>
-                        <TableHead>F-Score</TableHead>
+                        <TableHead>AI Formality</TableHead>
+                        <TableHead>User Perception</TableHead>
                         <TableHead>Interpretation</TableHead>
                         <TableHead>Tokens</TableHead>
                         <TableHead>Call ID</TableHead>
@@ -1032,6 +1045,13 @@ export function FormalityCalculator() {
                             {format(new Date(calc.created_at), 'MMM d, yyyy HH:mm')}
                           </TableCell>
                           <TableCell className="font-bold">{calc.f_score}</TableCell>
+                          <TableCell>
+                            {calc.linked_call_id && userPerceptionMap.has(calc.linked_call_id) ? (
+                              <span className="font-medium">{userPerceptionMap.get(calc.linked_call_id)}</span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <Badge className={getInterpretationColor(calc.interpretation)}>
                               {calc.interpretation_label}
