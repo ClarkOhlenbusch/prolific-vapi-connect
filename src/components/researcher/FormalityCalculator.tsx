@@ -101,6 +101,8 @@ export function FormalityCalculator() {
   const [savedCalculations, setSavedCalculations] = useState<SavedCalculation[]>([]);
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   const [activeTab, setActiveTab] = useState('calculate');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStats, setSyncStats] = useState<{ matched: number; updated: number; notFound: number } | null>(null);
   
   // UI state
   const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set());
@@ -352,6 +354,83 @@ export function FormalityCalculator() {
       toast.success('Calculation deleted');
     } catch (err) {
       toast.error('Failed to delete calculation');
+    }
+  };
+  
+  // Sync AI formality scores to experiment_responses by matching call_id
+  const handleSyncToExperimentResponses = async () => {
+    setIsSyncing(true);
+    setSyncStats(null);
+    
+    try {
+      // Get all formality calculations with call IDs
+      const { data: calculations, error: calcError } = await supabase
+        .from('formality_calculations')
+        .select('linked_call_id, f_score, interpretation')
+        .not('linked_call_id', 'is', null);
+      
+      if (calcError) throw calcError;
+      
+      if (!calculations || calculations.length === 0) {
+        toast.info('No formality calculations with call IDs found');
+        setIsSyncing(false);
+        return;
+      }
+      
+      // Get all experiment responses
+      const { data: responses, error: respError } = await supabase
+        .from('experiment_responses')
+        .select('id, call_id, ai_formality_score');
+      
+      if (respError) throw respError;
+      
+      // Create a map of call_id to formality score
+      const scoreMap = new Map<string, { score: number; interpretation: string }>();
+      for (const calc of calculations) {
+        if (calc.linked_call_id) {
+          scoreMap.set(calc.linked_call_id, {
+            score: calc.f_score,
+            interpretation: calc.interpretation
+          });
+        }
+      }
+      
+      let matched = 0;
+      let updated = 0;
+      let notFound = 0;
+      
+      // Update experiment responses
+      for (const response of responses || []) {
+        const scoreData = scoreMap.get(response.call_id);
+        if (scoreData) {
+          matched++;
+          // Only update if score is different or not set
+          if (response.ai_formality_score !== scoreData.score) {
+            const { error: updateError } = await supabase
+              .from('experiment_responses')
+              .update({
+                ai_formality_score: scoreData.score,
+                ai_formality_interpretation: scoreData.interpretation,
+                ai_formality_calculated_at: new Date().toISOString()
+              })
+              .eq('id', response.id);
+            
+            if (!updateError) {
+              updated++;
+            }
+          }
+        } else {
+          notFound++;
+        }
+      }
+      
+      setSyncStats({ matched, updated, notFound });
+      toast.success(`Synced ${updated} experiment responses with AI formality scores`);
+    } catch (err) {
+      console.error('Sync error:', err);
+      toast.error('Failed to sync formality scores');
+    } finally {
+      setIsSyncing(false);
     }
   };
   
@@ -821,6 +900,51 @@ export function FormalityCalculator() {
         </TabsContent>
         
         <TabsContent value="history" className="space-y-6">
+          {/* Sync to Experiment Responses Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Link className="h-5 w-5" />
+                Sync to Experiment Responses
+              </CardTitle>
+              <CardDescription>
+                Match formality calculations with experiment responses using Call ID and update the ai_formality_score field
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button 
+                onClick={handleSyncToExperimentResponses}
+                disabled={isSyncing}
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <Link className="h-4 w-4 mr-2" />
+                    Sync AI Formality Scores to Experiment Responses
+                  </>
+                )}
+              </Button>
+              
+              {syncStats && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Sync Complete:</strong>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      <li>✓ {syncStats.matched} experiment responses matched with formality calculations</li>
+                      <li>✓ {syncStats.updated} experiment responses updated with new scores</li>
+                      <li>○ {syncStats.notFound} experiment responses had no matching formality calculation</li>
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+          
           <Card>
             <CardHeader>
               <CardTitle>Saved Calculations</CardTitle>

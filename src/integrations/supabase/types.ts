@@ -109,6 +109,9 @@ export type Database = {
       }
       experiment_responses: {
         Row: {
+          ai_formality_calculated_at: string | null
+          ai_formality_interpretation: string | null
+          ai_formality_score: number | null
           assistant_type: string | null
           attention_check_1: number | null
           attention_check_1_expected: number | null
@@ -212,6 +215,9 @@ export type Database = {
           voice_assistant_feedback: string
         }
         Insert: {
+          ai_formality_calculated_at?: string | null
+          ai_formality_interpretation?: string | null
+          ai_formality_score?: number | null
           assistant_type?: string | null
           attention_check_1?: number | null
           attention_check_1_expected?: number | null
@@ -315,6 +321,9 @@ export type Database = {
           voice_assistant_feedback: string
         }
         Update: {
+          ai_formality_calculated_at?: string | null
+          ai_formality_interpretation?: string | null
+          ai_formality_score?: number | null
           assistant_type?: string | null
           attention_check_1?: number | null
           attention_check_1_expected?: number | null
