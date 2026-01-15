@@ -84,7 +84,7 @@ export function FormalityCalculator() {
   const [manualProlificId, setManualProlificId] = useState('');
   
   // Options
-  const [aiOnly, setAiOnly] = useState(false);
+  const [aiOnly, setAiOnly] = useState(true);
   const [perTurnScoring, setPerTurnScoring] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
   const [batchName, setBatchName] = useState('');
