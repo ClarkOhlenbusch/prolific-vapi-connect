@@ -138,12 +138,29 @@ export function preprocessText(text: string, aiOnly: boolean): string {
   let processedText = text;
   
   if (aiOnly) {
-    // Extract only lines starting with "AI:" (case-insensitive)
-    const lines = text.split(/\r?\n/);
-    const aiLines = lines
-      .filter(line => /^ai:/i.test(line.trim()))
-      .map(line => line.trim().replace(/^ai:\s*/i, ''));
-    processedText = aiLines.join(' ');
+    // Extract only AI utterances - handles both newline-separated and inline formats
+    // First normalize: split by "AI:" or "User:" markers to find AI segments
+    // Pattern: capture everything after "AI:" until the next speaker marker or end
+    const aiSegments: string[] = [];
+    
+    // Split by speaker markers (AI: or User:) keeping the delimiter
+    const segments = text.split(/(?=\bAI:|(?=\bUser:))/i);
+    
+    for (const segment of segments) {
+      const trimmed = segment.trim();
+      // Check if this segment starts with AI:
+      if (/^AI:/i.test(trimmed)) {
+        // Extract the content after "AI:" and before any "User:" in the same segment
+        let aiContent = trimmed.replace(/^AI:\s*/i, '');
+        // Remove any trailing "User:..." that might be in the same segment
+        aiContent = aiContent.replace(/\bUser:[\s\S]*/i, '').trim();
+        if (aiContent.length > 0) {
+          aiSegments.push(aiContent);
+        }
+      }
+    }
+    
+    processedText = aiSegments.join(' ');
   }
   
   // Lowercase
@@ -179,15 +196,21 @@ export function tokenize(text: string): string[] {
  * Extract AI turns from transcript
  */
 export function extractAITurns(text: string): string[] {
-  const lines = text.split(/\r?\n/);
   const aiTurns: string[] = [];
   
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (/^ai:/i.test(trimmed)) {
-      const turnText = trimmed.replace(/^ai:\s*/i, '');
-      if (turnText.length > 0) {
-        aiTurns.push(turnText);
+  // Split by speaker markers (AI: or User:) keeping the delimiter info
+  const segments = text.split(/(?=\bAI:|(?=\bUser:))/i);
+  
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    // Check if this segment starts with AI:
+    if (/^AI:/i.test(trimmed)) {
+      // Extract the content after "AI:" and before any "User:" in the same segment
+      let aiContent = trimmed.replace(/^AI:\s*/i, '');
+      // Remove any trailing "User:..." that might be in the same segment
+      aiContent = aiContent.replace(/\bUser:[\s\S]*/i, '').trim();
+      if (aiContent.length > 0) {
+        aiTurns.push(aiContent);
       }
     }
   }
