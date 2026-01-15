@@ -11,6 +11,12 @@ const ASSISTANT_IDS = {
   informal: "f391bf0c-f1d2-4473-bdf8-e88343224d68",
 } as const;
 
+// Practice/warm-up assistant ID mappings
+const PRACTICE_ASSISTANT_IDS = {
+  formal: "ea2a5f95-5c07-4498-996b-5b3e204192f8",
+  informal: "30394944-4d48-4586-8e6d-cd3d6b347e80",
+} as const;
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -40,6 +46,7 @@ Deno.serve(async (req) => {
         JSON.stringify({
           assistantType: "informal",
           assistantId: ASSISTANT_IDS.informal,
+          practiceAssistantId: PRACTICE_ASSISTANT_IDS.informal,
           batchLabel: null,
         }),
         {
@@ -53,12 +60,14 @@ Deno.serve(async (req) => {
 
     const assistantType = (assistantSetting?.setting_value as keyof typeof ASSISTANT_IDS) || "informal";
     const assistantId = ASSISTANT_IDS[assistantType] || ASSISTANT_IDS.informal;
+    const practiceAssistantId = PRACTICE_ASSISTANT_IDS[assistantType] || PRACTICE_ASSISTANT_IDS.informal;
     const batchLabel = batchSetting?.setting_value || null;
 
     return new Response(
       JSON.stringify({
         assistantType,
         assistantId,
+        practiceAssistantId,
         batchLabel: batchLabel && batchLabel.trim() !== "" ? batchLabel : null,
       }),
       {
