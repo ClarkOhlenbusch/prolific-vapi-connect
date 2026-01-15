@@ -52,7 +52,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  Check
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
@@ -121,6 +122,7 @@ export function PromptLab() {
   const [currentChangeIndex, setCurrentChangeIndex] = useState(0);
   const [selectedLeftPrompt, setSelectedLeftPrompt] = useState<string>('');
   const [selectedRightPrompt, setSelectedRightPrompt] = useState<string>('');
+  const [mergedLines, setMergedLines] = useState<Map<number, 'left' | 'right'>>(new Map());
   
   // Filter state
   const [filterCondition, setFilterCondition] = useState<'all' | 'formal' | 'informal'>('all');
@@ -358,6 +360,7 @@ export function PromptLab() {
     setRightText(newMerged);
     setMergedText(newMerged);
     setSelectedRightPrompt('');
+    setMergedLines(prev => new Map(prev).set(lineIndex, 'left'));
     toast.success('Merged from left');
   };
   
@@ -380,7 +383,33 @@ export function PromptLab() {
     setLeftText(newMerged);
     setMergedText(newMerged);
     setSelectedLeftPrompt('');
+    setMergedLines(prev => new Map(prev).set(lineIndex, 'right'));
     toast.success('Merged from right');
+  };
+  
+  // Reset merged lines when texts change from user input
+  const handleLeftTextChange = (value: string) => {
+    setLeftText(value);
+    setSelectedLeftPrompt('');
+    setMergedLines(new Map());
+  };
+  
+  const handleRightTextChange = (value: string) => {
+    setRightText(value);
+    setSelectedRightPrompt('');
+    setMergedLines(new Map());
+  };
+  
+  const clearLeft = () => {
+    setLeftText('');
+    setSelectedLeftPrompt('');
+    setMergedLines(new Map());
+  };
+  
+  const clearRight = () => {
+    setRightText('');
+    setSelectedRightPrompt('');
+    setMergedLines(new Map());
   };
   
   const loadPromptToLeft = (promptId: string) => {
@@ -769,10 +798,7 @@ export function PromptLab() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        setLeftText('');
-                        setSelectedLeftPrompt('');
-                      }}
+                      onClick={clearLeft}
                     >
                       Clear
                     </Button>
@@ -781,10 +807,7 @@ export function PromptLab() {
                     placeholder="Paste or select the first prompt..."
                     className="min-h-[200px] font-mono text-sm"
                     value={leftText}
-                    onChange={(e) => {
-                      setLeftText(e.target.value);
-                      setSelectedLeftPrompt('');
-                    }}
+                    onChange={(e) => handleLeftTextChange(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -793,10 +816,7 @@ export function PromptLab() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        setRightText('');
-                        setSelectedRightPrompt('');
-                      }}
+                      onClick={clearRight}
                     >
                       Clear
                     </Button>
@@ -805,10 +825,7 @@ export function PromptLab() {
                     placeholder="Paste or select the second prompt..."
                     className="min-h-[200px] font-mono text-sm"
                     value={rightText}
-                    onChange={(e) => {
-                      setRightText(e.target.value);
-                      setSelectedRightPrompt('');
-                    }}
+                    onChange={(e) => handleRightTextChange(e.target.value)}
                   />
                 </div>
               </div>
@@ -850,17 +867,23 @@ export function PromptLab() {
                               {line.leftLineNumber || ''}
                             </span>
                             <pre className="flex-1 px-2 py-1 whitespace-pre-wrap break-all">{line.content || ' '}</pre>
-                            {line.type !== 'unchanged' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-auto px-2 py-1 shrink-0"
-                                onClick={() => mergeFromLeft(idx)}
-                                title="Use this version"
-                              >
-                                <ArrowRight className="h-3 w-3" />
-                              </Button>
-                            )}
+                            {line.type !== 'unchanged' ? (
+                              mergedLines.get(idx) === 'left' ? (
+                                <span className="flex items-center px-2 py-1 shrink-0 text-green-600 dark:text-green-400" title="Accepted">
+                                  <Check className="h-3 w-3" />
+                                </span>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-auto px-2 py-1 shrink-0"
+                                  onClick={() => mergeFromLeft(idx)}
+                                  title="Use this version"
+                                >
+                                  <ArrowRight className="h-3 w-3" />
+                                </Button>
+                              )
+                            ) : null}
                           </div>
                         ))}
                       </div>
@@ -873,17 +896,23 @@ export function PromptLab() {
                               changeIndices[currentChangeIndex] === idx ? 'ring-2 ring-primary ring-inset' : ''
                             }`}
                           >
-                            {line.type !== 'unchanged' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-auto px-2 py-1 shrink-0"
-                                onClick={() => mergeFromRight(idx)}
-                                title="Use this version"
-                              >
-                                <ArrowLeft className="h-3 w-3" />
-                              </Button>
-                            )}
+                            {line.type !== 'unchanged' ? (
+                              mergedLines.get(idx) === 'right' ? (
+                                <span className="flex items-center px-2 py-1 shrink-0 text-green-600 dark:text-green-400" title="Accepted">
+                                  <Check className="h-3 w-3" />
+                                </span>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-auto px-2 py-1 shrink-0"
+                                  onClick={() => mergeFromRight(idx)}
+                                  title="Use this version"
+                                >
+                                  <ArrowLeft className="h-3 w-3" />
+                                </Button>
+                              )
+                            ) : null}
                             <span className="w-10 px-2 py-1 text-right text-muted-foreground bg-muted/50 border-r shrink-0">
                               {line.rightLineNumber || ''}
                             </span>
