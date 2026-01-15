@@ -29,7 +29,10 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Filter
+  Filter,
+  Plus,
+  X,
+  GitCompare
 } from 'lucide-react';
 import {
   Tooltip,
@@ -91,10 +94,14 @@ interface SavedCalculation {
 
 export function FormalityCalculator() {
   // Input state
-  const [mode, setMode] = useState<'csv' | 'manual'>('manual');
+  const [mode, setMode] = useState<'csv' | 'manual' | 'compare'>('manual');
   const [manualText, setManualText] = useState('');
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvData, setCsvData] = useState<CSVParseResult | null>(null);
+  
+  // Compare mode state
+  const [compareTexts, setCompareTexts] = useState<string[]>(['', '']);
+  const [compareResults, setCompareResults] = useState<FScoreResult[]>([]);
   
   // Manual linking
   const [manualCallId, setManualCallId] = useState('');
@@ -138,6 +145,26 @@ export function FormalityCalculator() {
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [showReproducibility, setShowReproducibility] = useState(false);
   const [savingStates, setSavingStates] = useState<Record<number, boolean>>({});
+  
+  // Compare mode helpers
+  const addCompareText = () => {
+    if (compareTexts.length < 6) {
+      setCompareTexts([...compareTexts, '']);
+    }
+  };
+  
+  const removeCompareText = (index: number) => {
+    if (compareTexts.length > 2) {
+      setCompareTexts(compareTexts.filter((_, i) => i !== index));
+      setCompareResults(compareResults.filter((_, i) => i !== index));
+    }
+  };
+  
+  const updateCompareText = (index: number, text: string) => {
+    const newTexts = [...compareTexts];
+    newTexts[index] = text;
+    setCompareTexts(newTexts);
+  };
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useResearcherAuth();
@@ -323,11 +350,35 @@ export function FormalityCalculator() {
     setResults([]);
     setPerTurnResults([]);
     setAverageScore(null);
+    setCompareResults([]);
     setIsProcessing(true);
     setProgress(0);
     
     try {
-      if (mode === 'manual') {
+      if (mode === 'compare') {
+        // Compare mode: process multiple texts
+        const validTexts = compareTexts.filter(t => t.trim());
+        if (validTexts.length < 2) {
+          setError('Please enter at least 2 texts to compare');
+          setIsProcessing(false);
+          return;
+        }
+        
+        const compResults: FScoreResult[] = [];
+        for (let i = 0; i < compareTexts.length; i++) {
+          const text = compareTexts[i];
+          if (text.trim()) {
+            const result = processTranscript(text, aiOnly, i);
+            result.originalTranscript = text;
+            compResults.push(result);
+          } else {
+            // Push a placeholder for empty texts
+            compResults.push(null as unknown as FScoreResult);
+          }
+          setProgress(Math.round(((i + 1) / compareTexts.length) * 100));
+        }
+        setCompareResults(compResults);
+      } else if (mode === 'manual') {
         if (!manualText.trim()) {
           setError('Please enter a transcript');
           setIsProcessing(false);
@@ -694,13 +745,20 @@ export function FormalityCalculator() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Mode Selection */}
-              <div className="flex gap-4">
+              <div className="flex gap-4 flex-wrap">
                 <Button
                   variant={mode === 'manual' ? 'default' : 'outline'}
                   onClick={() => setMode('manual')}
                 >
                   <FileText className="h-4 w-4 mr-2" />
                   Manual Input
+                </Button>
+                <Button
+                  variant={mode === 'compare' ? 'default' : 'outline'}
+                  onClick={() => setMode('compare')}
+                >
+                  <GitCompare className="h-4 w-4 mr-2" />
+                  Compare
                 </Button>
                 <Button
                   variant={mode === 'csv' ? 'default' : 'outline'}
@@ -751,6 +809,59 @@ export function FormalityCalculator() {
                         onChange={(e) => setManualProlificId(e.target.value)}
                       />
                     </div>
+                  </div>
+                </div>
+              ) : mode === 'compare' ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label>Compare Texts</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={addCompareText}
+                      disabled={compareTexts.length >= 6}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Text
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Enter 2-6 texts/sentences to compare their formality scores side by side
+                  </p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {compareTexts.map((text, index) => (
+                      <div key={index} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor={`compare-${index}`}>Text {index + 1}</Label>
+                          {compareTexts.length > 2 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeCompareText(index)}
+                              className="h-6 w-6 p-0"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        <Textarea
+                          id={`compare-${index}`}
+                          placeholder={`Enter text ${index + 1}...`}
+                          className="min-h-[120px] font-mono text-sm"
+                          value={text}
+                          onChange={(e) => updateCompareText(index, e.target.value)}
+                        />
+                        {compareResults[index] && (
+                          <div className={`p-2 rounded text-sm font-medium text-center ${
+                            compareResults[index].fScore >= 50 
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                          }`}>
+                            F-Score: {compareResults[index].fScore} ({compareResults[index].interpretationLabel})
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : (
@@ -822,7 +933,10 @@ export function FormalityCalculator() {
                   <Label htmlFor="ai-only" className="cursor-pointer">
                     Use AI utterances only
                     <span className="block text-xs text-muted-foreground">
-                      Keep only lines starting with "AI:"
+                      {mode === 'compare' 
+                        ? 'Extract AI: lines or analyze full text'
+                        : 'Keep only lines starting with "AI:"'
+                      }
                     </span>
                   </Label>
                 </div>
@@ -843,19 +957,21 @@ export function FormalityCalculator() {
                   </div>
                 )}
                 
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="auto-save"
-                    checked={autoSave}
-                    onCheckedChange={setAutoSave}
-                  />
-                  <Label htmlFor="auto-save" className="cursor-pointer">
-                    Auto-save results
-                    <span className="block text-xs text-muted-foreground">
-                      Save calculations to database automatically
-                    </span>
-                  </Label>
-                </div>
+                {mode !== 'compare' && (
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="auto-save"
+                      checked={autoSave}
+                      onCheckedChange={setAutoSave}
+                    />
+                    <Label htmlFor="auto-save" className="cursor-pointer">
+                      Auto-save results
+                      <span className="block text-xs text-muted-foreground">
+                        Save calculations to database automatically
+                      </span>
+                    </Label>
+                  </div>
+                )}
               </div>
               
               {/* Error Display */}
@@ -872,7 +988,7 @@ export function FormalityCalculator() {
                 disabled={isProcessing}
                 className="w-full sm:w-auto"
               >
-                {isProcessing ? 'Processing...' : 'Calculate F-Score'}
+                {isProcessing ? 'Processing...' : mode === 'compare' ? 'Compare F-Scores' : 'Calculate F-Score'}
               </Button>
               
               {/* Progress Bar */}
@@ -886,6 +1002,142 @@ export function FormalityCalculator() {
               )}
             </CardContent>
           </Card>
+          
+          {/* Compare Results Summary */}
+          {compareResults.filter(r => r).length >= 2 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <GitCompare className="h-5 w-5" />
+                  Comparison Results
+                </CardTitle>
+                <CardDescription>
+                  Side-by-side formality comparison of {compareResults.filter(r => r).length} texts
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Summary Table */}
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Text</TableHead>
+                        <TableHead className="text-center">F-Score</TableHead>
+                        <TableHead className="text-center">Interpretation</TableHead>
+                        <TableHead className="text-center">Tokens</TableHead>
+                        <TableHead className="text-center">Difference</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {compareResults.map((result, idx) => {
+                        if (!result) return null;
+                        const baseScore = compareResults.find(r => r)?.fScore || 0;
+                        const diff = result.fScore - baseScore;
+                        return (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">
+                              Text {idx + 1}
+                              <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                {compareTexts[idx]?.substring(0, 50)}{compareTexts[idx]?.length > 50 ? '...' : ''}
+                              </p>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge className={`${
+                                result.fScore >= 50 
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                              }`}>
+                                {result.fScore}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center text-sm">
+                              {result.interpretationLabel}
+                            </TableCell>
+                            <TableCell className="text-center text-sm text-muted-foreground">
+                              {result.totalTokens}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {idx === 0 ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                <span className={diff > 0 ? 'text-blue-600' : diff < 0 ? 'text-amber-600' : 'text-muted-foreground'}>
+                                  {diff > 0 ? '+' : ''}{diff.toFixed(1)}
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  
+                  {/* Visual Bar Comparison */}
+                  <div className="space-y-3 pt-4">
+                    <Label>Visual Comparison</Label>
+                    {compareResults.map((result, idx) => {
+                      if (!result) return null;
+                      const barWidth = Math.max(5, Math.min(100, result.fScore));
+                      return (
+                        <div key={idx} className="flex items-center gap-3">
+                          <span className="text-sm w-16 text-muted-foreground">Text {idx + 1}</span>
+                          <div className="flex-1 h-6 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full transition-all duration-500 ${
+                                result.fScore >= 50 
+                                  ? 'bg-blue-500'
+                                  : 'bg-amber-500'
+                              }`}
+                              style={{ width: `${barWidth}%` }}
+                            />
+                          </div>
+                          <span className="text-sm font-medium w-12 text-right">{result.fScore}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Category Breakdown Comparison */}
+                  <Collapsible>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" className="w-full justify-between">
+                        <span>Category Breakdown</span>
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pt-4">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Category</TableHead>
+                            {compareResults.map((r, idx) => r && (
+                              <TableHead key={idx} className="text-center">Text {idx + 1}</TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {['nouns', 'verbs', 'adjectives', 'adverbs', 'pronouns', 'prepositions', 'articles', 'interjections'].map(cat => (
+                            <TableRow key={cat}>
+                              <TableCell className="font-medium capitalize">{cat}</TableCell>
+                              {compareResults.map((result, idx) => {
+                                if (!result) return null;
+                                const catData = result.categories[cat as keyof typeof result.categories];
+                                return (
+                                  <TableCell key={idx} className="text-center text-sm">
+                                    {catData?.percentage?.toFixed(1)}%
+                                    <span className="text-muted-foreground text-xs ml-1">({catData?.count})</span>
+                                  </TableCell>
+                                );
+                              })}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           
           {/* Results Section */}
           {(results.length > 0 || perTurnResults.length > 0) && (
