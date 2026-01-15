@@ -417,62 +417,70 @@ export function calculateAverageFromTurns(turns: PerTurnResult[]): number {
 
 /**
  * Parse CSV and extract Transcript, Call ID, and Prolific ID columns
+ *
+ * IMPORTANT: Supports multiline fields (e.g. transcripts containing newlines)
+ * by parsing the full CSV content character-by-character.
  */
 export function parseCSV(csvContent: string): CSVParseResult {
-  const lines = csvContent.split(/\r?\n/);
-  if (lines.length < 2) {
-    return { transcripts: [], callIds: [], prolificIds: [], error: 'CSV must have at least a header row and one data row' };
-  }
-  
-  // Parse header to find columns
-  const header = lines[0];
-  const columns = parseCSVLine(header);
-  
-  const transcriptIndex = columns.findIndex(
-    col => col.toLowerCase().trim() === 'transcript'
-  );
-  
-  // Look for call_id column (various naming conventions)
-  const callIdIndex = columns.findIndex(
-    col => ['call_id', 'callid', 'call id', 'vapi_call_id', 'vapicallid'].includes(col.toLowerCase().trim())
-  );
-  
-  // Look for prolific_id column
-  const prolificIdIndex = columns.findIndex(
-    col => ['prolific_id', 'prolificid', 'prolific id', 'participant_id'].includes(col.toLowerCase().trim())
-  );
-  
-  if (transcriptIndex === -1) {
-    return { 
-      transcripts: [], 
+  const rows = parseCSVRows(csvContent);
+
+  if (rows.length < 2) {
+    return {
+      transcripts: [],
       callIds: [],
       prolificIds: [],
-      error: 'Could not find "Transcript" column in CSV. Please ensure your CSV has a column named "Transcript".' 
+      error: 'CSV must have at least a header row and one data row',
     };
   }
-  
+
+  // Parse header to find columns
+  const columns = rows[0].map((c) => c.trim());
+
+  const transcriptIndex = columns.findIndex((col) => col.toLowerCase().trim() === 'transcript');
+
+  // Look for call_id column (various naming conventions)
+  const callIdIndex = columns.findIndex((col) =>
+    ['call_id', 'callid', 'call id', 'vapi_call_id', 'vapicallid'].includes(col.toLowerCase().trim())
+  );
+
+  // Look for prolific_id column
+  const prolificIdIndex = columns.findIndex((col) =>
+    ['prolific_id', 'prolificid', 'prolific id', 'participant_id'].includes(col.toLowerCase().trim())
+  );
+
+  if (transcriptIndex === -1) {
+    return {
+      transcripts: [],
+      callIds: [],
+      prolificIds: [],
+      error: 'Could not find "Transcript" column in CSV. Please ensure your CSV has a column named "Transcript".',
+    };
+  }
+
   // Extract data
   const transcripts: string[] = [];
   const callIds: string[] = [];
   const prolificIds: string[] = [];
-  
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (line.length === 0) continue;
-    
-    const values = parseCSVLine(line);
+
+  for (let i = 1; i < rows.length; i++) {
+    const values = rows[i];
+    if (!values || values.length === 0) continue;
+
+    // Skip rows that are completely empty
+    if (values.every((v) => v.trim().length === 0)) continue;
+
     if (transcriptIndex < values.length) {
       const transcript = values[transcriptIndex].trim();
       if (transcript.length > 0) {
         transcripts.push(transcript);
-        
+
         // Extract call_id if available
         if (callIdIndex !== -1 && callIdIndex < values.length) {
           callIds.push(values[callIdIndex].trim());
         } else {
           callIds.push('');
         }
-        
+
         // Extract prolific_id if available
         if (prolificIdIndex !== -1 && prolificIdIndex < values.length) {
           prolificIds.push(values[prolificIdIndex].trim());
@@ -482,21 +490,81 @@ export function parseCSV(csvContent: string): CSVParseResult {
       }
     }
   }
-  
+
   return { transcripts, callIds, prolificIds };
 }
 
 /**
+ * Parse full CSV content into rows/columns.
+ * Handles newlines inside quoted fields.
+ */
+function parseCSVRows(csvContent: string): string[][] {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentField = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < csvContent.length; i++) {
+    const char = csvContent[i];
+
+    if (char === '"') {
+      // Escaped quote inside quoted field
+      if (inQuotes && csvContent[i + 1] === '"') {
+        currentField += '"';
+        i++;
+        continue;
+      }
+
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      currentRow.push(currentField);
+      currentField = '';
+      continue;
+    }
+
+    // Handle CRLF and LF newlines as row separators (only when not in quotes)
+    if (!inQuotes && (char === '\n' || char === '\r')) {
+      // If CRLF, skip the next '\n'
+      if (char === '\r' && csvContent[i + 1] === '\n') i++;
+
+      currentRow.push(currentField);
+      currentField = '';
+
+      // Avoid pushing completely empty trailing rows
+      if (!(currentRow.length === 1 && currentRow[0].trim() === '')) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      continue;
+    }
+
+    currentField += char;
+  }
+
+  // Flush last field/row
+  currentRow.push(currentField);
+  if (!(currentRow.length === 1 && currentRow[0].trim() === '')) {
+    rows.push(currentRow);
+  }
+
+  return rows;
+}
+
+/**
  * Parse a single CSV line handling quoted values
+ * (kept for backwards-compat/debugging; multiline CSV parsing uses parseCSVRows).
  */
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
-  
+
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
-    
+
     if (char === '"') {
       if (inQuotes && line[i + 1] === '"') {
         // Escaped quote
@@ -513,7 +581,7 @@ function parseCSVLine(line: string): string[] {
       current += char;
     }
   }
-  
+
   result.push(current);
   return result;
 }
