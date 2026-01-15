@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Button } from '@/components/ui/button';
@@ -22,10 +22,18 @@ import { ExperimentSettings } from '@/components/researcher/ExperimentSettings';
 import { FormalityCalculator } from '@/components/researcher/FormalityCalculator';
 import { PromptLab } from '@/components/researcher/PromptLab';
 
+const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
+
 const ResearcherDashboard = () => {
   const { user, role, logout, isSuperAdmin } = useResearcherAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('summary');
+  const [activeTab, setActiveTab] = useState(() => {
+    return sessionStorage.getItem(TAB_STORAGE_KEY) || 'summary';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem(TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
 
   const handleLogout = async () => {
     await logout();

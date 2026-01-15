@@ -53,7 +53,8 @@ import {
   ArrowRight,
   Loader2,
   ExternalLink,
-  Check
+  Check,
+  Undo2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
@@ -123,6 +124,41 @@ export function PromptLab() {
   const [selectedLeftPrompt, setSelectedLeftPrompt] = useState<string>('');
   const [selectedRightPrompt, setSelectedRightPrompt] = useState<string>('');
   const [mergedLines, setMergedLines] = useState<Map<number, 'left' | 'right'>>(new Map());
+  
+  // Undo history for merge actions
+  interface MergeHistoryState {
+    leftText: string;
+    rightText: string;
+    mergedText: string;
+    mergedLines: Map<number, 'left' | 'right'>;
+    selectedLeftPrompt: string;
+    selectedRightPrompt: string;
+  }
+  const [mergeHistory, setMergeHistory] = useState<MergeHistoryState[]>([]);
+  
+  const saveToHistory = useCallback(() => {
+    setMergeHistory(prev => [...prev, {
+      leftText,
+      rightText,
+      mergedText,
+      mergedLines: new Map(mergedLines),
+      selectedLeftPrompt,
+      selectedRightPrompt,
+    }]);
+  }, [leftText, rightText, mergedText, mergedLines, selectedLeftPrompt, selectedRightPrompt]);
+  
+  const undoMerge = useCallback(() => {
+    if (mergeHistory.length === 0) return;
+    
+    const lastState = mergeHistory[mergeHistory.length - 1];
+    setLeftText(lastState.leftText);
+    setRightText(lastState.rightText);
+    setMergedText(lastState.mergedText);
+    setMergedLines(new Map(lastState.mergedLines));
+    setSelectedLeftPrompt(lastState.selectedLeftPrompt);
+    setSelectedRightPrompt(lastState.selectedRightPrompt);
+    setMergeHistory(prev => prev.slice(0, -1));
+  }, [mergeHistory]);
   
   // Filter state
   const [filterCondition, setFilterCondition] = useState<'all' | 'formal' | 'informal'>('all');
@@ -342,6 +378,7 @@ export function PromptLab() {
   };
   
   const mergeFromLeft = (lineIndex: number) => {
+    saveToHistory();
     const leftLines = leftText.split('\n');
     const rightLines = rightText.split('\n');
     const leftLine = diffResult.left[lineIndex]?.content || '';
@@ -364,6 +401,7 @@ export function PromptLab() {
   };
   
   const mergeFromRight = (lineIndex: number) => {
+    saveToHistory();
     const leftLines = leftText.split('\n');
     const rightLines = rightText.split('\n');
     const rightLine = diffResult.right[lineIndex]?.content || '';
@@ -386,6 +424,7 @@ export function PromptLab() {
   };
   
   const mergeAllFromLeft = () => {
+    saveToHistory();
     // Accept all changes from left side
     const newMergedLines = new Map(mergedLines);
     changeIndices.forEach(idx => {
@@ -398,6 +437,7 @@ export function PromptLab() {
   };
   
   const mergeAllFromRight = () => {
+    saveToHistory();
     // Accept all changes from right side
     const newMergedLines = new Map(mergedLines);
     changeIndices.forEach(idx => {
@@ -881,6 +921,17 @@ export function PromptLab() {
                             Accept All Right
                           </Button>
                         </div>
+                      )}
+                      {mergeHistory.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={undoMerge}
+                        >
+                          <Undo2 className="h-3 w-3 mr-1" />
+                          Undo ({mergeHistory.length})
+                        </Button>
                       )}
                     </div>
                     <div className="flex items-center gap-2 text-xs">
