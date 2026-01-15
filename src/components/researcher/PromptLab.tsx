@@ -495,8 +495,12 @@ export function PromptLab() {
       toast.error('Merged text is empty');
       return;
     }
+    // Reset form fields first, then set the merged text
+    resetForm();
     setFormText(mergedText);
     setFormName('Merged Prompt');
+    setFormCondition('formal'); // Ensure valid default condition
+    setEditingPrompt(null); // Ensure we're creating new, not editing
     setShowAddDialog(true);
   };
   
