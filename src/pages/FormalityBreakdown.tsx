@@ -75,18 +75,30 @@ const CATEGORY_COLORS: Record<FScoreCategory, { bg: string; text: string; label:
 
 const NEUTRAL_COLOR = { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400' };
 
+// Unified color scheme: Blue for formal, Amber for informal
+const getFormalityColor = (type: 'formal' | 'informal' | 'neutral') => {
+  switch (type) {
+    case 'formal': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border-blue-300';
+    case 'informal': return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 border-amber-300';
+    case 'neutral': return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-300';
+  }
+};
+
+const getFScoreType = (score: number): 'formal' | 'informal' | 'neutral' => {
+  if (score >= 50) return 'formal';
+  return 'informal';
+};
+
 function getInterpretationColor(interpretation: string): string {
   switch (interpretation) {
     case 'very-informal':
-      return 'bg-red-500 text-white';
     case 'conversational':
-      return 'bg-amber-500 text-white';
+      return getFormalityColor('informal');
     case 'moderately-formal':
-      return 'bg-blue-500 text-white';
     case 'highly-formal':
-      return 'bg-green-600 text-white';
+      return getFormalityColor('formal');
     default:
-      return 'bg-gray-500 text-white';
+      return getFormalityColor('neutral');
   }
 }
 
@@ -326,11 +338,13 @@ export default function FormalityBreakdown() {
           <CardContent className="pt-6">
             <div className="flex flex-wrap items-center gap-6">
               <div className="text-center">
-                <div className="text-5xl font-bold">{data.f_score}</div>
+                <div className={`text-5xl font-bold px-4 py-2 rounded-lg ${getFormalityColor(getFScoreType(data.f_score))}`}>
+                  {data.f_score}
+                </div>
                 <div className="text-sm text-muted-foreground mt-1">F-Score</div>
               </div>
-              <div>
-                <Badge className={`text-lg px-4 py-2 ${getInterpretationColor(data.interpretation)}`}>
+              <div className="text-center">
+                <Badge className={`text-sm px-3 py-1 ${getInterpretationColor(data.interpretation)}`}>
                   {data.interpretation_label}
                 </Badge>
               </div>

@@ -25,7 +25,11 @@ import {
   Link,
   ExternalLink,
   Loader2,
-  Trash2
+  Trash2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Filter
 } from 'lucide-react';
 import {
   Tooltip,
@@ -54,6 +58,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { toast } from 'sonner';
@@ -111,6 +122,16 @@ export function FormalityCalculator() {
   const [activeTab, setActiveTab] = useState('calculate');
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStats, setSyncStats] = useState<{ matched: number; updated: number; notFound: number } | null>(null);
+  
+  // Sorting state for history table
+  type SortColumn = 'created_at' | 'f_score' | 'perceived_formality' | 'assistant_type' | 'tokens';
+  type SortDirection = 'asc' | 'desc' | null;
+  const [sortColumn, setSortColumn] = useState<SortColumn>('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  
+  // Filtering state
+  const [filterAssistantType, setFilterAssistantType] = useState<'all' | 'formal' | 'informal'>('all');
+  const [filterFormalityType, setFilterFormalityType] = useState<'all' | 'formal' | 'informal'>('all');
   
   // UI state
   const [expandedResults, setExpandedResults] = useState<Set<number>>(new Set());
@@ -556,6 +577,93 @@ export function FormalityCalculator() {
       default: 
         return getFormalityColor('neutral');
     }
+  };
+
+  // Sort handler
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        setSortDirection(null);
+        setSortColumn('created_at');
+      } else {
+        setSortDirection('asc');
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column || sortDirection === null) {
+      return <ArrowUpDown className="h-3 w-3 opacity-50" />;
+    }
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="h-3 w-3" />
+      : <ArrowDown className="h-3 w-3" />;
+  };
+
+  // Get sorted and filtered calculations
+  const getSortedCalculations = () => {
+    let filtered = savedCalculations.filter((calc) => 
+      !showLinkedOnly || (calc.linked_call_id && linkedCallIds.has(calc.linked_call_id))
+    );
+
+    // Apply assistant type filter
+    if (filterAssistantType !== 'all') {
+      filtered = filtered.filter((calc) => {
+        const expData = calc.linked_call_id ? experimentDataMap.get(calc.linked_call_id) : null;
+        return expData?.assistantType === filterAssistantType;
+      });
+    }
+
+    // Apply formality type filter (based on F-score)
+    if (filterFormalityType !== 'all') {
+      filtered = filtered.filter((calc) => {
+        const type = getFScoreType(calc.f_score);
+        return type === filterFormalityType;
+      });
+    }
+
+    // Apply sorting
+    if (sortColumn && sortDirection) {
+      filtered.sort((a, b) => {
+        let aVal: any, bVal: any;
+        
+        switch (sortColumn) {
+          case 'created_at':
+            aVal = new Date(a.created_at).getTime();
+            bVal = new Date(b.created_at).getTime();
+            break;
+          case 'f_score':
+            aVal = a.f_score;
+            bVal = b.f_score;
+            break;
+          case 'perceived_formality':
+            aVal = a.linked_call_id ? experimentDataMap.get(a.linked_call_id)?.formality ?? -1 : -1;
+            bVal = b.linked_call_id ? experimentDataMap.get(b.linked_call_id)?.formality ?? -1 : -1;
+            break;
+          case 'assistant_type':
+            aVal = a.linked_call_id ? experimentDataMap.get(a.linked_call_id)?.assistantType ?? '' : '';
+            bVal = b.linked_call_id ? experimentDataMap.get(b.linked_call_id)?.assistantType ?? '' : '';
+            break;
+          case 'tokens':
+            aVal = a.total_tokens;
+            bVal = b.total_tokens;
+            break;
+          default:
+            return 0;
+        }
+        
+        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
   };
   
   const taggerInfo = getTaggerInfo();
@@ -1073,58 +1181,171 @@ export function FormalityCalculator() {
                     </div>
                   </div>
                   
+                  {/* Filters */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Filters:</span>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8">
+                          Assistant: {filterAssistantType === 'all' ? 'All' : filterAssistantType}
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={() => setFilterAssistantType('all')}>
+                          {filterAssistantType === 'all' && <Check className="h-4 w-4 mr-2" />}
+                          All
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setFilterAssistantType('formal')}>
+                          {filterAssistantType === 'formal' && <Check className="h-4 w-4 mr-2" />}
+                          <Badge className={`${getFormalityColor('formal')} mr-2`}>formal</Badge>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setFilterAssistantType('informal')}>
+                          {filterAssistantType === 'informal' && <Check className="h-4 w-4 mr-2" />}
+                          <Badge className={`${getFormalityColor('informal')} mr-2`}>informal</Badge>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8">
+                          F-Score: {filterFormalityType === 'all' ? 'All' : filterFormalityType}
+                          <ChevronDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={() => setFilterFormalityType('all')}>
+                          {filterFormalityType === 'all' && <Check className="h-4 w-4 mr-2" />}
+                          All
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setFilterFormalityType('formal')}>
+                          {filterFormalityType === 'formal' && <Check className="h-4 w-4 mr-2" />}
+                          <Badge className={`${getFormalityColor('formal')} mr-2`}>≥50 (formal)</Badge>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setFilterFormalityType('informal')}>
+                          {filterFormalityType === 'informal' && <Check className="h-4 w-4 mr-2" />}
+                          <Badge className={`${getFormalityColor('informal')} mr-2`}>&lt;50 (informal)</Badge>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {(filterAssistantType !== 'all' || filterFormalityType !== 'all') && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-8"
+                        onClick={() => {
+                          setFilterAssistantType('all');
+                          setFilterFormalityType('all');
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    )}
+                  </div>
+                  
                   <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Date</TableHead>
                         <TableHead>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center gap-1 cursor-help">
-                                  Assistant Type
-                                  <Info className="h-3 w-3 text-muted-foreground" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                <p>One of the two experimental conditions (formal or informal), determined by the voice assistant prompt used during the call.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <Button variant="ghost" size="sm" className="h-8 -ml-3 font-medium" onClick={() => handleSort('created_at')}>
+                            Date
+                            {getSortIcon('created_at')}
+                          </Button>
                         </TableHead>
                         <TableHead>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center gap-1 cursor-help">
-                                  F-Score
-                                  <Info className="h-3 w-3 text-muted-foreground" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                <p>Calculated using Heylighen & Dewaele's F-measure. Scores ≥50 indicate formal language, &lt;50 indicate informal.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 -ml-3 font-medium gap-1">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="flex items-center gap-1">
+                                        Assistant Type
+                                        <Info className="h-3 w-3 text-muted-foreground" />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p>One of the two experimental conditions (formal or informal), determined by the voice assistant prompt used during the call.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                {getSortIcon('assistant_type')}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              <DropdownMenuItem onClick={() => handleSort('assistant_type')}>
+                                <ArrowUpDown className="h-4 w-4 mr-2" />
+                                Sort
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableHead>
                         <TableHead>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center gap-1 cursor-help">
-                                  Perceived Formality
-                                  <Info className="h-3 w-3 text-muted-foreground" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                <p>Participant's self-reported perception on a 1-7 scale: 1-3 = informal, 4 = neutral, 5-7 = formal.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 -ml-3 font-medium gap-1">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="flex items-center gap-1">
+                                        F-Score
+                                        <Info className="h-3 w-3 text-muted-foreground" />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p>Calculated using Heylighen & Dewaele's F-measure. Scores ≥50 indicate formal language, &lt;50 indicate informal.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                {getSortIcon('f_score')}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              <DropdownMenuItem onClick={() => handleSort('f_score')}>
+                                <ArrowUpDown className="h-4 w-4 mr-2" />
+                                Sort
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableHead>
-                        <TableHead>Interpretation</TableHead>
-                        <TableHead>Tokens</TableHead>
+                        <TableHead>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 -ml-3 font-medium gap-1">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="flex items-center gap-1">
+                                        Perceived
+                                        <Info className="h-3 w-3 text-muted-foreground" />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p>Participant's self-reported perception on a 1-7 scale: 1-3 = informal, 4 = neutral, 5-7 = formal.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                {getSortIcon('perceived_formality')}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              <DropdownMenuItem onClick={() => handleSort('perceived_formality')}>
+                                <ArrowUpDown className="h-4 w-4 mr-2" />
+                                Sort
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableHead>
+                        <TableHead>
+                          <Button variant="ghost" size="sm" className="h-8 -ml-3 font-medium" onClick={() => handleSort('tokens')}>
+                            Tokens
+                            {getSortIcon('tokens')}
+                          </Button>
+                        </TableHead>
                         <TableHead>Call ID</TableHead>
                         <TableHead>Prolific ID</TableHead>
                         <TableHead>Source</TableHead>
@@ -1133,9 +1354,7 @@ export function FormalityCalculator() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {savedCalculations
-                        .filter((calc) => !showLinkedOnly || (calc.linked_call_id && linkedCallIds.has(calc.linked_call_id)))
-                        .map((calc) => {
+                      {getSortedCalculations().map((calc) => {
                           const expData = calc.linked_call_id ? experimentDataMap.get(calc.linked_call_id) : null;
                           return (
                         <TableRow 
@@ -1156,9 +1375,12 @@ export function FormalityCalculator() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Badge className={getFormalityColor(getFScoreType(calc.f_score))}>
-                              {calc.f_score}
-                            </Badge>
+                            <div className="flex flex-col gap-0.5">
+                              <Badge className={getFormalityColor(getFScoreType(calc.f_score))}>
+                                {calc.f_score}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">{calc.interpretation_label}</span>
+                            </div>
                           </TableCell>
                           <TableCell>
                             {expData?.formality != null ? (
@@ -1168,11 +1390,6 @@ export function FormalityCalculator() {
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={getInterpretationColor(calc.interpretation)}>
-                              {calc.interpretation_label}
-                            </Badge>
                           </TableCell>
                           <TableCell>{calc.total_tokens}</TableCell>
                           <TableCell>
