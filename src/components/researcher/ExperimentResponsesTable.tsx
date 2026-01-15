@@ -438,6 +438,9 @@ export const ExperimentResponsesTable = () => {
     dateTo: undefined,
   });
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
+  
+  // Map of call_id -> formality_calculation.id for navigation
+  const [formalityCalcMap, setFormalityCalcMap] = useState<Map<string, string>>(new Map());
 
   // Column visibility state
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnId>>(new Set());
@@ -609,23 +612,40 @@ export const ExperimentResponsesTable = () => {
 
       if (error) throw error;
 
-      // Fetch demographics for each prolific_id
+      // Fetch demographics and formality calculations for each response
       if (responses && responses.length > 0) {
         const prolificIds = [...new Set(responses.map(r => r.prolific_id))];
-        const { data: demographicsData, error: demoError } = await supabase
-          .from('demographics')
-          .select('*')
-          .in('prolific_id', prolificIds);
+        const callIds = responses.map(r => r.call_id).filter(Boolean);
+        
+        const [demographicsResult, formalityResult] = await Promise.all([
+          supabase
+            .from('demographics')
+            .select('*')
+            .in('prolific_id', prolificIds),
+          supabase
+            .from('formality_calculations')
+            .select('id, linked_call_id')
+            .in('linked_call_id', callIds)
+        ]);
 
-        if (demoError) {
-          console.error('Error fetching demographics:', demoError);
+        if (demographicsResult.error) {
+          console.error('Error fetching demographics:', demographicsResult.error);
         }
 
         // Create a map for quick lookup
         const demographicsMap = new Map<string, Demographics>();
-        demographicsData?.forEach(d => {
+        demographicsResult.data?.forEach(d => {
           demographicsMap.set(d.prolific_id, d);
         });
+
+        // Create formality calc map
+        const calcMap = new Map<string, string>();
+        formalityResult.data?.forEach(fc => {
+          if (fc.linked_call_id) {
+            calcMap.set(fc.linked_call_id, fc.id);
+          }
+        });
+        setFormalityCalcMap(calcMap);
 
         // Merge demographics with responses
         const responsesWithDemographics = responses.map(r => ({
@@ -1026,15 +1046,28 @@ export const ExperimentResponsesTable = () => {
         return <TableCell>{formatNumber(row.formality)}</TableCell>;
 
       case 'ai_formality_score':
+        const calcId = formalityCalcMap.get(row.call_id);
         return (
-          <TableCell>
+          <TableCell onClick={(e) => e.stopPropagation()}>
             {row.ai_formality_score !== null && row.ai_formality_score !== undefined ? (
-              <div className="flex flex-col">
-                <span className="font-medium">{formatNumber(row.ai_formality_score)}</span>
-                {row.ai_formality_interpretation && (
-                  <span className="text-xs text-muted-foreground">{row.ai_formality_interpretation}</span>
-                )}
-              </div>
+              calcId ? (
+                <button
+                  onClick={() => window.location.href = `/researcher/formality/${calcId}`}
+                  className="flex flex-col text-left hover:bg-muted/50 rounded px-2 py-1 -mx-2 -my-1 transition-colors cursor-pointer"
+                >
+                  <span className="font-medium text-primary hover:underline">{formatNumber(row.ai_formality_score)}</span>
+                  {row.ai_formality_interpretation && (
+                    <span className="text-xs text-muted-foreground">{row.ai_formality_interpretation}</span>
+                  )}
+                </button>
+              ) : (
+                <div className="flex flex-col">
+                  <span className="font-medium">{formatNumber(row.ai_formality_score)}</span>
+                  {row.ai_formality_interpretation && (
+                    <span className="text-xs text-muted-foreground">{row.ai_formality_interpretation}</span>
+                  )}
+                </div>
+              )
             ) : (
               <span className="text-muted-foreground text-sm">—</span>
             )}
@@ -1579,11 +1612,38 @@ export const ExperimentResponsesTable = () => {
 
                   <div className="border-t pt-4">
                     <h4 className="font-medium mb-2">Formality & Intention</h4>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4 mb-3">
                       <div>
-                        <label className="text-sm text-muted-foreground">Formality</label>
+                        <label className="text-sm text-muted-foreground">User Perception</label>
                         <p>{formatNumber(viewItem.formality)}</p>
                       </div>
+                      <div>
+                        <label className="text-sm text-muted-foreground">AI F-Score</label>
+                        {viewItem.ai_formality_score !== null && viewItem.ai_formality_score !== undefined ? (
+                          formalityCalcMap.get(viewItem.call_id) ? (
+                            <button
+                              onClick={() => window.location.href = `/researcher/formality/${formalityCalcMap.get(viewItem.call_id)}`}
+                              className="flex flex-col text-left hover:bg-muted/50 rounded px-2 py-1 -mx-2 transition-colors cursor-pointer"
+                            >
+                              <span className="font-medium text-primary hover:underline">{formatNumber(viewItem.ai_formality_score)}</span>
+                              {viewItem.ai_formality_interpretation && (
+                                <span className="text-xs text-muted-foreground">{viewItem.ai_formality_interpretation}</span>
+                              )}
+                            </button>
+                          ) : (
+                            <div>
+                              <p>{formatNumber(viewItem.ai_formality_score)}</p>
+                              {viewItem.ai_formality_interpretation && (
+                                <span className="text-xs text-muted-foreground">{viewItem.ai_formality_interpretation}</span>
+                              )}
+                            </div>
+                          )
+                        ) : (
+                          <p className="text-muted-foreground">—</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-sm text-muted-foreground">Intention 1</label>
                         <p>{formatNumber(viewItem.intention_1)}</p>
