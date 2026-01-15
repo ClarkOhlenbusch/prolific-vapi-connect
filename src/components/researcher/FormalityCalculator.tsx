@@ -100,7 +100,7 @@ export function FormalityCalculator() {
   // Saved calculations
   const [savedCalculations, setSavedCalculations] = useState<SavedCalculation[]>([]);
   const [linkedCallIds, setLinkedCallIds] = useState<Set<string>>(new Set());
-  const [showLinkedOnly, setShowLinkedOnly] = useState(false);
+  const [showLinkedOnly, setShowLinkedOnly] = useState(true);
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   const [activeTab, setActiveTab] = useState('calculate');
   const [isSyncing, setIsSyncing] = useState(false);
