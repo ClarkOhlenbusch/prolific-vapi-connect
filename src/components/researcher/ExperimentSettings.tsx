@@ -15,6 +15,11 @@ const ASSISTANT_IDS = {
   informal: "f391bf0c-f1d2-4473-bdf8-e88343224d68",
 };
 
+const PRACTICE_ASSISTANT_IDS = {
+  formal: "ea2a5f95-5c07-4498-996b-5b3e204192f8",
+  informal: "30394944-4d48-4586-8e6d-cd3d6b347e80",
+};
+
 interface ExperimentSetting {
   setting_key: string;
   setting_value: string;
@@ -204,9 +209,14 @@ export const ExperimentSettings = () => {
               <p className="text-sm text-muted-foreground mb-2">
                 Professional and polite communication style
               </p>
-              <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                ID: {ASSISTANT_IDS.formal}
-              </code>
+              <div className="space-y-1">
+                <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
+                  Main: {ASSISTANT_IDS.formal}
+                </code>
+                <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
+                  Practice: {PRACTICE_ASSISTANT_IDS.formal}
+                </code>
+              </div>
             </button>
 
             <button
@@ -226,9 +236,14 @@ export const ExperimentSettings = () => {
               <p className="text-sm text-muted-foreground mb-2">
                 Casual and friendly communication style
               </p>
-              <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                ID: {ASSISTANT_IDS.informal}
-              </code>
+              <div className="space-y-1">
+                <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
+                  Main: {ASSISTANT_IDS.informal}
+                </code>
+                <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
+                  Practice: {PRACTICE_ASSISTANT_IDS.informal}
+                </code>
+              </div>
             </button>
           </div>
 
