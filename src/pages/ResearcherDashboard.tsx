@@ -11,7 +11,8 @@ import {
   BarChart3, 
   Archive,
   Settings,
-  Calculator
+  Calculator,
+  MessageSquare
 } from 'lucide-react';
 import { ExperimentResponsesTable } from '@/components/researcher/ExperimentResponsesTable';
 import { ParticipantCallsTable } from '@/components/researcher/ParticipantCallsTable';
@@ -19,6 +20,7 @@ import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponse
 import { DataSummary } from '@/components/researcher/DataSummary';
 import { ExperimentSettings } from '@/components/researcher/ExperimentSettings';
 import { FormalityCalculator } from '@/components/researcher/FormalityCalculator';
+import { PromptLab } from '@/components/researcher/PromptLab';
 
 const ResearcherDashboard = () => {
   const { user, role, logout, isSuperAdmin } = useResearcherAuth();
@@ -75,7 +77,7 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-7">
             <TabsTrigger value="summary" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Summary</span>
@@ -91,6 +93,10 @@ const ResearcherDashboard = () => {
             <TabsTrigger value="formality" className="flex items-center gap-2">
               <Calculator className="h-4 w-4" />
               <span className="hidden sm:inline">Formality</span>
+            </TabsTrigger>
+            <TabsTrigger value="prompts" className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              <span className="hidden sm:inline">Prompts</span>
             </TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="archived" className="flex items-center gap-2">
@@ -140,6 +146,10 @@ const ResearcherDashboard = () => {
 
           <TabsContent value="formality">
             <FormalityCalculator />
+          </TabsContent>
+
+          <TabsContent value="prompts">
+            <PromptLab />
           </TabsContent>
 
           {isSuperAdmin && (

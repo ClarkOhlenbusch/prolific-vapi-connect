@@ -800,6 +800,65 @@ export type Database = {
         }
         Relationships: []
       }
+      vapi_prompts: {
+        Row: {
+          batch_label: string | null
+          condition: string
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean | null
+          name: string
+          notes: string | null
+          parent_version_id: string | null
+          prompt_text: string
+          updated_at: string
+          vapi_assistant_id: string | null
+          vapi_assistant_name: string | null
+          version: number
+        }
+        Insert: {
+          batch_label?: string | null
+          condition: string
+          created_at?: string
+          created_by: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          notes?: string | null
+          parent_version_id?: string | null
+          prompt_text: string
+          updated_at?: string
+          vapi_assistant_id?: string | null
+          vapi_assistant_name?: string | null
+          version?: number
+        }
+        Update: {
+          batch_label?: string | null
+          condition?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          notes?: string | null
+          parent_version_id?: string | null
+          prompt_text?: string
+          updated_at?: string
+          vapi_assistant_id?: string | null
+          vapi_assistant_name?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vapi_prompts_parent_version_id_fkey"
+            columns: ["parent_version_id"]
+            isOneToOne: false
+            referencedRelation: "vapi_prompts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
