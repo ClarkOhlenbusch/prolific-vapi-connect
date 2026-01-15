@@ -48,6 +48,13 @@ const ResearcherDashboard = () => {
           </div>
           
           <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/researcher/statistics')}
+            >
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Statistical Analysis
+            </Button>
             {isSuperAdmin && (
               <Button 
                 variant="outline" 
