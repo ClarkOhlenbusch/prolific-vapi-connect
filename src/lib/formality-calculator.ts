@@ -51,6 +51,8 @@ export interface FScoreResult {
   callId?: string;
   prolificId?: string;
   originalTranscript?: string;
+  // Saved calculation ID (set after saving to database)
+  savedId?: string;
 }
 
 export interface PerTurnResult {
