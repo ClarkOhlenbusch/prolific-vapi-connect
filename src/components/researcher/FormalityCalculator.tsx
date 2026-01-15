@@ -100,6 +100,13 @@ export function FormalityCalculator() {
   const [csvData, setCsvData] = useState<CSVParseResult | null>(null);
   
   // Compare mode state
+  interface CompareVersion {
+    id: string;
+    texts: string[];
+    savedAt: string;
+    label?: string;
+  }
+  
   const [compareTexts, setCompareTexts] = useState<string[]>(() => {
     const saved = localStorage.getItem('formality-compare-texts');
     if (saved) {
@@ -115,6 +122,15 @@ export function FormalityCalculator() {
   const [compareResults, setCompareResults] = useState<FScoreResult[]>([]);
   const [compareVersionId, setCompareVersionId] = useState<string | null>(() => {
     return localStorage.getItem('formality-compare-version-id');
+  });
+  const [compareHistory, setCompareHistory] = useState<CompareVersion[]>(() => {
+    const saved = localStorage.getItem('formality-compare-history');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {}
+    }
+    return [];
   });
   
   // Manual linking
@@ -181,13 +197,42 @@ export function FormalityCalculator() {
   };
   
   const saveCompareAsNewVersion = () => {
+    if (!compareTexts.some(t => t.trim())) return;
+    
     const newVersionId = crypto.randomUUID();
+    const newVersion: CompareVersion = {
+      id: newVersionId,
+      texts: [...compareTexts],
+      savedAt: new Date().toISOString(),
+    };
+    
+    // Add to history (limit to 20 versions)
+    const updatedHistory = [newVersion, ...compareHistory].slice(0, 20);
+    setCompareHistory(updatedHistory);
+    localStorage.setItem('formality-compare-history', JSON.stringify(updatedHistory));
+    
     setCompareVersionId(newVersionId);
     localStorage.setItem('formality-compare-version-id', newVersionId);
     localStorage.setItem('formality-compare-texts', JSON.stringify(compareTexts));
     toast.success('Comparison saved as new version');
   };
   
+  const restoreCompareVersion = (version: CompareVersion) => {
+    setCompareTexts(version.texts);
+    setCompareVersionId(version.id);
+    setCompareResults([]);
+    localStorage.setItem('formality-compare-texts', JSON.stringify(version.texts));
+    localStorage.setItem('formality-compare-version-id', version.id);
+    toast.success('Comparison restored');
+  };
+  
+  const deleteCompareVersion = (versionId: string) => {
+    const updatedHistory = compareHistory.filter(v => v.id !== versionId);
+    setCompareHistory(updatedHistory);
+    localStorage.setItem('formality-compare-history', JSON.stringify(updatedHistory));
+    toast.success('Version deleted');
+  };
+
   const clearComparison = () => {
     setCompareTexts(['', '']);
     setCompareResults([]);
@@ -960,6 +1005,76 @@ export function FormalityCalculator() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* History Dropdown */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={compareHistory.length === 0}
+                          >
+                            <History className="h-4 w-4 mr-1" />
+                            History ({compareHistory.length})
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-72 max-h-80 overflow-y-auto bg-background border shadow-lg z-50">
+                          {compareHistory.length === 0 ? (
+                            <div className="px-3 py-2 text-sm text-muted-foreground">
+                              No saved versions yet
+                            </div>
+                          ) : (
+                            compareHistory.map((version) => (
+                              <DropdownMenuItem
+                                key={version.id}
+                                className="flex items-start justify-between gap-2 cursor-pointer"
+                                onSelect={(e) => e.preventDefault()}
+                              >
+                                <div 
+                                  className="flex-1 min-w-0"
+                                  onClick={() => restoreCompareVersion(version)}
+                                >
+                                  <div className="text-xs text-muted-foreground">
+                                    {format(new Date(version.savedAt), 'MMM d, yyyy h:mm a')}
+                                  </div>
+                                  <div className="text-xs truncate mt-0.5">
+                                    {version.texts.filter(t => t.trim()).length} texts: {version.texts[0]?.substring(0, 30) || '(empty)'}...
+                                  </div>
+                                  {version.id === compareVersionId && (
+                                    <Badge variant="secondary" className="text-xs mt-1">Current</Badge>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 shrink-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteCompareVersion(version.id);
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuItem>
+                            ))
+                          )}
+                          {compareHistory.length > 0 && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive cursor-pointer"
+                                onClick={() => {
+                                  setCompareHistory([]);
+                                  localStorage.removeItem('formality-compare-history');
+                                  toast.success('History cleared');
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Clear All History
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       <Button
                         variant="outline"
                         size="sm"
