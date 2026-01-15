@@ -107,10 +107,10 @@ import { cn } from '@/lib/utils';
 
 type ExperimentResponse = ExperimentResponseWithDemographics;
 
-type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'assistant_type' | 'batch_label' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total';
+type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'ai_formality_score' | 'assistant_type' | 'batch_label' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total';
 type SortDirection = 'asc' | 'desc' | null;
 
-type ColumnId = 'select' | 'prolific_id' | 'created_at' | 'age' | 'gender' | 'pets_total' | 'tias_total' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total' | 'formality' | 'assistant_type' | 'batch_label' | 'actions';
+type ColumnId = 'select' | 'prolific_id' | 'created_at' | 'age' | 'gender' | 'pets_total' | 'tias_total' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total' | 'formality' | 'ai_formality_score' | 'assistant_type' | 'batch_label' | 'actions';
 
 interface ColumnDef {
   id: ColumnId;
@@ -444,7 +444,7 @@ export const ExperimentResponsesTable = () => {
 
   // Column order state
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>([
-    'select', 'prolific_id', 'created_at', 'batch_label', 'assistant_type', 'formality', 'pets_total', 'tias_total', 'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'age', 'gender', 'actions'
+    'select', 'prolific_id', 'created_at', 'batch_label', 'assistant_type', 'formality', 'ai_formality_score', 'pets_total', 'tias_total', 'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'age', 'gender', 'actions'
   ]);
 
   const columns: ColumnDef[] = useMemo(() => [
@@ -458,7 +458,8 @@ export const ExperimentResponsesTable = () => {
     { id: 'godspeed_anthro_total', label: 'GS Anthro', sortable: true, filterable: false },
     { id: 'godspeed_like_total', label: 'GS Like', sortable: true, filterable: false },
     { id: 'godspeed_intel_total', label: 'GS Intel', sortable: true, filterable: false },
-    { id: 'formality', label: 'Formality', sortable: true, filterable: false },
+    { id: 'formality', label: 'Formality (Self)', sortable: true, filterable: false },
+    { id: 'ai_formality_score', label: 'AI F-Score', sortable: true, filterable: false },
     { id: 'assistant_type', label: 'Assistant', sortable: true, filterable: true },
     { id: 'batch_label', label: 'Batch', sortable: true, filterable: true },
     { id: 'actions', label: 'Actions', sortable: false, filterable: false },
@@ -1023,6 +1024,22 @@ export const ExperimentResponsesTable = () => {
 
       case 'formality':
         return <TableCell>{formatNumber(row.formality)}</TableCell>;
+
+      case 'ai_formality_score':
+        return (
+          <TableCell>
+            {row.ai_formality_score !== null && row.ai_formality_score !== undefined ? (
+              <div className="flex flex-col">
+                <span className="font-medium">{formatNumber(row.ai_formality_score)}</span>
+                {row.ai_formality_interpretation && (
+                  <span className="text-xs text-muted-foreground">{row.ai_formality_interpretation}</span>
+                )}
+              </div>
+            ) : (
+              <span className="text-muted-foreground text-sm">—</span>
+            )}
+          </TableCell>
+        );
 
       case 'assistant_type':
         return (
