@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -165,6 +165,35 @@ export function FormalityCalculator() {
     newTexts[index] = text;
     setCompareTexts(newTexts);
   };
+  
+  // Live F-score calculation for manual input
+  const liveManualResult = useMemo(() => {
+    if (mode !== 'manual' || !manualText.trim() || manualText.trim().length < 3) {
+      return null;
+    }
+    try {
+      return processTranscript(manualText, aiOnly, 0);
+    } catch {
+      return null;
+    }
+  }, [manualText, aiOnly, mode]);
+  
+  // Live F-score calculation for compare mode
+  const liveCompareResults = useMemo(() => {
+    if (mode !== 'compare') {
+      return [];
+    }
+    return compareTexts.map((text, idx) => {
+      if (!text.trim() || text.trim().length < 3) {
+        return null;
+      }
+      try {
+        return processTranscript(text, aiOnly, idx);
+      } catch {
+        return null;
+      }
+    });
+  }, [compareTexts, aiOnly, mode]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useResearcherAuth();
@@ -781,6 +810,39 @@ export function FormalityCalculator() {
                       value={manualText}
                       onChange={(e) => setManualText(e.target.value)}
                     />
+                    {/* Live F-score display */}
+                    {liveManualResult && (
+                      <div className={`mt-2 p-3 rounded-md border ${
+                        liveManualResult.fScore >= 50 
+                          ? 'bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800'
+                          : 'bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className={`text-2xl font-bold ${
+                              liveManualResult.fScore >= 50 ? 'text-blue-700 dark:text-blue-300' : 'text-amber-700 dark:text-amber-300'
+                            }`}>
+                              {liveManualResult.fScore}
+                            </span>
+                            <div>
+                              <Badge className={`${
+                                liveManualResult.fScore >= 50 
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                              }`}>
+                                {liveManualResult.interpretationLabel}
+                              </Badge>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {liveManualResult.totalTokens} tokens analyzed
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground">
+                            <p>Live preview</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   
                   {/* Manual Linking */}
@@ -851,13 +913,14 @@ export function FormalityCalculator() {
                           value={text}
                           onChange={(e) => updateCompareText(index, e.target.value)}
                         />
-                        {compareResults[index] && (
+                        {/* Live F-score for this text */}
+                        {liveCompareResults[index] && (
                           <div className={`p-2 rounded text-sm font-medium text-center ${
-                            compareResults[index].fScore >= 50 
+                            liveCompareResults[index]!.fScore >= 50 
                               ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                               : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
                           }`}>
-                            F-Score: {compareResults[index].fScore} ({compareResults[index].interpretationLabel})
+                            F-Score: {liveCompareResults[index]!.fScore} ({liveCompareResults[index]!.interpretationLabel}) • {liveCompareResults[index]!.totalTokens} tokens
                           </div>
                         )}
                       </div>
