@@ -390,8 +390,9 @@ const GodspeedQuestionnaire = () => {
                       <RadioGroup
                         value={responses[questionItem.key]?.toString()}
                         onValueChange={(value) => handleRadioChange(questionItem.key, value)}
-                        className="flex gap-4 justify-center"
+                        className="flex items-center justify-start gap-2"
                       >
+                        <span className="min-w-[100px]"></span>
                         {SCALE_OPTIONS.map((opt) => (
                           <div key={opt} className="flex flex-col items-center space-y-1">
                             <RadioGroupItem value={opt.toString()} id={`${questionItem.key}-${opt}`} />
@@ -400,6 +401,7 @@ const GodspeedQuestionnaire = () => {
                             </Label>
                           </div>
                         ))}
+                        <span className="min-w-[100px]"></span>
                       </RadioGroup>
                     </div>
                   </div>
