@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { usePageTracking } from '@/hooks/usePageTracking';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -22,6 +23,14 @@ const Consent = () => {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  
+  const prolificId = searchParams.get('prolificId') || sessionStorage.getItem('prolificId');
+  
+  usePageTracking({
+    pageName: 'consent',
+    prolificId,
+    callId: null,
+  });
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const target = event.target as HTMLDivElement;

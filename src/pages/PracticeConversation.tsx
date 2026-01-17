@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
 import { supabase } from '@/integrations/supabase/client';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 const PracticeConversation = () => {
   const [searchParams] = useSearchParams();
@@ -21,12 +22,14 @@ const PracticeConversation = () => {
   const [practiceAssistantId, setPracticeAssistantId] = useState<string | null>(null);
   const vapiRef = useRef<Vapi | null>(null);
   const navigate = useNavigate();
-  const {
-    toast
-  } = useToast();
-  const {
-    isResearcherMode
-  } = useResearcherMode();
+  const { toast } = useToast();
+  const { isResearcherMode } = useResearcherMode();
+
+  usePageTracking({
+    pageName: 'practice-conversation',
+    prolificId,
+    callId: null,
+  });
   // Fetch experiment config to get practice assistant ID
   useEffect(() => {
     const fetchConfig = async () => {
