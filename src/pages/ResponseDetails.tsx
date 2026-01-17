@@ -361,7 +361,7 @@ const ResponseDetails = () => {
                     <div>
                       <label className="text-sm text-muted-foreground">Voice Assistant Familiarity</label>
                       <p className="font-medium">
-                        {FAMILIARITY_LABELS[data.demographics.voice_assistant_familiarity] || formatWholeNumber(data.demographics.voice_assistant_familiarity)}
+                        {formatWholeNumber(data.demographics.voice_assistant_familiarity)} - {FAMILIARITY_LABELS[data.demographics.voice_assistant_familiarity] || "Unknown"}
                       </p>
                     </div>
                   )}
@@ -369,7 +369,7 @@ const ResponseDetails = () => {
                     <div>
                       <label className="text-sm text-muted-foreground">Voice Assistant Usage Frequency</label>
                       <p className="font-medium">
-                        {USAGE_FREQUENCY_LABELS[data.demographics.voice_assistant_usage_frequency] || formatWholeNumber(data.demographics.voice_assistant_usage_frequency)}
+                        {formatWholeNumber(data.demographics.voice_assistant_usage_frequency)} - {USAGE_FREQUENCY_LABELS[data.demographics.voice_assistant_usage_frequency] || "Unknown"}
                       </p>
                     </div>
                   )}
