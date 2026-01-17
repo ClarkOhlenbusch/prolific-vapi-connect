@@ -1,11 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 const Complete = () => {
   const navigate = useNavigate();
+  const [prolificId, setProlificId] = useState<string | null>(null);
 
   useEffect(() => {
     // Enforce flow: must be at step 5 (final)
@@ -19,7 +21,14 @@ const Complete = () => {
     if (!storedId) {
       navigate('/');
     }
+    setProlificId(storedId);
   }, [navigate]);
+
+  usePageTracking({
+    pageName: 'complete',
+    prolificId,
+    callId: sessionStorage.getItem('callId'),
+  });
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
