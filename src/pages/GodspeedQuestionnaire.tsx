@@ -417,24 +417,22 @@ const GodspeedQuestionnaire = () => {
                     </div>
                   </div>
                   <div className="pl-6">
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-sm font-medium w-28 text-right">{semanticItem.leftLabel}</span>
-                      <RadioGroup
-                        value={responses[semanticItem.key]?.toString()}
-                        onValueChange={(value) => handleRadioChange(semanticItem.key, value)}
-                        className="flex gap-4"
-                      >
-                        {SCALE_OPTIONS.map((opt) => (
-                          <div key={opt} className="flex flex-col items-center space-y-1">
-                            <RadioGroupItem value={opt.toString()} id={`${semanticItem.key}-${opt}`} />
-                            <Label htmlFor={`${semanticItem.key}-${opt}`} className="text-xs text-muted-foreground cursor-pointer">
-                              {opt}
-                            </Label>
-                          </div>
-                        ))}
-                      </RadioGroup>
-                      <span className="text-sm font-medium w-28 text-left">{semanticItem.rightLabel}</span>
-                    </div>
+                    <RadioGroup
+                      value={responses[semanticItem.key]?.toString()}
+                      onValueChange={(value) => handleRadioChange(semanticItem.key, value)}
+                      className="flex items-center justify-center gap-2"
+                    >
+                      <span className="text-sm font-medium text-right min-w-[100px]">{semanticItem.leftLabel}</span>
+                      {SCALE_OPTIONS.map((opt) => (
+                        <div key={opt} className="flex flex-col items-center space-y-1">
+                          <RadioGroupItem value={opt.toString()} id={`${semanticItem.key}-${opt}`} />
+                          <Label htmlFor={`${semanticItem.key}-${opt}`} className="text-xs text-muted-foreground cursor-pointer">
+                            {opt}
+                          </Label>
+                        </div>
+                      ))}
+                      <span className="text-sm font-medium text-left min-w-[100px]">{semanticItem.rightLabel}</span>
+                    </RadioGroup>
                   </div>
                 </div>
               );
