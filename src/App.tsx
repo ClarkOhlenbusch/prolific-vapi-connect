@@ -1,15 +1,16 @@
-import { useEffect, lazy, Suspense } from "react";
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { ResearcherModeProvider, useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { ResearcherAuthProvider } from "@/contexts/ResearcherAuthContext";
 import { ResearcherModeToggle } from "@/components/ResearcherModeToggle";
 import { ResearcherProtectedRoute } from "@/components/researcher/ResearcherProtectedRoute";
 import PageSkeleton from "@/components/PageSkeleton";
+import { useSessionValidation } from "@/hooks/useSessionValidation";
+import { useRoutePreload } from "@/hooks/useRoutePreload";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
@@ -38,58 +39,14 @@ const ResponseDetails = lazy(() => import("./pages/ResponseDetails"));
 const queryClient = new QueryClient();
 
 const SessionValidator = ({ children }: { children: React.ReactNode }) => {
-  const navigate = useNavigate();
   const location = useLocation();
   const { isResearcherMode } = useResearcherMode();
 
-  useEffect(() => {
-    const validateSession = async () => {
-      // Skip validation if researcher mode is active
-      if (isResearcherMode) return;
-      
-      // Skip validation on landing page, consent, not-eligible, demographics, voice assistant familiarity, practice page, debriefing, and complete page
-      if (
-        location.pathname === '/' || 
-        location.pathname === '/consent' || 
-        location.pathname === '/no-consent' ||
-        location.pathname === '/demographics' || 
-        location.pathname === '/voiceassistant-familiarity' || 
-        location.pathname === '/practice' || 
-        location.pathname === '/debriefing' || 
-        location.pathname === '/complete'
-      ) return;
-
-      const sessionToken = localStorage.getItem('sessionToken');
-      
-      if (!sessionToken) {
-        navigate('/');
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase.functions.invoke('validate-session', {
-          body: { sessionToken }
-        });
-
-      if (error || !data?.valid) {
-        // Invalid token - clear everything and redirect
-        localStorage.removeItem('sessionToken');
-        sessionStorage.removeItem('prolificId');
-        navigate('/');
-        return;
-      }
-
-      // Store validated prolific ID
-      sessionStorage.setItem('prolificId', data.participant.prolificId);
-    } catch (error) {
-      localStorage.removeItem('sessionToken');
-      sessionStorage.removeItem('prolificId');
-      navigate('/');
-    }
-  };
-
-    validateSession();
-  }, [location.pathname, navigate, isResearcherMode]);
+  // Use cached session validation
+  useSessionValidation(location.pathname, isResearcherMode);
+  
+  // Preload the next page in the experiment flow
+  useRoutePreload(location.pathname);
 
   return <>{children}</>;
 };
