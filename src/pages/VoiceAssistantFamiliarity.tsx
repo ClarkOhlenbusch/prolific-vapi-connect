@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 const VoiceAssistantFamiliarity = () => {
   const [searchParams] = useSearchParams();
@@ -18,6 +19,12 @@ const VoiceAssistantFamiliarity = () => {
   
   const sessionToken = searchParams.get('sessionToken') || (isResearcherMode ? '00000000-0000-0000-0000-000000000000' : null);
   const prolificId = searchParams.get('prolificId') || (isResearcherMode ? 'RESEARCHER_MODE' : null);
+
+  usePageTracking({
+    pageName: 'voice-assistant-familiarity',
+    prolificId,
+    callId: null,
+  });
 
   const [formData, setFormData] = useState({
     familiarity: '',

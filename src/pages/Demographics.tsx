@@ -10,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 const Demographics = () => {
   const [searchParams] = useSearchParams();
@@ -20,6 +21,12 @@ const Demographics = () => {
   
   const sessionToken = searchParams.get('sessionToken') || (isResearcherMode ? '00000000-0000-0000-0000-000000000000' : null);
   const prolificId = searchParams.get('prolificId') || (isResearcherMode ? 'RESEARCHER_MODE' : null);
+
+  usePageTracking({
+    pageName: 'demographics',
+    prolificId,
+    callId: null,
+  });
 
   const [formData, setFormData] = useState({
     yearOfBirth: '',
