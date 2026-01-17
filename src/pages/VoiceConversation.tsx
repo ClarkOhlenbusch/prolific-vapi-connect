@@ -17,6 +17,7 @@ import {
 import { Mic, Phone, Clock } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { ExperimentProgress } from "@/components/ExperimentProgress";
+import { usePageTracking } from "@/hooks/usePageTracking";
 
 const VoiceConversation = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
@@ -37,6 +38,12 @@ const VoiceConversation = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isResearcherMode } = useResearcherMode();
+
+  usePageTracking({
+    pageName: 'voice-conversation',
+    prolificId,
+    callId,
+  });
   useEffect(() => {
     // Load IDs from sessionStorage, no validation/redirects
     const storedId = sessionStorage.getItem("prolificId");

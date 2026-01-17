@@ -1,14 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 const Debriefing = () => {
   const navigate = useNavigate();
   const { isResearcherMode } = useResearcherMode();
+  const [prolificId, setProlificId] = useState<string | null>(null);
+
   useEffect(() => {
     // Load IDs from sessionStorage, no validation/redirects
     const storedId = sessionStorage.getItem('prolificId');
@@ -16,8 +19,15 @@ const Debriefing = () => {
     if (!storedId) {
       sessionStorage.setItem('prolificId', 'RESEARCHER_MODE');
     }
+    setProlificId(storedId || 'RESEARCHER_MODE');
     sessionStorage.setItem('flowStep', '5');
   }, []);
+
+  usePageTracking({
+    pageName: 'debriefing',
+    prolificId,
+    callId: sessionStorage.getItem('callId'),
+  });
   const handleContinue = () => {
     navigate('/complete');
   };
