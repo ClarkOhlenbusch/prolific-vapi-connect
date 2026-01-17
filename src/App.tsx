@@ -33,6 +33,7 @@ const ResearcherDashboard = lazy(() => import("./pages/ResearcherDashboard"));
 const ResearcherUserManagement = lazy(() => import("./pages/ResearcherUserManagement"));
 const FormalityBreakdown = lazy(() => import("./pages/FormalityBreakdown"));
 const StatisticalAnalysis = lazy(() => import("./pages/StatisticalAnalysis"));
+const ResponseDetails = lazy(() => import("./pages/ResponseDetails"));
 
 const queryClient = new QueryClient();
 
@@ -124,6 +125,7 @@ const App = () => (
                 <Route path="/researcher/users" element={<ResearcherProtectedRoute><ResearcherUserManagement /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/formality/:id" element={<ResearcherProtectedRoute><FormalityBreakdown /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/statistics" element={<ResearcherProtectedRoute><StatisticalAnalysis /></ResearcherProtectedRoute>} />
+                <Route path="/researcher/response/:id" element={<ResearcherProtectedRoute><ResponseDetails /></ResearcherProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
