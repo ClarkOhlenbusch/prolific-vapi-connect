@@ -108,15 +108,21 @@ const formatNumber = (value: number | null | undefined): string => {
   return Number(value).toFixed(2);
 };
 
-// Section navigation items
+const formatWholeNumber = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return 'N/A';
+  return Math.round(Number(value)).toString();
+};
+
+// Section navigation items - in experiment flow order
 const SECTIONS = [
+  { id: 'demographics', label: 'Demographics', icon: User },
+  { id: 'attention', label: 'Attention Checks', icon: AlertCircle },
+  { id: 'formality', label: 'Formality', icon: Scale },
   { id: 'pets', label: 'PETS', icon: Heart },
   { id: 'tias', label: 'TIAS', icon: Brain },
   { id: 'godspeed', label: 'Godspeed', icon: Lightbulb },
-  { id: 'formality', label: 'Formality & Intention', icon: Scale },
+  { id: 'intention', label: 'Intention', icon: Target },
   { id: 'feedback', label: 'Feedback', icon: MessageSquare },
-  { id: 'demographics', label: 'Demographics', icon: User },
-  { id: 'attention', label: 'Attention Checks', icon: AlertCircle },
 ];
 
 const ResponseDetails = () => {
@@ -302,6 +308,183 @@ const ResponseDetails = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Demographics Section */}
+        <section ref={el => sectionRefs.current['demographics'] = el} id="demographics" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5 text-cyan-500" />
+                Demographics
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.demographics ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-sm text-muted-foreground">Age</label>
+                    <p className="font-medium">{data.demographics.age}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground">Gender</label>
+                    <p className="font-medium">{data.demographics.gender}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground">Native English Speaker</label>
+                    <p className="font-medium">{data.demographics.native_english}</p>
+                  </div>
+                  <div className="col-span-2 md:col-span-3">
+                    <label className="text-sm text-muted-foreground">Ethnicity</label>
+                    <p className="font-medium">
+                      {Array.isArray(data.demographics.ethnicity) 
+                        ? (data.demographics.ethnicity as string[]).join(', ')
+                        : String(data.demographics.ethnicity)}
+                    </p>
+                  </div>
+                  {data.demographics.voice_assistant_familiarity !== null && (
+                    <div>
+                      <label className="text-sm text-muted-foreground">Voice Assistant Familiarity</label>
+                      <p className="font-medium">{formatWholeNumber(data.demographics.voice_assistant_familiarity)} <span className="text-muted-foreground text-xs">(1-7 scale)</span></p>
+                    </div>
+                  )}
+                  {data.demographics.voice_assistant_usage_frequency !== null && (
+                    <div>
+                      <label className="text-sm text-muted-foreground">Voice Assistant Usage Frequency</label>
+                      <p className="font-medium">{formatWholeNumber(data.demographics.voice_assistant_usage_frequency)} <span className="text-muted-foreground text-xs">(1-7 scale)</span></p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground italic">No demographic data available</p>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Attention Checks Section */}
+        <section ref={el => sectionRefs.current['attention'] = el} id="attention" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-orange-500" />
+                Attention Check Results
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* PETS Attention Check */}
+                {data.attention_check_1 !== null && (
+                  <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+                    <span className="font-medium">PETS Attention Check</span>
+                    <div className="flex-1" />
+                    <span className="text-sm">Response: {data.attention_check_1}</span>
+                    <span className="text-sm text-muted-foreground">Expected: {data.attention_check_1_expected}</span>
+                    {data.attention_check_1 === data.attention_check_1_expected ? (
+                      <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Pass</Badge>
+                    ) : (
+                      <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Fail</Badge>
+                    )}
+                  </div>
+                )}
+
+                {/* TIAS Attention Check */}
+                {data.tias_attention_check_1 !== null && (
+                  <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+                    <span className="font-medium">TIAS Attention Check</span>
+                    <div className="flex-1" />
+                    <span className="text-sm">Response: {data.tias_attention_check_1}</span>
+                    <span className="text-sm text-muted-foreground">Expected: {data.tias_attention_check_1_expected}</span>
+                    {data.tias_attention_check_1 === data.tias_attention_check_1_expected ? (
+                      <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Pass</Badge>
+                    ) : (
+                      <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Fail</Badge>
+                    )}
+                  </div>
+                )}
+
+                {/* Godspeed Attention Check */}
+                {data.godspeed_attention_check_1 !== null && (
+                  <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+                    <span className="font-medium">Godspeed Attention Check</span>
+                    <div className="flex-1" />
+                    <span className="text-sm">Response: {data.godspeed_attention_check_1}</span>
+                    <span className="text-sm text-muted-foreground">Expected: {data.godspeed_attention_check_1_expected}</span>
+                    {data.godspeed_attention_check_1 === data.godspeed_attention_check_1_expected ? (
+                      <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Pass</Badge>
+                    ) : (
+                      <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Fail</Badge>
+                    )}
+                  </div>
+                )}
+
+                {data.attention_check_1 === null && data.tias_attention_check_1 === null && data.godspeed_attention_check_1 === null && (
+                  <p className="text-muted-foreground italic">No attention check data available</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Formality Section */}
+        <section ref={el => sectionRefs.current['formality'] = el} id="formality" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Scale className="h-5 w-5 text-purple-500" />
+                Formality Perception
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* User Perception of Formality */}
+              <div>
+                <h4 className="font-medium mb-3">User Perception of Cali's Formality</h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  "How formal did you find Cali?" (1-7 scale)
+                </p>
+                <div className="flex items-center gap-2">
+                  {FORMALITY_SCALE_LABELS.map(item => (
+                    <div 
+                      key={item.value}
+                      className={cn(
+                        "flex-1 py-3 rounded text-center",
+                        data.formality === item.value 
+                          ? "bg-primary text-primary-foreground" 
+                          : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      <div className="text-lg font-bold">{item.value}</div>
+                      <div className="text-xs px-1">{item.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* AI F-Score */}
+              <div>
+                <h4 className="font-medium mb-3">AI-Calculated Formality Score</h4>
+                {data.ai_formality_score !== null ? (
+                  <div className="flex items-center gap-4">
+                    <div className="text-3xl font-bold">{formatNumber(data.ai_formality_score)}</div>
+                    {data.ai_formality_interpretation && (
+                      <Badge variant="outline">{data.ai_formality_interpretation}</Badge>
+                    )}
+                    {formalityCalcId && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => navigate(`/researcher/formality/${formalityCalcId}`)}
+                      >
+                        View Full Breakdown
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">Not calculated</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
 
         {/* PETS Section */}
         <section ref={el => sectionRefs.current['pets'] = el} id="pets" className="scroll-mt-32">
@@ -551,96 +734,41 @@ const ResponseDetails = () => {
           </Card>
         </section>
 
-        {/* Formality & Intention Section */}
-        <section ref={el => sectionRefs.current['formality'] = el} id="formality" className="scroll-mt-32">
+        {/* Intention Section */}
+        <section ref={el => sectionRefs.current['intention'] = el} id="intention" className="scroll-mt-32">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Scale className="h-5 w-5 text-purple-500" />
-                Formality & Behavioral Intention
+                <Target className="h-5 w-5 text-indigo-500" />
+                Behavioral Intention to Use Voice Assistants
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* User Perception of Formality */}
-              <div>
-                <h4 className="font-medium mb-3">User Perception of Cali's Formality</h4>
-                <p className="text-sm text-muted-foreground mb-3">
-                  "How formal did you find Cali?" (1-7 scale)
-                </p>
-                <div className="flex items-center gap-2">
-                  {FORMALITY_SCALE_LABELS.map(item => (
-                    <div 
-                      key={item.value}
-                      className={cn(
-                        "flex-1 py-3 rounded text-center",
-                        data.formality === item.value 
-                          ? "bg-primary text-primary-foreground" 
-                          : "bg-muted text-muted-foreground"
-                      )}
-                    >
-                      <div className="text-lg font-bold">{item.value}</div>
-                      <div className="text-xs px-1">{item.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* AI F-Score */}
-              <div>
-                <h4 className="font-medium mb-3">AI-Calculated Formality Score</h4>
-                {data.ai_formality_score !== null ? (
-                  <div className="flex items-center gap-4">
-                    <div className="text-3xl font-bold">{formatNumber(data.ai_formality_score)}</div>
-                    {data.ai_formality_interpretation && (
-                      <Badge variant="outline">{data.ai_formality_interpretation}</Badge>
-                    )}
-                    {formalityCalcId && (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => navigate(`/researcher/formality/${formalityCalcId}`)}
-                      >
-                        View Full Breakdown
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">Not calculated</p>
-                )}
-              </div>
-
-              {/* Intention */}
-              <div>
-                <h4 className="font-medium mb-3 flex items-center gap-2">
-                  <Target className="h-4 w-4" />
-                  Behavioral Intention to Use Voice Assistants
-                </h4>
-                <div className="space-y-4">
-                  {INTENTION_QUESTIONS.map((question, index) => {
-                    const value = index === 0 ? data.intention_1 : data.intention_2;
-                    return (
-                      <div key={index} className="p-4 bg-muted/50 rounded-lg">
-                        <p className="text-sm mb-3">{question}</p>
-                        <div className="flex gap-1">
-                          {INTENTION_SCALE_LABELS.map((label, i) => (
-                            <div 
-                              key={i}
-                              className={cn(
-                                "flex-1 py-2 rounded text-center text-xs",
-                                value === i + 1 
-                                  ? "bg-primary text-primary-foreground" 
-                                  : "bg-background border"
-                              )}
-                            >
-                              <div className="font-bold">{i + 1}</div>
-                              <div className="hidden sm:block">{label}</div>
-                            </div>
-                          ))}
-                        </div>
+            <CardContent>
+              <div className="space-y-4">
+                {INTENTION_QUESTIONS.map((question, index) => {
+                  const value = index === 0 ? data.intention_1 : data.intention_2;
+                  return (
+                    <div key={index} className="p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm mb-3">{question}</p>
+                      <div className="flex gap-1">
+                        {INTENTION_SCALE_LABELS.map((label, i) => (
+                          <div 
+                            key={i}
+                            className={cn(
+                              "flex-1 py-2 rounded text-center text-xs",
+                              value === i + 1 
+                                ? "bg-primary text-primary-foreground" 
+                                : "bg-background border"
+                            )}
+                          >
+                            <div className="font-bold">{i + 1}</div>
+                            <div className="hidden sm:block">{label}</div>
+                          </div>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -673,122 +801,6 @@ const ResponseDetails = () => {
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
                   {data.experiment_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}
                 </p>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* Demographics Section */}
-        <section ref={el => sectionRefs.current['demographics'] = el} id="demographics" className="scroll-mt-32">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5 text-cyan-500" />
-                Demographics
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {data.demographics ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-sm text-muted-foreground">Age</label>
-                    <p className="font-medium">{data.demographics.age}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Gender</label>
-                    <p className="font-medium">{data.demographics.gender}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Native English Speaker</label>
-                    <p className="font-medium">{data.demographics.native_english}</p>
-                  </div>
-                  <div className="col-span-2 md:col-span-3">
-                    <label className="text-sm text-muted-foreground">Ethnicity</label>
-                    <p className="font-medium">
-                      {Array.isArray(data.demographics.ethnicity) 
-                        ? (data.demographics.ethnicity as string[]).join(', ')
-                        : String(data.demographics.ethnicity)}
-                    </p>
-                  </div>
-                  {data.demographics.voice_assistant_familiarity !== null && (
-                    <div>
-                      <label className="text-sm text-muted-foreground">VA Familiarity</label>
-                      <p className="font-medium">{formatNumber(data.demographics.voice_assistant_familiarity)}</p>
-                    </div>
-                  )}
-                  {data.demographics.voice_assistant_usage_frequency !== null && (
-                    <div>
-                      <label className="text-sm text-muted-foreground">VA Usage Frequency</label>
-                      <p className="font-medium">{formatNumber(data.demographics.voice_assistant_usage_frequency)}</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-muted-foreground italic">No demographic data available</p>
-              )}
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* Attention Checks Section */}
-        <section ref={el => sectionRefs.current['attention'] = el} id="attention" className="scroll-mt-32">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-orange-500" />
-                Attention Check Results
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* PETS Attention Check */}
-                {data.attention_check_1 !== null && (
-                  <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
-                    <span className="font-medium">PETS Attention Check</span>
-                    <div className="flex-1" />
-                    <span className="text-sm">Response: {data.attention_check_1}</span>
-                    <span className="text-sm text-muted-foreground">Expected: {data.attention_check_1_expected}</span>
-                    {data.attention_check_1 === data.attention_check_1_expected ? (
-                      <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Pass</Badge>
-                    ) : (
-                      <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Fail</Badge>
-                    )}
-                  </div>
-                )}
-
-                {/* TIAS Attention Check */}
-                {data.tias_attention_check_1 !== null && (
-                  <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
-                    <span className="font-medium">TIAS Attention Check</span>
-                    <div className="flex-1" />
-                    <span className="text-sm">Response: {data.tias_attention_check_1}</span>
-                    <span className="text-sm text-muted-foreground">Expected: {data.tias_attention_check_1_expected}</span>
-                    {data.tias_attention_check_1 === data.tias_attention_check_1_expected ? (
-                      <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Pass</Badge>
-                    ) : (
-                      <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Fail</Badge>
-                    )}
-                  </div>
-                )}
-
-                {/* Godspeed Attention Check */}
-                {data.godspeed_attention_check_1 !== null && (
-                  <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
-                    <span className="font-medium">Godspeed Attention Check</span>
-                    <div className="flex-1" />
-                    <span className="text-sm">Response: {data.godspeed_attention_check_1}</span>
-                    <span className="text-sm text-muted-foreground">Expected: {data.godspeed_attention_check_1_expected}</span>
-                    {data.godspeed_attention_check_1 === data.godspeed_attention_check_1_expected ? (
-                      <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Pass</Badge>
-                    ) : (
-                      <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Fail</Badge>
-                    )}
-                  </div>
-                )}
-
-                {data.attention_check_1 === null && data.tias_attention_check_1 === null && data.godspeed_attention_check_1 === null && (
-                  <p className="text-muted-foreground italic">No attention check data available</p>
-                )}
               </div>
             </CardContent>
           </Card>
