@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import {
@@ -32,7 +33,8 @@ import {
   Check,
   Eye,
   EyeOff,
-  Columns
+  Columns,
+  ExternalLink
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -410,6 +412,7 @@ const FilterableHeaderCell = ({
 };
 
 export const ExperimentResponsesTable = () => {
+  const navigate = useNavigate();
   const [data, setData] = useState<ExperimentResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1468,7 +1471,23 @@ export const ExperimentResponsesTable = () => {
       <Dialog open={!!viewItem} onOpenChange={() => setViewItem(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Response Details</DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>Response Details</DialogTitle>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  if (viewItem) {
+                    navigate(`/researcher/response/${viewItem.id}?section=pets`);
+                    setViewItem(null);
+                  }
+                }}
+                className="flex items-center gap-2"
+              >
+                <ExternalLink className="h-4 w-4" />
+                View Full Details
+              </Button>
+            </div>
           </DialogHeader>
           <div className="relative">
             <div 
@@ -1564,8 +1583,17 @@ export const ExperimentResponsesTable = () => {
                     )}
                   </div>
                   
-                  <div className="border-t pt-4">
-                    <h4 className="font-medium mb-2">PETS Scores</h4>
+                  <button 
+                    onClick={() => {
+                      navigate(`/researcher/response/${viewItem.id}?section=pets`);
+                      setViewItem(null);
+                    }}
+                    className="w-full text-left border-t pt-4 hover:bg-muted/50 rounded-lg p-3 -mx-1 transition-colors cursor-pointer group"
+                  >
+                    <h4 className="font-medium mb-2 group-hover:text-primary flex items-center gap-2">
+                      PETS Scores
+                      <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </h4>
                     <div className="grid grid-cols-3 gap-4">
                       <div>
                         <label className="text-sm text-muted-foreground">Total</label>
@@ -1580,19 +1608,37 @@ export const ExperimentResponsesTable = () => {
                         <p>{formatNumber(viewItem.pets_ut)}</p>
                       </div>
                     </div>
-                  </div>
+                  </button>
 
                   {viewItem.tias_total !== null && (
-                    <div className="border-t pt-4">
-                      <h4 className="font-medium mb-2">TIAS Score</h4>
+                    <button 
+                      onClick={() => {
+                        navigate(`/researcher/response/${viewItem.id}?section=tias`);
+                        setViewItem(null);
+                      }}
+                      className="w-full text-left border-t pt-4 hover:bg-muted/50 rounded-lg p-3 -mx-1 transition-colors cursor-pointer group"
+                    >
+                      <h4 className="font-medium mb-2 group-hover:text-primary flex items-center gap-2">
+                        TIAS Score
+                        <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </h4>
                       <p className="font-bold">{formatNumber(viewItem.tias_total)}</p>
-                    </div>
+                    </button>
                   )}
 
                   {/* Godspeed Section */}
                   {(viewItem.godspeed_anthro_total !== null || viewItem.godspeed_like_total !== null || viewItem.godspeed_intel_total !== null) && (
-                    <div className="border-t pt-4">
-                      <h4 className="font-medium mb-2">Godspeed Scores</h4>
+                    <button 
+                      onClick={() => {
+                        navigate(`/researcher/response/${viewItem.id}?section=godspeed`);
+                        setViewItem(null);
+                      }}
+                      className="w-full text-left border-t pt-4 hover:bg-muted/50 rounded-lg p-3 -mx-1 transition-colors cursor-pointer group"
+                    >
+                      <h4 className="font-medium mb-2 group-hover:text-primary flex items-center gap-2">
+                        Godspeed Scores
+                        <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </h4>
                       <div className="grid grid-cols-3 gap-4">
                         <div>
                           <label className="text-sm text-muted-foreground">Anthropomorphism</label>
@@ -1607,11 +1653,20 @@ export const ExperimentResponsesTable = () => {
                           <p className="font-bold">{formatNumber(viewItem.godspeed_intel_total)}</p>
                         </div>
                       </div>
-                    </div>
+                    </button>
                   )}
 
-                  <div className="border-t pt-4">
-                    <h4 className="font-medium mb-2">Formality & Intention</h4>
+                  <button 
+                    onClick={() => {
+                      navigate(`/researcher/response/${viewItem.id}?section=formality`);
+                      setViewItem(null);
+                    }}
+                    className="w-full text-left border-t pt-4 hover:bg-muted/50 rounded-lg p-3 -mx-1 transition-colors cursor-pointer group"
+                  >
+                    <h4 className="font-medium mb-2 group-hover:text-primary flex items-center gap-2">
+                      Formality & Intention
+                      <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </h4>
                     <div className="grid grid-cols-2 gap-4 mb-3">
                       <div>
                         <label className="text-sm text-muted-foreground">User Perception</label>
@@ -1620,24 +1675,12 @@ export const ExperimentResponsesTable = () => {
                       <div>
                         <label className="text-sm text-muted-foreground">AI F-Score</label>
                         {viewItem.ai_formality_score !== null && viewItem.ai_formality_score !== undefined ? (
-                          formalityCalcMap.get(viewItem.call_id) ? (
-                            <button
-                              onClick={() => window.location.href = `/researcher/formality/${formalityCalcMap.get(viewItem.call_id)}`}
-                              className="flex flex-col text-left hover:bg-muted/50 rounded px-2 py-1 -mx-2 transition-colors cursor-pointer"
-                            >
-                              <span className="font-medium text-primary hover:underline">{formatNumber(viewItem.ai_formality_score)}</span>
-                              {viewItem.ai_formality_interpretation && (
-                                <span className="text-xs text-muted-foreground">{viewItem.ai_formality_interpretation}</span>
-                              )}
-                            </button>
-                          ) : (
-                            <div>
-                              <p>{formatNumber(viewItem.ai_formality_score)}</p>
-                              {viewItem.ai_formality_interpretation && (
-                                <span className="text-xs text-muted-foreground">{viewItem.ai_formality_interpretation}</span>
-                              )}
-                            </div>
-                          )
+                          <div>
+                            <p>{formatNumber(viewItem.ai_formality_score)}</p>
+                            {viewItem.ai_formality_interpretation && (
+                              <span className="text-xs text-muted-foreground">{viewItem.ai_formality_interpretation}</span>
+                            )}
+                          </div>
                         ) : (
                           <p className="text-muted-foreground">—</p>
                         )}
@@ -1653,31 +1696,40 @@ export const ExperimentResponsesTable = () => {
                         <p>{formatNumber(viewItem.intention_2)}</p>
                       </div>
                     </div>
-                  </div>
+                  </button>
 
-                  <div className="border-t pt-4">
-                    <h4 className="font-medium mb-2">Feedback</h4>
+                  <button 
+                    onClick={() => {
+                      navigate(`/researcher/response/${viewItem.id}?section=feedback`);
+                      setViewItem(null);
+                    }}
+                    className="w-full text-left border-t pt-4 hover:bg-muted/50 rounded-lg p-3 -mx-1 transition-colors cursor-pointer group"
+                  >
+                    <h4 className="font-medium mb-2 group-hover:text-primary flex items-center gap-2">
+                      Feedback
+                      <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </h4>
                     <div className="space-y-3">
                       <div>
                         <label className="text-sm text-muted-foreground">Voice Assistant</label>
-                        <p className="text-sm mt-1 p-2 bg-muted/50 rounded-md">
+                        <p className="text-sm mt-1 p-2 bg-muted/50 rounded-md line-clamp-2">
                           {viewItem.voice_assistant_feedback || <span className="text-muted-foreground italic">No feedback provided</span>}
                         </p>
                       </div>
                       <div>
                         <label className="text-sm text-muted-foreground">Communication Style</label>
-                        <p className="text-sm mt-1 p-2 bg-muted/50 rounded-md">
+                        <p className="text-sm mt-1 p-2 bg-muted/50 rounded-md line-clamp-2">
                           {viewItem.communication_style_feedback || <span className="text-muted-foreground italic">No feedback provided</span>}
                         </p>
                       </div>
                       <div>
                         <label className="text-sm text-muted-foreground">Experiment</label>
-                        <p className="text-sm mt-1 p-2 bg-muted/50 rounded-md">
+                        <p className="text-sm mt-1 p-2 bg-muted/50 rounded-md line-clamp-2">
                           {viewItem.experiment_feedback || <span className="text-muted-foreground italic">No feedback provided</span>}
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 </div>
               )}
             </div>
