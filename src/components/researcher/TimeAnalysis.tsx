@@ -4,13 +4,45 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Clock, Users, TrendingUp } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface PageTimeData {
   page_name: string;
+  display_name: string;
+  order: number;
   avg_time_seconds: number;
   total_visits: number;
   unique_participants: number;
 }
+
+// Page order with display names
+const PAGE_CONFIG: { [key: string]: { order: number; displayName: string } } = {
+  'Consent': { order: 1, displayName: 'Consent' },
+  'ProlificId': { order: 2, displayName: 'Prolific ID' },
+  'Demographics': { order: 3, displayName: 'Demographics' },
+  'VoiceAssistantFamiliarity': { order: 4, displayName: 'Voice Assistant Familiarity' },
+  'PracticeConversation': { order: 5, displayName: 'Warm-Up Conversation' },
+  'VoiceConversation': { order: 6, displayName: 'AI Conversation' },
+  'FormalityQuestionnaire': { order: 7, displayName: 'Formality Perception' },
+  'Questionnaire': { order: 8, displayName: 'PETS Questionnaire' },
+  'TiasQuestionnaire': { order: 9, displayName: 'TIAS Questionnaire' },
+  'GodspeedQuestionnaire': { order: 10, displayName: 'Godspeed Questionnaire' },
+  'IntentionQuestionnaire': { order: 11, displayName: 'Intention Questionnaire' },
+  'FeedbackQuestionnaire': { order: 12, displayName: 'Feedback Questionnaire' },
+  'Debriefing': { order: 13, displayName: 'Debriefing' },
+  'Complete': { order: 14, displayName: 'Complete' },
+  'NoConsent': { order: 15, displayName: 'No Consent' },
+  'FormalityBreakdown': { order: 16, displayName: 'Formality Breakdown' },
+};
+
+const CHART_COLORS = [
+  'hsl(var(--primary))',
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-5))',
+];
 
 export const TimeAnalysis = () => {
   const [data, setData] = useState<PageTimeData[]>([]);
@@ -48,39 +80,20 @@ export const TimeAnalysis = () => {
         allParticipants.add(event.prolific_id);
       });
 
-      // Convert to array and sort by page flow order
-      const pageOrder = [
-        'Consent',
-        'ProlificId',
-        'Demographics',
-        'VoiceAssistantFamiliarity',
-        'PracticeConversation',
-        'VoiceConversation',
-        'FormalityQuestionnaire',
-        'Questionnaire',
-        'TiasQuestionnaire',
-        'GodspeedQuestionnaire',
-        'IntentionQuestionnaire',
-        'FeedbackQuestionnaire',
-        'Debriefing',
-        'Complete'
-      ];
-
+      // Convert to array with display names and order
       const formattedData: PageTimeData[] = Object.entries(pageStats)
-        .map(([page_name, stats]) => ({
-          page_name,
-          avg_time_seconds: stats.visits > 0 ? stats.totalTime / stats.visits : 0,
-          total_visits: stats.visits,
-          unique_participants: stats.participants.size
-        }))
-        .sort((a, b) => {
-          const indexA = pageOrder.indexOf(a.page_name);
-          const indexB = pageOrder.indexOf(b.page_name);
-          if (indexA === -1 && indexB === -1) return a.page_name.localeCompare(b.page_name);
-          if (indexA === -1) return 1;
-          if (indexB === -1) return -1;
-          return indexA - indexB;
-        });
+        .map(([page_name, stats]) => {
+          const config = PAGE_CONFIG[page_name] || { order: 99, displayName: formatPageName(page_name) };
+          return {
+            page_name,
+            display_name: config.displayName,
+            order: config.order,
+            avg_time_seconds: stats.visits > 0 ? stats.totalTime / stats.visits : 0,
+            total_visits: stats.visits,
+            unique_participants: stats.participants.size
+          };
+        })
+        .sort((a, b) => a.order - b.order);
 
       setData(formattedData);
       setTotalParticipants(allParticipants.size);
@@ -89,6 +102,14 @@ export const TimeAnalysis = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatPageName = (name: string): string => {
+    // Convert camelCase or PascalCase to Title Case with spaces
+    return name
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, str => str.toUpperCase())
+      .trim();
   };
 
   const formatTime = (seconds: number): string => {
@@ -101,6 +122,14 @@ export const TimeAnalysis = () => {
   };
 
   const totalAvgTime = data.reduce((sum, page) => sum + page.avg_time_seconds, 0);
+
+  // Prepare chart data
+  const chartData = data.map((page) => ({
+    name: page.display_name,
+    shortName: page.display_name.length > 15 ? page.display_name.substring(0, 12) + '...' : page.display_name,
+    time: Math.round(page.avg_time_seconds),
+    fullName: page.display_name,
+  }));
 
   if (loading) {
     return (
@@ -162,18 +191,78 @@ export const TimeAnalysis = () => {
         </Card>
       </div>
 
+      {/* Visual Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Time Distribution by Page</CardTitle>
+          <CardDescription>
+            Visual representation of average time spent on each page (in seconds)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData}
+                layout="vertical"
+                margin={{ top: 5, right: 30, left: 150, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis 
+                  type="number" 
+                  className="text-xs fill-muted-foreground"
+                  tickFormatter={(value) => `${value}s`}
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="name" 
+                  className="text-xs fill-muted-foreground"
+                  width={140}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-popover border rounded-lg shadow-lg p-3">
+                          <p className="font-medium">{data.fullName}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Avg. time: <span className="font-mono">{formatTime(data.time)}</span>
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar dataKey="time" radius={[0, 4, 4, 0]}>
+                  {chartData.map((_, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={CHART_COLORS[index % CHART_COLORS.length]} 
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Time Table */}
       <Card>
         <CardHeader>
           <CardTitle>Average Time per Page</CardTitle>
           <CardDescription>
-            Time spent on each page during the experiment flow
+            Detailed breakdown of time spent on each page during the experiment flow
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-16">Order</TableHead>
                 <TableHead>Page</TableHead>
                 <TableHead className="text-right">Avg. Time</TableHead>
                 <TableHead className="text-right">Total Visits</TableHead>
@@ -183,7 +272,10 @@ export const TimeAnalysis = () => {
             <TableBody>
               {data.map((page) => (
                 <TableRow key={page.page_name}>
-                  <TableCell className="font-medium">{page.page_name}</TableCell>
+                  <TableCell className="font-mono text-muted-foreground">
+                    {page.order < 99 ? page.order : '-'}
+                  </TableCell>
+                  <TableCell className="font-medium">{page.display_name}</TableCell>
                   <TableCell className="text-right">
                     <span className="font-mono">{formatTime(page.avg_time_seconds)}</span>
                   </TableCell>
@@ -193,7 +285,7 @@ export const TimeAnalysis = () => {
               ))}
               {data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                     No time tracking data available
                   </TableCell>
                 </TableRow>
