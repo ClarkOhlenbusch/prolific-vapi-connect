@@ -103,6 +103,22 @@ const FORMALITY_SCALE_LABELS = [
 
 const INTENTION_SCALE_LABELS = ["Not at all", "Slightly", "Somewhat", "Moderately", "Quite a bit", "Very", "Extremely"];
 
+const FAMILIARITY_LABELS: { [key: number]: string } = {
+  1: "Not familiar at all",
+  2: "Somewhat familiar",
+  3: "Moderately familiar",
+  4: "Very familiar",
+  5: "Completely familiar",
+};
+
+const USAGE_FREQUENCY_LABELS: { [key: number]: string } = {
+  1: "Never",
+  2: "More than once a year",
+  3: "More than once a month",
+  4: "More than once a week",
+  5: "More than once a day",
+};
+
 const formatNumber = (value: number | null | undefined): string => {
   if (value === null || value === undefined) return 'N/A';
   return Number(value).toFixed(2);
@@ -344,13 +360,17 @@ const ResponseDetails = () => {
                   {data.demographics.voice_assistant_familiarity !== null && (
                     <div>
                       <label className="text-sm text-muted-foreground">Voice Assistant Familiarity</label>
-                      <p className="font-medium">{formatWholeNumber(data.demographics.voice_assistant_familiarity)} <span className="text-muted-foreground text-xs">(1-7 scale)</span></p>
+                      <p className="font-medium">
+                        {FAMILIARITY_LABELS[data.demographics.voice_assistant_familiarity] || formatWholeNumber(data.demographics.voice_assistant_familiarity)}
+                      </p>
                     </div>
                   )}
                   {data.demographics.voice_assistant_usage_frequency !== null && (
                     <div>
                       <label className="text-sm text-muted-foreground">Voice Assistant Usage Frequency</label>
-                      <p className="font-medium">{formatWholeNumber(data.demographics.voice_assistant_usage_frequency)} <span className="text-muted-foreground text-xs">(1-7 scale)</span></p>
+                      <p className="font-medium">
+                        {USAGE_FREQUENCY_LABELS[data.demographics.voice_assistant_usage_frequency] || formatWholeNumber(data.demographics.voice_assistant_usage_frequency)}
+                      </p>
                     </div>
                   )}
                 </div>
