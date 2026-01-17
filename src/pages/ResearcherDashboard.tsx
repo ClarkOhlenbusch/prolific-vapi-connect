@@ -12,7 +12,8 @@ import {
   Archive,
   Settings,
   Calculator,
-  MessageSquare
+  MessageSquare,
+  Clock
 } from 'lucide-react';
 import { ExperimentResponsesTable } from '@/components/researcher/ExperimentResponsesTable';
 import { ParticipantCallsTable } from '@/components/researcher/ParticipantCallsTable';
@@ -21,6 +22,7 @@ import { DataSummary } from '@/components/researcher/DataSummary';
 import { ExperimentSettings } from '@/components/researcher/ExperimentSettings';
 import { FormalityCalculator } from '@/components/researcher/FormalityCalculator';
 import { PromptLab } from '@/components/researcher/PromptLab';
+import { TimeAnalysis } from '@/components/researcher/TimeAnalysis';
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 
@@ -85,7 +87,7 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-7">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-8">
             <TabsTrigger value="summary" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Summary</span>
@@ -97,6 +99,10 @@ const ResearcherDashboard = () => {
             <TabsTrigger value="calls" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
               <span className="hidden sm:inline">Calls</span>
+            </TabsTrigger>
+            <TabsTrigger value="time" className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              <span className="hidden sm:inline">Time Analysis</span>
             </TabsTrigger>
             <TabsTrigger value="formality" className="flex items-center gap-2">
               <Calculator className="h-4 w-4" />
@@ -150,6 +156,10 @@ const ResearcherDashboard = () => {
                 <ParticipantCallsTable />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="time">
+            <TimeAnalysis />
           </TabsContent>
 
           <TabsContent value="formality">
