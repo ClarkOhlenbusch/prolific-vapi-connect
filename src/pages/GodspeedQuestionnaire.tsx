@@ -131,18 +131,70 @@ const GodspeedQuestionnaire = () => {
     };
   }, []);
 
-  const { randomizedItems, positionMap } = useMemo(() => {
-    const allItems: GodspeedQuestionItem[] = [...ALL_GODSPEED_ITEMS];
-    const shuffled = allItems.sort(() => Math.random() - 0.5);
-    const acPosition = Math.floor(Math.random() * (shuffled.length + 1));
-    shuffled.splice(acPosition, 0, attentionCheck);
+  // Block header type for rendering section titles
+  interface BlockHeader {
+    type: 'header';
+    title: string;
+    key: string;
+  }
 
+  type RenderItem = GodspeedQuestionItem | BlockHeader;
+
+  const { randomizedItems, positionMap, renderItems } = useMemo(() => {
+    // Shuffle items within each subscale block
+    const shuffledAnthro = [...ANTHROPOMORPHISM_ITEMS].sort(() => Math.random() - 0.5);
+    const shuffledLike = [...LIKEABILITY_ITEMS].sort(() => Math.random() - 0.5);
+    const shuffledIntel = [...INTELLIGENCE_ITEMS].sort(() => Math.random() - 0.5);
+
+    // Create block structure and randomize block order
+    const blocks = [
+      { name: 'Anthropomorphism', items: shuffledAnthro },
+      { name: 'Likeability', items: shuffledLike },
+      { name: 'Intelligence', items: shuffledIntel },
+    ];
+    
+    // Shuffle block order
+    const shuffledBlocks = blocks.sort(() => Math.random() - 0.5);
+    
+    // Flatten blocks into single array (questions only, for position tracking)
+    const allItems: GodspeedQuestionItem[] = shuffledBlocks.flatMap(b => b.items);
+    
+    // Insert attention check at random position
+    const acPosition = Math.floor(Math.random() * (allItems.length + 1));
+    allItems.splice(acPosition, 0, attentionCheck);
+
+    // Track positions
     const positions: Record<string, number> = {};
-    shuffled.forEach((item, index) => {
+    allItems.forEach((item, index) => {
       positions[item.key] = index + 1;
     });
 
-    return { randomizedItems: shuffled, positionMap: positions };
+    // Build render items with headers
+    const render: RenderItem[] = [];
+    let questionIndex = 0;
+    
+    shuffledBlocks.forEach((block) => {
+      // Add block header
+      render.push({ type: 'header', title: block.name, key: `header-${block.name}` });
+      
+      // Add items from this block, inserting attention check at correct position
+      block.items.forEach((item) => {
+        // Check if attention check should come before this item
+        while (questionIndex === acPosition && questionIndex < allItems.length) {
+          render.push(attentionCheck);
+          questionIndex++;
+        }
+        render.push(item);
+        questionIndex++;
+      });
+    });
+    
+    // If attention check is at the very end
+    if (questionIndex === acPosition) {
+      render.push(attentionCheck);
+    }
+
+    return { randomizedItems: allItems, positionMap: positions, renderItems: render };
   }, [attentionCheck]);
 
   useEffect(() => {
@@ -307,30 +359,43 @@ const GodspeedQuestionnaire = () => {
           </div>
 
           <div className="space-y-6">
-            {randomizedItems.map((item, index) => {
-              const hasError = showValidationErrors && (!responses[item.key] || responses[item.key] === 0);
+            {renderItems.map((item, index) => {
+              // Render block header
+              if ('type' in item && item.type === 'header') {
+                return (
+                  <div key={item.key} className="pt-4 first:pt-0">
+                    <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2 mb-4">
+                      {item.title}
+                    </h3>
+                  </div>
+                );
+              }
+
+              const questionItem = item as GodspeedQuestionItem;
+              const questionNumber = positionMap[questionItem.key];
+              const hasError = showValidationErrors && (!responses[questionItem.key] || responses[questionItem.key] === 0);
               
-              if (isAttentionCheck(item)) {
+              if (isAttentionCheck(questionItem)) {
                 // Render attention check as simple radio question
                 return (
-                  <div key={item.key} className={`space-y-3 pb-6 border-b border-border last:border-b-0 p-4 rounded-lg transition-colors ${hasError ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
+                  <div key={questionItem.key} className={`space-y-3 pb-6 border-b border-border last:border-b-0 p-4 rounded-lg transition-colors ${hasError ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
                     <div className="flex items-start gap-3">
-                      <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
+                      <span className="text-sm font-semibold text-muted-foreground mt-1">{questionNumber}.</span>
                       <label className={`text-sm flex-1 font-medium ${hasError ? 'text-destructive' : 'text-foreground'}`}>
-                        {item.text}
+                        {questionItem.text}
                         {hasError && <span className="ml-2 text-xs font-normal">(Please answer this question)</span>}
                       </label>
                     </div>
                     <div className="pl-6">
                       <RadioGroup
-                        value={responses[item.key]?.toString()}
-                        onValueChange={(value) => handleRadioChange(item.key, value)}
+                        value={responses[questionItem.key]?.toString()}
+                        onValueChange={(value) => handleRadioChange(questionItem.key, value)}
                         className="flex gap-4 justify-center"
                       >
                         {SCALE_OPTIONS.map((opt) => (
                           <div key={opt} className="flex flex-col items-center space-y-1">
-                            <RadioGroupItem value={opt.toString()} id={`${item.key}-${opt}`} />
-                            <Label htmlFor={`${item.key}-${opt}`} className="text-xs font-normal cursor-pointer">
+                            <RadioGroupItem value={opt.toString()} id={`${questionItem.key}-${opt}`} />
+                            <Label htmlFor={`${questionItem.key}-${opt}`} className="text-xs font-normal cursor-pointer">
                               {opt}
                             </Label>
                           </div>
@@ -341,33 +406,34 @@ const GodspeedQuestionnaire = () => {
                 );
               }
 
+              const semanticItem = questionItem as GodspeedItem;
               // Render semantic differential item
               return (
-                <div key={item.key} className={`space-y-3 pb-6 border-b border-border last:border-b-0 p-4 rounded-lg transition-colors ${hasError ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
+                <div key={semanticItem.key} className={`space-y-3 pb-6 border-b border-border last:border-b-0 p-4 rounded-lg transition-colors ${hasError ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
                   <div className="flex items-start gap-3">
-                    <span className="text-sm font-semibold text-muted-foreground mt-1">{index + 1}.</span>
+                    <span className="text-sm font-semibold text-muted-foreground mt-1">{questionNumber}.</span>
                     <div className="flex-1">
                       {hasError && <span className="text-xs text-destructive font-normal">(Please answer this question)</span>}
                     </div>
                   </div>
                   <div className="pl-6">
                     <div className="flex items-center justify-between gap-4">
-                      <span className="text-sm font-medium w-28 text-right">{item.leftLabel}</span>
+                      <span className="text-sm font-medium w-28 text-right">{semanticItem.leftLabel}</span>
                       <RadioGroup
-                        value={responses[item.key]?.toString()}
-                        onValueChange={(value) => handleRadioChange(item.key, value)}
+                        value={responses[semanticItem.key]?.toString()}
+                        onValueChange={(value) => handleRadioChange(semanticItem.key, value)}
                         className="flex gap-4"
                       >
                         {SCALE_OPTIONS.map((opt) => (
                           <div key={opt} className="flex flex-col items-center space-y-1">
-                            <RadioGroupItem value={opt.toString()} id={`${item.key}-${opt}`} />
-                            <Label htmlFor={`${item.key}-${opt}`} className="text-xs text-muted-foreground cursor-pointer">
+                            <RadioGroupItem value={opt.toString()} id={`${semanticItem.key}-${opt}`} />
+                            <Label htmlFor={`${semanticItem.key}-${opt}`} className="text-xs text-muted-foreground cursor-pointer">
                               {opt}
                             </Label>
                           </div>
                         ))}
                       </RadioGroup>
-                      <span className="text-sm font-medium w-28 text-left">{item.rightLabel}</span>
+                      <span className="text-sm font-medium w-28 text-left">{semanticItem.rightLabel}</span>
                     </div>
                   </div>
                 </div>
