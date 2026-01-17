@@ -420,7 +420,7 @@ const GodspeedQuestionnaire = () => {
                     <RadioGroup
                       value={responses[semanticItem.key]?.toString()}
                       onValueChange={(value) => handleRadioChange(semanticItem.key, value)}
-                      className="flex items-center justify-center gap-2"
+                      className="flex items-center justify-start gap-2"
                     >
                       <span className="text-sm font-medium text-right min-w-[100px]">{semanticItem.leftLabel}</span>
                       {SCALE_OPTIONS.map((opt) => (
