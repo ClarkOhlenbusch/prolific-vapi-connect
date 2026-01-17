@@ -15,24 +15,24 @@ interface PageTimeData {
   unique_participants: number;
 }
 
-// Page order with display names
+// Page order with display names - keys match database page_name values (lowercase)
 const PAGE_CONFIG: { [key: string]: { order: number; displayName: string } } = {
-  'Consent': { order: 1, displayName: 'Consent' },
-  'ProlificId': { order: 2, displayName: 'Prolific ID' },
-  'Demographics': { order: 3, displayName: 'Demographics' },
-  'VoiceAssistantFamiliarity': { order: 4, displayName: 'Voice Assistant Familiarity' },
-  'PracticeConversation': { order: 5, displayName: 'Warm-Up Conversation' },
-  'VoiceConversation': { order: 6, displayName: 'AI Conversation' },
-  'FormalityQuestionnaire': { order: 7, displayName: 'Formality Perception' },
-  'Questionnaire': { order: 8, displayName: 'PETS Questionnaire' },
-  'TiasQuestionnaire': { order: 9, displayName: 'TIAS Questionnaire' },
-  'GodspeedQuestionnaire': { order: 10, displayName: 'Godspeed Questionnaire' },
-  'IntentionQuestionnaire': { order: 11, displayName: 'Intention Questionnaire' },
-  'FeedbackQuestionnaire': { order: 12, displayName: 'Feedback Questionnaire' },
-  'Debriefing': { order: 13, displayName: 'Debriefing' },
-  'Complete': { order: 14, displayName: 'Complete' },
-  'NoConsent': { order: 15, displayName: 'No Consent' },
-  'FormalityBreakdown': { order: 16, displayName: 'Formality Breakdown' },
+  'consent': { order: 1, displayName: 'Consent' },
+  'prolific-id': { order: 2, displayName: 'Prolific ID' },
+  'demographics': { order: 3, displayName: 'Demographics' },
+  'voice-assistant-familiarity': { order: 4, displayName: 'Voice Assistant Familiarity' },
+  'practice-conversation': { order: 5, displayName: 'Warm-Up Conversation' },
+  'voice-conversation': { order: 6, displayName: 'AI Conversation' },
+  'formality': { order: 7, displayName: 'Formality Perception' },
+  'pets': { order: 8, displayName: 'PETS Questionnaire' },
+  'tias': { order: 9, displayName: 'TIAS Questionnaire' },
+  'godspeed': { order: 10, displayName: 'Godspeed Questionnaire' },
+  'intention': { order: 11, displayName: 'Intention Questionnaire' },
+  'feedback': { order: 12, displayName: 'Feedback Questionnaire' },
+  'debriefing': { order: 13, displayName: 'Debriefing' },
+  'complete': { order: 14, displayName: 'Complete' },
+  'no-consent': { order: 15, displayName: 'No Consent' },
+  'formality-breakdown': { order: 16, displayName: 'Formality Breakdown' },
 };
 
 const CHART_COLORS = [
