@@ -668,6 +668,27 @@ export type Database = {
         }
         Relationships: []
       }
+      participant_condition_assignments: {
+        Row: {
+          assigned_at: string
+          assigned_condition: string
+          id: string
+          prolific_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_condition: string
+          id?: string
+          prolific_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_condition?: string
+          id?: string
+          prolific_id?: string
+        }
+        Relationships: []
+      }
       pets_responses: {
         Row: {
           attention_check_1: number | null
