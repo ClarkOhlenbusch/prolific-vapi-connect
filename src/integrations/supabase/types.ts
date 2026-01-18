@@ -864,6 +864,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_next_condition_assignment: {
+        Args: { p_prolific_id: string }
+        Returns: Json
+      }
       get_researcher_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["researcher_role"]
