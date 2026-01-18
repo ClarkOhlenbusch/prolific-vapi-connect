@@ -30,14 +30,22 @@ const PracticeConversation = () => {
     prolificId,
     callId: null,
   });
-  // Fetch experiment config to get practice assistant ID
-  // Note: We don't pass prolificId here because practice calls shouldn't affect the counter
-  // The actual condition is assigned when they reach VoiceConversation
+  // Fetch experiment config and assign condition during practice
+  // This is where the atomic condition assignment happens for real participants
+  // The assigned condition is stored in sessionStorage for the main conversation
   useEffect(() => {
     const fetchConfig = async () => {
+      // Get prolificId from URL or storage
+      const prolificIdFromUrl = searchParams.get('prolificId');
+      const storedProlificId = sessionStorage.getItem('prolificId');
+      const currentProlificId = prolificIdFromUrl || storedProlificId;
+      
       try {
-        // Don't pass prolificId - practice calls use static config and don't increment counters
-        const { data, error } = await supabase.functions.invoke('get-experiment-config');
+        // Pass prolificId to trigger atomic condition assignment
+        // Real participants (24-char IDs) will be counted, testers won't
+        const { data, error } = await supabase.functions.invoke('get-experiment-config', {
+          body: { prolificId: currentProlificId }
+        });
         if (error) {
           console.error('Error fetching experiment config:', error);
           return;
@@ -45,12 +53,18 @@ const PracticeConversation = () => {
         if (data?.practiceAssistantId) {
           setPracticeAssistantId(data.practiceAssistantId);
         }
+        // Store the assigned condition for the main conversation
+        if (data?.assistantType) {
+          sessionStorage.setItem('assistantType', data.assistantType);
+          sessionStorage.setItem('assistantId', data.assistantId);
+          console.log(`[PracticeConversation] Condition assigned: ${data.assistantType}`, data.stats);
+        }
       } catch (err) {
         console.error('Failed to fetch experiment config:', err);
       }
     };
     fetchConfig();
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     // Load IDs from URL or sessionStorage, no validation/redirects
