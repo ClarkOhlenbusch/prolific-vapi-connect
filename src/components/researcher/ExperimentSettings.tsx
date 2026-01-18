@@ -7,9 +7,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useResearcherAuth } from "@/contexts/ResearcherAuthContext";
-import { RefreshCw, RotateCcw, Users } from "lucide-react";
+import { RefreshCw, RotateCcw, Users, Filter } from "lucide-react";
 
 const ASSISTANT_IDS = {
   formal: "77569740-f001-4419-92f8-78a6ed2dde70",
@@ -21,19 +23,16 @@ const PRACTICE_ASSISTANT_IDS = {
   informal: "30394944-4d48-4586-8e6d-cd3d6b347e80",
 };
 
-interface ExperimentSetting {
-  setting_key: string;
-  setting_value: string;
-  updated_at: string;
-}
-
 export const ExperimentSettings = () => {
   const { isSuperAdmin, user } = useResearcherAuth();
   const [assistantType, setAssistantType] = useState<"formal" | "informal">("informal");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  
+
+  // Mode toggle: "alternating" or "static"
+  const [activeMode, setActiveMode] = useState<"alternating" | "static">("alternating");
+
   // Batch label state
   const [batchLabel, setBatchLabel] = useState("");
   const [batchLabelInput, setBatchLabelInput] = useState("");
@@ -49,9 +48,20 @@ export const ExperimentSettings = () => {
   const [offsetInput, setOffsetInput] = useState("");
   const [isSavingAlternating, setIsSavingAlternating] = useState(false);
 
+  // Batch filtering for counts
+  const [availableBatches, setAvailableBatches] = useState<string[]>([]);
+  const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
+  const [batchCounts, setBatchCounts] = useState<{ formal: number; informal: number }>({ formal: 0, informal: 0 });
+  const [isLoadingBatchCounts, setIsLoadingBatchCounts] = useState(false);
+
   useEffect(() => {
     fetchSettings();
+    fetchAvailableBatches();
   }, []);
+
+  useEffect(() => {
+    fetchBatchCounts();
+  }, [selectedBatches]);
 
   const fetchSettings = async () => {
     try {
@@ -76,13 +86,13 @@ export const ExperimentSettings = () => {
       if (data) {
         const getValue = (key: string) => data.find(s => s.setting_key === key)?.setting_value;
         const getUpdated = (key: string) => data.find(s => s.setting_key === key)?.updated_at;
-        
+
         const assistantSetting = getValue("active_assistant_type");
         if (assistantSetting) {
           setAssistantType(assistantSetting as "formal" | "informal");
           setLastUpdated(getUpdated("active_assistant_type") || null);
         }
-        
+
         const batchSetting = getValue("current_batch_label");
         if (batchSetting !== undefined) {
           setBatchLabel(batchSetting);
@@ -91,7 +101,9 @@ export const ExperimentSettings = () => {
         }
 
         // Alternating mode settings
-        setAlternatingEnabled(getValue("alternating_mode_enabled") === "true");
+        const altEnabled = getValue("alternating_mode_enabled") === "true";
+        setAlternatingEnabled(altEnabled);
+        setActiveMode(altEnabled ? "alternating" : "static");
         setFormalCount(parseInt(getValue("formal_participant_count") || "0", 10));
         setInformalCount(parseInt(getValue("informal_participant_count") || "0", 10));
         setOffsetCount(parseInt(getValue("condition_offset_count") || "0", 10));
@@ -102,6 +114,53 @@ export const ExperimentSettings = () => {
       console.error("Error:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchAvailableBatches = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("experiment_responses")
+        .select("batch_label")
+        .not("batch_label", "is", null);
+
+      if (error) {
+        console.error("Error fetching batches:", error);
+        return;
+      }
+
+      const uniqueBatches = [...new Set(data?.map(r => r.batch_label).filter(Boolean))] as string[];
+      setAvailableBatches(uniqueBatches.sort());
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
+
+  const fetchBatchCounts = async () => {
+    setIsLoadingBatchCounts(true);
+    try {
+      let query = supabase
+        .from("experiment_responses")
+        .select("assistant_type");
+
+      if (selectedBatches.length > 0) {
+        query = query.in("batch_label", selectedBatches);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("Error fetching batch counts:", error);
+        return;
+      }
+
+      const formal = data?.filter(r => r.assistant_type === "formal").length || 0;
+      const informal = data?.filter(r => r.assistant_type === "informal").length || 0;
+      setBatchCounts({ formal, informal });
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setIsLoadingBatchCounts(false);
     }
   };
 
@@ -177,12 +236,13 @@ export const ExperimentSettings = () => {
     }
   };
 
-  const handleToggleAlternating = async (enabled: boolean) => {
+  const handleModeChange = async (mode: "alternating" | "static") => {
     if (!isSuperAdmin) {
       toast.error("Only super admins can change this setting");
       return;
     }
 
+    const enabled = mode === "alternating";
     setIsSavingAlternating(true);
 
     try {
@@ -196,13 +256,14 @@ export const ExperimentSettings = () => {
         .eq("setting_key", "alternating_mode_enabled");
 
       if (error) {
-        console.error("Error toggling alternating mode:", error);
+        console.error("Error toggling mode:", error);
         toast.error("Failed to update setting");
         return;
       }
 
       setAlternatingEnabled(enabled);
-      toast.success(enabled ? "Alternating mode enabled" : "Alternating mode disabled");
+      setActiveMode(mode);
+      toast.success(enabled ? "Switched to Alternating Mode" : "Switched to Static Mode");
     } catch (error) {
       console.error("Error:", error);
       toast.error("Failed to update setting");
@@ -226,7 +287,6 @@ export const ExperimentSettings = () => {
     setIsSavingAlternating(true);
 
     try {
-      // Update both offset count and type
       const updates = [
         supabase
           .from("experiment_settings")
@@ -327,7 +387,14 @@ export const ExperimentSettings = () => {
     }
   };
 
-  // Calculate what the next condition will be
+  const toggleBatchSelection = (batch: string) => {
+    setSelectedBatches(prev =>
+      prev.includes(batch)
+        ? prev.filter(b => b !== batch)
+        : [...prev, batch]
+    );
+  };
+
   const getNextCondition = (): "formal" | "informal" => {
     if (!alternatingEnabled) return assistantType;
     if (offsetCount > 0) return offsetType;
@@ -337,15 +404,6 @@ export const ExperimentSettings = () => {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-4 w-72" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-20 w-full" />
-          </CardContent>
-        </Card>
         <Card>
           <CardHeader>
             <Skeleton className="h-6 w-48" />
@@ -381,249 +439,316 @@ export const ExperimentSettings = () => {
         </CardContent>
       </Card>
 
-      {/* Alternating Mode Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <RefreshCw className="h-5 w-5" />
-            Alternating Condition Assignment
-          </CardTitle>
-          <CardDescription>
-            Automatically alternate between formal and informal conditions for real participants (24-char Prolific IDs only)
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Toggle */}
-          <div className="flex items-center justify-between p-4 border rounded-lg">
-            <div className="space-y-1">
-              <Label className="text-base font-medium">Enable Alternating Mode</Label>
-              <p className="text-sm text-muted-foreground">
-                When enabled, real participants are automatically assigned to balance conditions
-              </p>
-            </div>
-            <Switch
-              checked={alternatingEnabled}
-              onCheckedChange={handleToggleAlternating}
-              disabled={!isSuperAdmin || isSavingAlternating}
-            />
-          </div>
-
-          {/* Current Counts */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="p-4 border rounded-lg bg-muted/50">
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-base font-medium">Formal Participants</Label>
-                <Badge variant="outline" className="text-lg">{formalCount}</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Real participants assigned to formal condition
-              </p>
-            </div>
-            <div className="p-4 border rounded-lg bg-muted/50">
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-base font-medium">Informal Participants</Label>
-                <Badge variant="outline" className="text-lg">{informalCount}</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Real participants assigned to informal condition
-              </p>
-            </div>
-          </div>
-
-          {/* Balance indicator */}
-          <div className="p-4 border rounded-lg">
-            <Label className="text-base font-medium mb-2 block">Balance Status</Label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 bg-blue-500 rounded-l h-4" style={{ 
-                width: `${formalCount + informalCount > 0 ? (formalCount / (formalCount + informalCount)) * 100 : 50}%` 
-              }} />
-              <div className="flex-1 bg-orange-500 rounded-r h-4" style={{ 
-                width: `${formalCount + informalCount > 0 ? (informalCount / (formalCount + informalCount)) * 100 : 50}%` 
-              }} />
-            </div>
-            <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-              <span>Formal: {formalCount + informalCount > 0 ? Math.round((formalCount / (formalCount + informalCount)) * 100) : 50}%</span>
-              <span>Informal: {formalCount + informalCount > 0 ? Math.round((informalCount / (formalCount + informalCount)) * 100) : 50}%</span>
-            </div>
-          </div>
-
-          {/* Offset Input */}
-          <div className="p-4 border rounded-lg space-y-4">
-            <div>
-              <Label className="text-base font-medium">Condition Offset (Rebalancing)</Label>
-              <p className="text-sm text-muted-foreground">
-                Force the next N real participants to a specific condition to rebalance
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm">Next</span>
-              <Input
-                type="number"
-                min="0"
-                value={offsetInput}
-                onChange={(e) => setOffsetInput(e.target.value)}
-                disabled={!isSuperAdmin || isSavingAlternating}
-                className="w-20"
-              />
-              <span className="text-sm">participants →</span>
-              <select
-                value={offsetType}
-                onChange={(e) => setOffsetType(e.target.value as "formal" | "informal")}
-                disabled={!isSuperAdmin || isSavingAlternating}
-                className="h-10 px-3 border rounded-md bg-background"
-              >
-                <option value="formal">Formal</option>
-                <option value="informal">Informal</option>
-              </select>
-              <Button 
-                onClick={handleSetOffset}
-                disabled={!isSuperAdmin || isSavingAlternating}
-                size="sm"
-              >
-                Set Offset
-              </Button>
-            </div>
-            {offsetCount > 0 && (
-              <Badge variant="destructive">
-                Offset active: Next {offsetCount} → {offsetType}
-              </Badge>
-            )}
-          </div>
-
-          {/* Reset Button */}
-          <div className="flex items-center justify-between p-4 border rounded-lg border-destructive/50">
-            <div className="space-y-1">
-              <Label className="text-base font-medium text-destructive">Reset All Counters</Label>
-              <p className="text-sm text-muted-foreground">
-                Reset formal, informal, and offset counters to 0
-              </p>
-            </div>
-            <Button 
-              variant="destructive"
-              onClick={handleResetCounters}
-              disabled={!isSuperAdmin || isSavingAlternating}
-              size="sm"
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Reset
-            </Button>
-          </div>
-
-          <Button 
-            variant="outline" 
-            onClick={fetchSettings}
-            disabled={isSavingAlternating}
-            className="w-full"
-          >
+      {/* Mode Toggle Tabs */}
+      <Tabs value={activeMode} onValueChange={(v) => handleModeChange(v as "alternating" | "static")}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="alternating" disabled={isSavingAlternating || !isSuperAdmin}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh Counts
-          </Button>
+            Alternating Mode
+          </TabsTrigger>
+          <TabsTrigger value="static" disabled={isSavingAlternating || !isSuperAdmin}>
+            Static Mode
+          </TabsTrigger>
+        </TabsList>
 
-          {!isSuperAdmin && (
-            <p className="text-sm text-amber-600">
-              Only super admins can modify these settings
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Static Assistant Selection (used when alternating is off, or for testers) */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Static Voice Assistant Configuration</CardTitle>
-          <CardDescription>
-            {alternatingEnabled 
-              ? "Used for testers (non-24-char Prolific IDs) when alternating mode is on"
-              : "Configure which voice assistant all participants will interact with"
-            }
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label className="text-base font-medium">Select Active Assistant</Label>
-            <p className="text-sm text-muted-foreground">
-              {alternatingEnabled 
-                ? "This is used when a tester (non-24-char ID) accesses the experiment"
-                : "Click on an assistant to set it as active for all participants"
-              }
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => handleSelectAssistant("formal")}
-              disabled={isSaving || !isSuperAdmin}
-              className={`p-4 border rounded-lg text-left transition-all ${
-                assistantType === "formal" 
-                  ? "border-primary bg-primary/5 ring-2 ring-primary" 
-                  : "hover:border-primary/50 hover:bg-muted/50"
-              } ${(!isSuperAdmin || isSaving) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="font-medium">Formal Assistant</h3>
-                {assistantType === "formal" && <Badge variant="default">Active</Badge>}
+        {/* Alternating Mode Content */}
+        <TabsContent value="alternating" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="h-5 w-5" />
+                Alternating Condition Assignment
+              </CardTitle>
+              <CardDescription>
+                Automatically alternate between formal and informal conditions for real participants (24-char Prolific IDs only)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Assignment Counters */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="p-4 border rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-base font-medium">Formal Assignments</Label>
+                    <Badge variant="outline" className="text-lg">{formalCount}</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Real participants assigned to formal
+                  </p>
+                </div>
+                <div className="p-4 border rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-base font-medium">Informal Assignments</Label>
+                    <Badge variant="outline" className="text-lg">{informalCount}</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Real participants assigned to informal
+                  </p>
+                </div>
               </div>
-              <p className="text-sm text-muted-foreground mb-2">
-                Professional and polite communication style
-              </p>
-              <div className="space-y-1">
-                <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
-                  Main: {ASSISTANT_IDS.formal}
-                </code>
-                <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
-                  Practice: {PRACTICE_ASSISTANT_IDS.formal}
-                </code>
+
+              {/* Balance indicator */}
+              <div className="p-4 border rounded-lg">
+                <Label className="text-base font-medium mb-2 block">Balance Status</Label>
+                <div className="flex items-center gap-0">
+                  <div 
+                    className="bg-blue-500 h-4 rounded-l transition-all" 
+                    style={{ 
+                      width: `${formalCount + informalCount > 0 ? (formalCount / (formalCount + informalCount)) * 100 : 50}%` 
+                    }} 
+                  />
+                  <div 
+                    className="bg-orange-500 h-4 rounded-r transition-all" 
+                    style={{ 
+                      width: `${formalCount + informalCount > 0 ? (informalCount / (formalCount + informalCount)) * 100 : 50}%` 
+                    }} 
+                  />
+                </div>
+                <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                  <span>Formal: {formalCount + informalCount > 0 ? Math.round((formalCount / (formalCount + informalCount)) * 100) : 50}%</span>
+                  <span>Informal: {formalCount + informalCount > 0 ? Math.round((informalCount / (formalCount + informalCount)) * 100) : 50}%</span>
+                </div>
               </div>
-            </button>
 
-            <button
-              type="button"
-              onClick={() => handleSelectAssistant("informal")}
-              disabled={isSaving || !isSuperAdmin}
-              className={`p-4 border rounded-lg text-left transition-all ${
-                assistantType === "informal" 
-                  ? "border-primary bg-primary/5 ring-2 ring-primary" 
-                  : "hover:border-primary/50 hover:bg-muted/50"
-              } ${(!isSuperAdmin || isSaving) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="font-medium">Informal Assistant</h3>
-                {assistantType === "informal" && <Badge variant="default">Active</Badge>}
+              {/* Offset Input */}
+              <div className="p-4 border rounded-lg space-y-4">
+                <div>
+                  <Label className="text-base font-medium">Condition Offset (Rebalancing)</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Force the next N real participants to a specific condition
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm">Next</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={offsetInput}
+                    onChange={(e) => setOffsetInput(e.target.value)}
+                    disabled={!isSuperAdmin || isSavingAlternating}
+                    className="w-20"
+                  />
+                  <span className="text-sm">participants →</span>
+                  <Select
+                    value={offsetType}
+                    onValueChange={(v) => setOffsetType(v as "formal" | "informal")}
+                    disabled={!isSuperAdmin || isSavingAlternating}
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="formal">Formal</SelectItem>
+                      <SelectItem value="informal">Informal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={handleSetOffset}
+                    disabled={!isSuperAdmin || isSavingAlternating}
+                    size="sm"
+                  >
+                    Set Offset
+                  </Button>
+                </div>
+                {offsetCount > 0 && (
+                  <Badge variant="destructive">
+                    Offset active: Next {offsetCount} → {offsetType}
+                  </Badge>
+                )}
               </div>
-              <p className="text-sm text-muted-foreground mb-2">
-                Casual and friendly communication style
-              </p>
-              <div className="space-y-1">
-                <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
-                  Main: {ASSISTANT_IDS.informal}
-                </code>
-                <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
-                  Practice: {PRACTICE_ASSISTANT_IDS.informal}
-                </code>
+
+              {/* Reset and Refresh */}
+              <div className="flex items-center justify-between p-4 border rounded-lg border-destructive/50">
+                <div className="space-y-1">
+                  <Label className="text-base font-medium text-destructive">Reset All Counters</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Reset formal, informal, and offset counters to 0
+                  </p>
+                </div>
+                <Button
+                  variant="destructive"
+                  onClick={handleResetCounters}
+                  disabled={!isSuperAdmin || isSavingAlternating}
+                  size="sm"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset
+                </Button>
               </div>
-            </button>
-          </div>
 
-          {lastUpdated && (
-            <p className="text-xs text-muted-foreground">
-              Last updated: {new Date(lastUpdated).toLocaleString()}
-            </p>
-          )}
+              <Button
+                variant="outline"
+                onClick={fetchSettings}
+                disabled={isSavingAlternating}
+                className="w-full"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh Counts
+              </Button>
+            </CardContent>
+          </Card>
 
-          {!isSuperAdmin && (
-            <p className="text-sm text-amber-600">
-              Only super admins can modify these settings
-            </p>
-          )}
-        </CardContent>
-      </Card>
+          {/* Completed Responses by Batch */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Filter className="h-5 w-5" />
+                Completed Responses by Batch
+              </CardTitle>
+              <CardDescription>
+                View actual completed response counts filtered by batch
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Filter by Batch(es)</Label>
+                <div className="flex flex-wrap gap-2">
+                  {availableBatches.length === 0 ? (
+                    <span className="text-sm text-muted-foreground">No batches found</span>
+                  ) : (
+                    availableBatches.map((batch) => (
+                      <Badge
+                        key={batch}
+                        variant={selectedBatches.includes(batch) ? "default" : "outline"}
+                        className="cursor-pointer"
+                        onClick={() => toggleBatchSelection(batch)}
+                      >
+                        {batch}
+                      </Badge>
+                    ))
+                  )}
+                </div>
+                {selectedBatches.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedBatches([])}
+                  >
+                    Clear filter
+                  </Button>
+                )}
+              </div>
 
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-base font-medium">Formal Completed</Label>
+                    {isLoadingBatchCounts ? (
+                      <Skeleton className="h-6 w-12" />
+                    ) : (
+                      <Badge variant="outline" className="text-lg">{batchCounts.formal}</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedBatches.length > 0 ? `In selected batch(es)` : "All batches"}
+                  </p>
+                </div>
+                <div className="p-4 border rounded-lg bg-orange-50 dark:bg-orange-950/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-base font-medium">Informal Completed</Label>
+                    {isLoadingBatchCounts ? (
+                      <Skeleton className="h-6 w-12" />
+                    ) : (
+                      <Badge variant="outline" className="text-lg">{batchCounts.informal}</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedBatches.length > 0 ? `In selected batch(es)` : "All batches"}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Static Mode Content */}
+        <TabsContent value="static" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Static Voice Assistant Configuration</CardTitle>
+              <CardDescription>
+                All participants will interact with the selected assistant
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label className="text-base font-medium">Select Active Assistant</Label>
+                <p className="text-sm text-muted-foreground">
+                  Click on an assistant to set it as active for all participants
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => handleSelectAssistant("formal")}
+                  disabled={isSaving || !isSuperAdmin}
+                  className={`p-4 border rounded-lg text-left transition-all ${
+                    assistantType === "formal"
+                      ? "border-primary bg-primary/5 ring-2 ring-primary"
+                      : "hover:border-primary/50 hover:bg-muted/50"
+                  } ${(!isSuperAdmin || isSaving) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="font-medium">Formal Assistant</h3>
+                    {assistantType === "formal" && <Badge variant="default">Active</Badge>}
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Professional and polite communication style
+                  </p>
+                  <div className="space-y-1">
+                    <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
+                      Main: {ASSISTANT_IDS.formal}
+                    </code>
+                    <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
+                      Practice: {PRACTICE_ASSISTANT_IDS.formal}
+                    </code>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectAssistant("informal")}
+                  disabled={isSaving || !isSuperAdmin}
+                  className={`p-4 border rounded-lg text-left transition-all ${
+                    assistantType === "informal"
+                      ? "border-primary bg-primary/5 ring-2 ring-primary"
+                      : "hover:border-primary/50 hover:bg-muted/50"
+                  } ${(!isSuperAdmin || isSaving) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="font-medium">Informal Assistant</h3>
+                    {assistantType === "informal" && <Badge variant="default">Active</Badge>}
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Casual and friendly communication style
+                  </p>
+                  <div className="space-y-1">
+                    <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
+                      Main: {ASSISTANT_IDS.informal}
+                    </code>
+                    <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded block">
+                      Practice: {PRACTICE_ASSISTANT_IDS.informal}
+                    </code>
+                  </div>
+                </button>
+              </div>
+
+              {lastUpdated && (
+                <p className="text-xs text-muted-foreground">
+                  Last updated: {new Date(lastUpdated).toLocaleString()}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Batch Label Configuration - Always visible */}
       <Card>
         <CardHeader>
           <CardTitle>Batch Label Configuration</CardTitle>
           <CardDescription>
-            Configure the batch label for new participant data. This helps organize responses into named groups.
+            Configure the batch label for new participant data
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -645,7 +770,7 @@ export const ExperimentSettings = () => {
                 disabled={!isSuperAdmin || isSavingBatch}
                 className="w-48"
               />
-              <Button 
+              <Button
                 onClick={handleSaveBatchLabel}
                 disabled={!isSuperAdmin || isSavingBatch || batchLabelInput === batchLabel}
                 size="sm"
@@ -660,7 +785,7 @@ export const ExperimentSettings = () => {
             {batchLabel ? (
               <Badge variant="outline">{batchLabel}</Badge>
             ) : (
-              <span className="text-sm text-muted-foreground italic">None (responses won't be tagged)</span>
+              <span className="text-sm text-muted-foreground italic">None</span>
             )}
           </div>
 
