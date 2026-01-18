@@ -20,6 +20,7 @@ const PracticeConversation = () => {
   const [showPreCallModal, setShowPreCallModal] = useState(false);
   const [showAudioConfirmModal, setShowAudioConfirmModal] = useState(false);
   const [practiceAssistantId, setPracticeAssistantId] = useState<string | null>(null);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
   const vapiRef = useRef<Vapi | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -35,6 +36,7 @@ const PracticeConversation = () => {
   // The assigned condition is stored in sessionStorage for the main conversation
   useEffect(() => {
     const fetchConfig = async () => {
+      setIsConfigLoading(true);
       // Get prolificId from URL or storage
       const prolificIdFromUrl = searchParams.get('prolificId');
       const storedProlificId = sessionStorage.getItem('prolificId');
@@ -43,15 +45,19 @@ const PracticeConversation = () => {
       try {
         // Pass prolificId to trigger atomic condition assignment
         // Real participants (24-char IDs) will be counted, testers won't
+        console.log('[PracticeConversation] Fetching experiment config for:', currentProlificId);
         const { data, error } = await supabase.functions.invoke('get-experiment-config', {
           body: { prolificId: currentProlificId }
         });
         if (error) {
-          console.error('Error fetching experiment config:', error);
+          console.error('[PracticeConversation] Error fetching experiment config:', error);
+          setIsConfigLoading(false);
           return;
         }
+        console.log('[PracticeConversation] Config received:', data);
         if (data?.practiceAssistantId) {
           setPracticeAssistantId(data.practiceAssistantId);
+          console.log('[PracticeConversation] Practice assistant ID set:', data.practiceAssistantId);
         }
         // Store the assigned condition for the main conversation
         if (data?.assistantType) {
@@ -60,7 +66,9 @@ const PracticeConversation = () => {
           console.log(`[PracticeConversation] Condition assigned: ${data.assistantType}`, data.stats);
         }
       } catch (err) {
-        console.error('Failed to fetch experiment config:', err);
+        console.error('[PracticeConversation] Failed to fetch experiment config:', err);
+      } finally {
+        setIsConfigLoading(false);
       }
     };
     fetchConfig();
@@ -141,11 +149,15 @@ const PracticeConversation = () => {
     setShowPreCallModal(true);
   };
   const startCall = async () => {
-    if (!vapiRef.current || !prolificId) return;
+    if (!vapiRef.current || !prolificId) {
+      console.log('[PracticeConversation] startCall: Missing vapiRef or prolificId');
+      return;
+    }
     setShowPreCallModal(false);
     setIsConnecting(true);
     try {
       if (!practiceAssistantId) {
+        console.error('[PracticeConversation] startCall: No practiceAssistantId available');
         toast({
           title: "Configuration Error",
           description: "Practice assistant not configured. Please try again.",
@@ -155,6 +167,7 @@ const PracticeConversation = () => {
         return;
       }
 
+      console.log('[PracticeConversation] Starting call with assistant:', practiceAssistantId);
       // Start the practice call using Vapi SDK
       await vapiRef.current.start(practiceAssistantId, {
         variableValues: {
@@ -165,11 +178,13 @@ const PracticeConversation = () => {
           researcherMode: isResearcherMode,
         },
       });
+      console.log('[PracticeConversation] Call started successfully');
       toast({
         title: "Practice Started",
         description: "Have a conversation to test your audio equipment."
       });
     } catch (error) {
+      console.error('[PracticeConversation] Failed to start call:', error);
       setIsConnecting(false);
       toast({
         title: "Failed to Start",
@@ -248,9 +263,14 @@ const PracticeConversation = () => {
 
           <div className="flex flex-col items-center justify-center py-8 gap-6">
             {!isCallActive && !isConnecting ? <div className="flex flex-col items-center gap-6">
-                <Button onClick={handleStartCallClick} size="lg" className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform flex flex-col items-center justify-center gap-1 animate-pulse bg-teal-500 hover:bg-teal-600">
+                <Button 
+                  onClick={handleStartCallClick} 
+                  size="lg" 
+                  disabled={isConfigLoading || !practiceAssistantId}
+                  className="w-32 h-32 rounded-full text-lg font-bold shadow-lg hover:scale-105 transition-transform flex flex-col items-center justify-center gap-1 animate-pulse bg-teal-500 hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:animate-none"
+                >
                   <Mic className="w-14 h-14" />
-                  <span className="text-sm">Start</span>
+                  <span className="text-sm">{isConfigLoading ? 'Loading...' : 'Start'}</span>
                 </Button>
               </div> : isConnecting ? <div className="flex flex-col items-center gap-3">
                 <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
