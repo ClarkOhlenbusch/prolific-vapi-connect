@@ -31,9 +31,12 @@ const PracticeConversation = () => {
     callId: null,
   });
   // Fetch experiment config to get practice assistant ID
+  // Note: We don't pass prolificId here because practice calls shouldn't affect the counter
+  // The actual condition is assigned when they reach VoiceConversation
   useEffect(() => {
     const fetchConfig = async () => {
       try {
+        // Don't pass prolificId - practice calls use static config and don't increment counters
         const { data, error } = await supabase.functions.invoke('get-experiment-config');
         if (error) {
           console.error('Error fetching experiment config:', error);
