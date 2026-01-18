@@ -58,10 +58,14 @@ const VoiceConversation = () => {
       localStorage.setItem("sessionToken", "00000000-0000-0000-0000-000000000000");
     }
 
-    // Fetch the active assistant configuration
+    // Fetch the active assistant configuration with prolificId for alternating assignment
     const fetchAssistantConfig = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke("get-experiment-config");
+        // Pass prolificId so the edge function can determine condition assignment
+        // Real participants (24-char IDs) will be counted, testers won't
+        const { data, error } = await supabase.functions.invoke("get-experiment-config", {
+          body: { prolificId: finalProlificId }
+        });
         if (error) {
           console.error("Failed to fetch experiment config:", error);
           // Fallback to env variable
@@ -73,6 +77,7 @@ const VoiceConversation = () => {
         setAssistantType(data.assistantType);
         // Store for questionnaire submission
         sessionStorage.setItem("assistantType", data.assistantType);
+        console.log(`[VoiceConversation] Assigned condition: ${data.assistantType}`, data.stats);
       } catch (error) {
         console.error("Error fetching assistant config:", error);
         setAssistantId(import.meta.env.VITE_VAPI_ASSISTANT_ID);
