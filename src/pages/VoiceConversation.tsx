@@ -58,34 +58,41 @@ const VoiceConversation = () => {
       localStorage.setItem("sessionToken", "00000000-0000-0000-0000-000000000000");
     }
 
-    // Fetch the active assistant configuration with prolificId for alternating assignment
-    const fetchAssistantConfig = async () => {
-      try {
-        // Pass prolificId so the edge function can determine condition assignment
-        // Real participants (24-char IDs) will be counted, testers won't
-        const { data, error } = await supabase.functions.invoke("get-experiment-config", {
-          body: { prolificId: finalProlificId }
-        });
-        if (error) {
-          console.error("Failed to fetch experiment config:", error);
-          // Fallback to env variable
+    // Read the condition that was assigned during practice conversation
+    // The atomic assignment already happened in PracticeConversation
+    const storedAssistantType = sessionStorage.getItem("assistantType");
+    const storedAssistantId = sessionStorage.getItem("assistantId");
+    
+    if (storedAssistantType && storedAssistantId) {
+      // Use the condition assigned during practice
+      setAssistantType(storedAssistantType);
+      setAssistantId(storedAssistantId);
+      console.log(`[VoiceConversation] Using condition from practice: ${storedAssistantType}`);
+    } else {
+      // Fallback: fetch config without incrementing counter (edge case: direct navigation)
+      const fetchAssistantConfig = async () => {
+        try {
+          // Don't pass prolificId - this is a fallback, we don't want to double-count
+          const { data, error } = await supabase.functions.invoke("get-experiment-config");
+          if (error) {
+            console.error("Failed to fetch experiment config:", error);
+            setAssistantId(import.meta.env.VITE_VAPI_ASSISTANT_ID);
+            setAssistantType("unknown");
+            return;
+          }
+          setAssistantId(data.assistantId);
+          setAssistantType(data.assistantType);
+          sessionStorage.setItem("assistantType", data.assistantType);
+          sessionStorage.setItem("assistantId", data.assistantId);
+          console.log(`[VoiceConversation] Fallback config fetched: ${data.assistantType}`);
+        } catch (error) {
+          console.error("Error fetching assistant config:", error);
           setAssistantId(import.meta.env.VITE_VAPI_ASSISTANT_ID);
           setAssistantType("unknown");
-          return;
         }
-        setAssistantId(data.assistantId);
-        setAssistantType(data.assistantType);
-        // Store for questionnaire submission
-        sessionStorage.setItem("assistantType", data.assistantType);
-        console.log(`[VoiceConversation] Assigned condition: ${data.assistantType}`, data.stats);
-      } catch (error) {
-        console.error("Error fetching assistant config:", error);
-        setAssistantId(import.meta.env.VITE_VAPI_ASSISTANT_ID);
-        setAssistantType("unknown");
-      }
-    };
-
-    fetchAssistantConfig();
+      };
+      fetchAssistantConfig();
+    }
   }, []);
 
   // Initialize Vapi SDK - only once when component mounts
