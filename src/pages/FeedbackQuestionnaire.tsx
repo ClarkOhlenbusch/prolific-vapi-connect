@@ -49,6 +49,7 @@ const FeedbackQuestionnaire = () => {
       const stateCallId = location.state?.callId;
       const petsDataString = sessionStorage.getItem("petsData");
       const tiasDataString = sessionStorage.getItem("tiasData");
+      const tipiDataString = sessionStorage.getItem("tipiData");
       const intentionDataString = sessionStorage.getItem("intentionData");
       const formalityDataString = sessionStorage.getItem("formalityData");
 
@@ -97,6 +98,26 @@ const FeedbackQuestionnaire = () => {
         );
       }
 
+      if (!tipiDataString) {
+        sessionStorage.setItem(
+          "tipiData",
+          JSON.stringify({
+            tipi_1: 4, tipi_2: 4, tipi_3: 4, tipi_4: 4, tipi_5: 4,
+            tipi_6: 4, tipi_7: 4, tipi_8: 4, tipi_9: 4, tipi_10: 4,
+            tipi_1_position: 1, tipi_2_position: 2, tipi_3_position: 3, tipi_4_position: 4, tipi_5_position: 5,
+            tipi_6_position: 6, tipi_7_position: 7, tipi_8_position: 8, tipi_9_position: 9, tipi_10_position: 10,
+            tipi_attention_check_1: 4,
+            tipi_attention_check_1_expected: 4,
+            tipi_attention_check_1_position: 11,
+            tipi_extraversion: 4,
+            tipi_agreeableness: 4,
+            tipi_conscientiousness: 4,
+            tipi_emotional_stability: 4,
+            tipi_openness: 4,
+          }),
+        );
+      }
+
       // Check if intentionData exists AND has valid non-null values
       const needsIntentionDefaults = !intentionDataString || (() => {
         try {
@@ -137,7 +158,7 @@ const FeedbackQuestionnaire = () => {
       experimentFeedbackWordCount: countWords(experimentFeedback),
     });
     
-    navigate("/questionnaire/intention", {
+    navigate("/questionnaire/tipi", {
       state: {
         callId,
       },
@@ -184,9 +205,10 @@ const FeedbackQuestionnaire = () => {
     const petsDataString = sessionStorage.getItem("petsData");
     const godspeedDataString = sessionStorage.getItem("godspeedData");
     const tiasDataString = sessionStorage.getItem("tiasData");
+    const tipiDataString = sessionStorage.getItem("tipiData");
     const intentionDataString = sessionStorage.getItem("intentionData");
     const formalityDataString = sessionStorage.getItem("formalityData");
-    if (!petsDataString || !godspeedDataString || !tiasDataString || !intentionDataString || !formalityDataString) {
+    if (!petsDataString || !godspeedDataString || !tiasDataString || !tipiDataString || !intentionDataString || !formalityDataString) {
       toast({
         title: "Error",
         description: "Previous questionnaire data not found.",
@@ -200,6 +222,7 @@ const FeedbackQuestionnaire = () => {
       const petsData = JSON.parse(petsDataString);
       const godspeedData = JSON.parse(godspeedDataString);
       const tiasData = JSON.parse(tiasDataString);
+      const tipiData = JSON.parse(tipiDataString);
       const intentionData = JSON.parse(intentionDataString);
       const formalityData = JSON.parse(formalityDataString);
 
@@ -219,6 +242,7 @@ const FeedbackQuestionnaire = () => {
           petsData,
           godspeedData,
           tiasData,
+          tipiData,
           intentionData,
           feedbackData: feedbackPayload,
           assistantType,

@@ -83,6 +83,11 @@ const EXPLORATORY_DVS: DependentVariable[] = [
   { key: 'godspeed_like_total', label: 'Godspeed Likeability', scale: '5-25', description: 'Perceived likeability of the assistant' },
   { key: 'godspeed_intel_total', label: 'Godspeed Intelligence', scale: '5-25', description: 'Perceived intelligence of the assistant' },
   { key: 'pets_total', label: 'PETS Total', scale: '10-70', description: 'Overall Privacy and Emotional Trust Scale score' },
+  { key: 'tipi_extraversion', label: 'TIPI Extraversion', scale: '1-7', description: 'Personality: Extraversion subscale' },
+  { key: 'tipi_agreeableness', label: 'TIPI Agreeableness', scale: '1-7', description: 'Personality: Agreeableness subscale' },
+  { key: 'tipi_conscientiousness', label: 'TIPI Conscientiousness', scale: '1-7', description: 'Personality: Conscientiousness subscale' },
+  { key: 'tipi_emotional_stability', label: 'TIPI Emotional Stability', scale: '1-7', description: 'Personality: Emotional Stability subscale' },
+  { key: 'tipi_openness', label: 'TIPI Openness', scale: '1-7', description: 'Personality: Openness subscale' },
 ];
 
 const MANIPULATION_CHECKS: DependentVariable[] = [
@@ -102,6 +107,11 @@ const ALL_DVS: DependentVariable[] = [
   { key: 'intention_2', label: 'Intention 2', scale: '1-7', description: 'Behavioral intention item 2' },
   { key: 'formality', label: 'Perceived Formality', scale: '1-7', description: 'User-rated formality perception' },
   { key: 'ai_formality_score', label: 'F-Score (AI Formality)', scale: '0-100', description: 'Calculated linguistic formality' },
+  { key: 'tipi_extraversion', label: 'TIPI Extraversion', scale: '1-7', description: 'Personality: Extraversion' },
+  { key: 'tipi_agreeableness', label: 'TIPI Agreeableness', scale: '1-7', description: 'Personality: Agreeableness' },
+  { key: 'tipi_conscientiousness', label: 'TIPI Conscientiousness', scale: '1-7', description: 'Personality: Conscientiousness' },
+  { key: 'tipi_emotional_stability', label: 'TIPI Emotional Stability', scale: '1-7', description: 'Personality: Emotional Stability' },
+  { key: 'tipi_openness', label: 'TIPI Openness', scale: '1-7', description: 'Personality: Openness' },
 ];
 
 interface AnalysisResult {
