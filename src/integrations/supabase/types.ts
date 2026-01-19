@@ -204,6 +204,34 @@ export type Database = {
           tias_attention_check_1_expected: number | null
           tias_attention_check_1_position: number | null
           tias_total: number | null
+          tipi_1: number | null
+          tipi_1_position: number | null
+          tipi_10: number | null
+          tipi_10_position: number | null
+          tipi_2: number | null
+          tipi_2_position: number | null
+          tipi_3: number | null
+          tipi_3_position: number | null
+          tipi_4: number | null
+          tipi_4_position: number | null
+          tipi_5: number | null
+          tipi_5_position: number | null
+          tipi_6: number | null
+          tipi_6_position: number | null
+          tipi_7: number | null
+          tipi_7_position: number | null
+          tipi_8: number | null
+          tipi_8_position: number | null
+          tipi_9: number | null
+          tipi_9_position: number | null
+          tipi_agreeableness: number | null
+          tipi_attention_check_1: number | null
+          tipi_attention_check_1_expected: number | null
+          tipi_attention_check_1_position: number | null
+          tipi_conscientiousness: number | null
+          tipi_emotional_stability: number | null
+          tipi_extraversion: number | null
+          tipi_openness: number | null
           u1: number
           u1_position: number
           u2: number
@@ -310,6 +338,34 @@ export type Database = {
           tias_attention_check_1_expected?: number | null
           tias_attention_check_1_position?: number | null
           tias_total?: number | null
+          tipi_1?: number | null
+          tipi_1_position?: number | null
+          tipi_10?: number | null
+          tipi_10_position?: number | null
+          tipi_2?: number | null
+          tipi_2_position?: number | null
+          tipi_3?: number | null
+          tipi_3_position?: number | null
+          tipi_4?: number | null
+          tipi_4_position?: number | null
+          tipi_5?: number | null
+          tipi_5_position?: number | null
+          tipi_6?: number | null
+          tipi_6_position?: number | null
+          tipi_7?: number | null
+          tipi_7_position?: number | null
+          tipi_8?: number | null
+          tipi_8_position?: number | null
+          tipi_9?: number | null
+          tipi_9_position?: number | null
+          tipi_agreeableness?: number | null
+          tipi_attention_check_1?: number | null
+          tipi_attention_check_1_expected?: number | null
+          tipi_attention_check_1_position?: number | null
+          tipi_conscientiousness?: number | null
+          tipi_emotional_stability?: number | null
+          tipi_extraversion?: number | null
+          tipi_openness?: number | null
           u1: number
           u1_position: number
           u2: number
@@ -416,6 +472,34 @@ export type Database = {
           tias_attention_check_1_expected?: number | null
           tias_attention_check_1_position?: number | null
           tias_total?: number | null
+          tipi_1?: number | null
+          tipi_1_position?: number | null
+          tipi_10?: number | null
+          tipi_10_position?: number | null
+          tipi_2?: number | null
+          tipi_2_position?: number | null
+          tipi_3?: number | null
+          tipi_3_position?: number | null
+          tipi_4?: number | null
+          tipi_4_position?: number | null
+          tipi_5?: number | null
+          tipi_5_position?: number | null
+          tipi_6?: number | null
+          tipi_6_position?: number | null
+          tipi_7?: number | null
+          tipi_7_position?: number | null
+          tipi_8?: number | null
+          tipi_8_position?: number | null
+          tipi_9?: number | null
+          tipi_9_position?: number | null
+          tipi_agreeableness?: number | null
+          tipi_attention_check_1?: number | null
+          tipi_attention_check_1_expected?: number | null
+          tipi_attention_check_1_position?: number | null
+          tipi_conscientiousness?: number | null
+          tipi_emotional_stability?: number | null
+          tipi_extraversion?: number | null
+          tipi_openness?: number | null
           u1?: number
           u1_position?: number
           u2?: number
