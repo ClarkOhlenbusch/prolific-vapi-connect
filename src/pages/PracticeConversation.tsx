@@ -90,15 +90,32 @@ const PracticeConversation = () => {
   // Initialize Vapi SDK
   useEffect(() => {
     if (!prolificId) return;
-    const vapi = new Vapi(import.meta.env.VITE_VAPI_PUBLIC_KEY);
+    
+    const publicKey = import.meta.env.VITE_VAPI_PUBLIC_KEY;
+    console.log('[Vapi Debug] Initializing with public key:', publicKey ? `${publicKey.substring(0, 8)}...` : 'MISSING');
+    
+    if (!publicKey) {
+      console.error('[Vapi Debug] VITE_VAPI_PUBLIC_KEY is missing!');
+      toast({
+        title: "Configuration Error",
+        description: "Vapi public key is not configured.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const vapi = new Vapi(publicKey);
     vapiRef.current = vapi;
+    console.log('[Vapi Debug] SDK instance created');
 
     // Set up event listeners
     vapi.on('call-start', () => {
+      console.log('[Vapi Debug] Event: call-start');
       setIsCallActive(true);
       setIsConnecting(false);
     });
     vapi.on('call-end', () => {
+      console.log('[Vapi Debug] Event: call-end');
       setIsCallActive(false);
       setShowAudioConfirmModal(true);
     });
@@ -110,6 +127,7 @@ const PracticeConversation = () => {
     });
     // Listen for message events to catch call end reasons
     vapi.on('message', (message: any) => {
+      console.log('[Vapi Debug] Event: message', message.type);
       if (message.type === 'end-of-call-report' && message.endedReason === 'exceeded-max-duration') {
         toast({
           title: "Call time limit reached",
@@ -118,6 +136,7 @@ const PracticeConversation = () => {
       }
     });
     vapi.on('error', error => {
+      console.error('[Vapi Debug] Event: error', error);
       // Check if it's a timeout-related error (meeting ended due to time limit)
       const errorMessage = error?.message?.toLowerCase() || '';
       if (
@@ -142,6 +161,7 @@ const PracticeConversation = () => {
       setIsConnecting(false);
     });
     return () => {
+      console.log('[Vapi Debug] Cleanup: stopping call');
       vapi.stop();
     };
   }, [prolificId, toast]);
@@ -225,6 +245,20 @@ const PracticeConversation = () => {
           <CardDescription className="text-center">
             Participant ID: <span className="font-mono font-semibold text-foreground">{prolificId}</span>
           </CardDescription>
+          {isResearcherMode && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs font-mono">
+              <p className="text-amber-800 font-semibold mb-1">🔬 Researcher Debug Info:</p>
+              <p className="text-amber-700">
+                VITE_VAPI_PUBLIC_KEY: {import.meta.env.VITE_VAPI_PUBLIC_KEY || 'NOT SET'}
+              </p>
+              <p className="text-amber-700">
+                Practice Assistant ID: {practiceAssistantId || 'Loading...'}
+              </p>
+              <p className="text-amber-700">
+                Config Loading: {isConfigLoading ? 'Yes' : 'No'}
+              </p>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="bg-teal-50 border border-teal-200 rounded-lg p-6">
