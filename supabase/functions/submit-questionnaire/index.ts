@@ -297,14 +297,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch current batch label from experiment_settings
-    const { data: batchSetting } = await supabase
-      .from('experiment_settings')
-      .select('setting_value')
-      .eq('setting_key', 'current_batch_label')
+    // Fetch current active batch from experiment_batches table
+    const { data: activeBatch } = await supabase
+      .from('experiment_batches')
+      .select('name')
+      .eq('is_active', true)
       .single();
     
-    const batchLabel = batchSetting?.setting_value?.trim() || null;
+    const batchLabel = activeBatch?.name || null;
 
     // Count call attempts for this participant
     const { count: callAttempts } = await supabase

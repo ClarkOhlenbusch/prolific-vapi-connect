@@ -13,7 +13,8 @@ import {
   Settings,
   Calculator,
   MessageSquare,
-  Clock
+  Clock,
+  Layers
 } from 'lucide-react';
 import { ExperimentResponsesTable } from '@/components/researcher/ExperimentResponsesTable';
 import { ParticipantCallsTable } from '@/components/researcher/ParticipantCallsTable';
@@ -23,6 +24,7 @@ import { ExperimentSettings } from '@/components/researcher/ExperimentSettings';
 import { FormalityCalculator } from '@/components/researcher/FormalityCalculator';
 import { PromptLab } from '@/components/researcher/PromptLab';
 import { TimeAnalysis } from '@/components/researcher/TimeAnalysis';
+import { BatchManager } from '@/components/researcher/BatchManager';
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 
@@ -87,7 +89,7 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-8">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-9">
             <TabsTrigger value="summary" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Summary</span>
@@ -111,6 +113,10 @@ const ResearcherDashboard = () => {
             <TabsTrigger value="prompts" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
               <span className="hidden sm:inline">Prompts</span>
+            </TabsTrigger>
+            <TabsTrigger value="batches" className="flex items-center gap-2">
+              <Layers className="h-4 w-4" />
+              <span className="hidden sm:inline">Batches</span>
             </TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="archived" className="flex items-center gap-2">
@@ -168,6 +174,10 @@ const ResearcherDashboard = () => {
 
           <TabsContent value="prompts">
             <PromptLab />
+          </TabsContent>
+
+          <TabsContent value="batches">
+            <BatchManager />
           </TabsContent>
 
           {isSuperAdmin && (
