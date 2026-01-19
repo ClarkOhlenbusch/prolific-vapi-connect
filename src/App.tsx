@@ -24,6 +24,7 @@ const Questionnaire = lazy(() => import("./pages/Questionnaire"));
 const GodspeedQuestionnaire = lazy(() => import("./pages/GodspeedQuestionnaire"));
 const TiasQuestionnaire = lazy(() => import("./pages/TiasQuestionnaire"));
 const IntentionQuestionnaire = lazy(() => import("./pages/IntentionQuestionnaire"));
+const TipiQuestionnaire = lazy(() => import("./pages/TipiQuestionnaire"));
 const FormalityQuestionnaire = lazy(() => import("./pages/FormalityQuestionnaire"));
 const FeedbackQuestionnaire = lazy(() => import("./pages/FeedbackQuestionnaire"));
 const Debriefing = lazy(() => import("./pages/Debriefing"));
@@ -73,6 +74,7 @@ const App = () => (
                 <Route path="/questionnaire/godspeed" element={<SessionValidator><GodspeedQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/tias" element={<SessionValidator><TiasQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/intention" element={<SessionValidator><IntentionQuestionnaire /></SessionValidator>} />
+                <Route path="/questionnaire/tipi" element={<SessionValidator><TipiQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/formality" element={<SessionValidator><FormalityQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/feedback" element={<SessionValidator><FeedbackQuestionnaire /></SessionValidator>} />
                 <Route path="/debriefing" element={<Debriefing />} />
