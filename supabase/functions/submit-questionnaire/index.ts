@@ -108,6 +108,38 @@ const tiasDataSchema = z.object({
   tias_attention_check_1_position: z.number().int().optional(),
 });
 
+// Validation schema for TIPI data with positions
+const tipiDataSchema = z.object({
+  tipi_1: z.number().min(1).max(7),
+  tipi_2: z.number().min(1).max(7),
+  tipi_3: z.number().min(1).max(7),
+  tipi_4: z.number().min(1).max(7),
+  tipi_5: z.number().min(1).max(7),
+  tipi_6: z.number().min(1).max(7),
+  tipi_7: z.number().min(1).max(7),
+  tipi_8: z.number().min(1).max(7),
+  tipi_9: z.number().min(1).max(7),
+  tipi_10: z.number().min(1).max(7),
+  tipi_1_position: z.number().int(),
+  tipi_2_position: z.number().int(),
+  tipi_3_position: z.number().int(),
+  tipi_4_position: z.number().int(),
+  tipi_5_position: z.number().int(),
+  tipi_6_position: z.number().int(),
+  tipi_7_position: z.number().int(),
+  tipi_8_position: z.number().int(),
+  tipi_9_position: z.number().int(),
+  tipi_10_position: z.number().int(),
+  tipi_extraversion: z.number(),
+  tipi_agreeableness: z.number(),
+  tipi_conscientiousness: z.number(),
+  tipi_emotional_stability: z.number(),
+  tipi_openness: z.number(),
+  tipi_attention_check_1: z.number().min(1).max(7).optional(),
+  tipi_attention_check_1_expected: z.number().min(1).max(7).optional(),
+  tipi_attention_check_1_position: z.number().int().optional(),
+});
+
 // Validation schema for intention data
 const intentionDataSchema = z.object({
   intention_1: z.number().min(1).max(7),
@@ -128,7 +160,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { sessionToken, petsData, godspeedData, tiasData, intentionData, feedbackData, assistantType } = await req.json();
+    const { sessionToken, petsData, godspeedData, tiasData, tipiData, intentionData, feedbackData, assistantType } = await req.json();
 
     // Validate session token format
     if (!sessionToken || typeof sessionToken !== 'string') {
@@ -149,7 +181,7 @@ Deno.serve(async (req) => {
     }
 
     // Validate all data against schemas
-    let validatedPets, validatedGodspeed, validatedTias, validatedIntention, validatedFeedback;
+    let validatedPets, validatedGodspeed, validatedTias, validatedTipi, validatedIntention, validatedFeedback;
     
     try {
       validatedPets = petsDataSchema.parse(petsData);
@@ -177,6 +209,16 @@ Deno.serve(async (req) => {
       console.error('TIAS validation failed:', err);
       return new Response(
         JSON.stringify({ error: 'Invalid TIAS data', details: err instanceof z.ZodError ? err.errors : undefined }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    try {
+      validatedTipi = tipiDataSchema.parse(tipiData);
+    } catch (err) {
+      console.error('TIPI validation failed:', err);
+      return new Response(
+        JSON.stringify({ error: 'Invalid TIPI data', details: err instanceof z.ZodError ? err.errors : undefined }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -375,6 +417,38 @@ Deno.serve(async (req) => {
       tias_attention_check_1_position: validatedTias.tias_attention_check_1_position,
       // TIAS score
       tias_total: validatedTias.tias_total,
+      // TIPI items
+      tipi_1: validatedTipi.tipi_1,
+      tipi_2: validatedTipi.tipi_2,
+      tipi_3: validatedTipi.tipi_3,
+      tipi_4: validatedTipi.tipi_4,
+      tipi_5: validatedTipi.tipi_5,
+      tipi_6: validatedTipi.tipi_6,
+      tipi_7: validatedTipi.tipi_7,
+      tipi_8: validatedTipi.tipi_8,
+      tipi_9: validatedTipi.tipi_9,
+      tipi_10: validatedTipi.tipi_10,
+      // TIPI positions
+      tipi_1_position: validatedTipi.tipi_1_position,
+      tipi_2_position: validatedTipi.tipi_2_position,
+      tipi_3_position: validatedTipi.tipi_3_position,
+      tipi_4_position: validatedTipi.tipi_4_position,
+      tipi_5_position: validatedTipi.tipi_5_position,
+      tipi_6_position: validatedTipi.tipi_6_position,
+      tipi_7_position: validatedTipi.tipi_7_position,
+      tipi_8_position: validatedTipi.tipi_8_position,
+      tipi_9_position: validatedTipi.tipi_9_position,
+      tipi_10_position: validatedTipi.tipi_10_position,
+      // TIPI attention check
+      tipi_attention_check_1: validatedTipi.tipi_attention_check_1,
+      tipi_attention_check_1_expected: validatedTipi.tipi_attention_check_1_expected,
+      tipi_attention_check_1_position: validatedTipi.tipi_attention_check_1_position,
+      // TIPI Big Five scores
+      tipi_extraversion: validatedTipi.tipi_extraversion,
+      tipi_agreeableness: validatedTipi.tipi_agreeableness,
+      tipi_conscientiousness: validatedTipi.tipi_conscientiousness,
+      tipi_emotional_stability: validatedTipi.tipi_emotional_stability,
+      tipi_openness: validatedTipi.tipi_openness,
       // Intention
       intention_1: validatedIntention.intention_1,
       intention_2: validatedIntention.intention_2,
