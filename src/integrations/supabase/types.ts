@@ -107,6 +107,36 @@ export type Database = {
         }
         Relationships: []
       }
+      experiment_batches: {
+        Row: {
+          created_at: string
+          created_by: string
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
       experiment_responses: {
         Row: {
           ai_formality_calculated_at: string | null
