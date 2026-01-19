@@ -19,6 +19,7 @@ const PracticeConversation = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showPreCallModal, setShowPreCallModal] = useState(false);
   const [showAudioConfirmModal, setShowAudioConfirmModal] = useState(false);
+  const [showPermissionDeniedModal, setShowPermissionDeniedModal] = useState(false);
   const [practiceAssistantId, setPracticeAssistantId] = useState<string | null>(null);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   const vapiRef = useRef<Vapi | null>(null);
@@ -175,6 +176,40 @@ const PracticeConversation = () => {
     }
     setShowPreCallModal(false);
     setIsConnecting(true);
+    
+    // Check microphone permission first
+    try {
+      const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      console.log('[Vapi Debug] Microphone permission status:', permissionStatus.state);
+      
+      if (permissionStatus.state === 'denied') {
+        setIsConnecting(false);
+        setShowPermissionDeniedModal(true);
+        return;
+      }
+    } catch (err) {
+      // permissions.query not supported in all browsers, continue anyway
+      console.log('[Vapi Debug] permissions.query not supported, continuing...');
+    }
+    
+    try {
+      // Try to get microphone access first
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err: any) {
+      console.error('[Vapi Debug] Microphone access error:', err);
+      setIsConnecting(false);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setShowPermissionDeniedModal(true);
+        return;
+      }
+      toast({
+        title: "Microphone Error",
+        description: "Could not access microphone. Please check your device.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     try {
       if (!practiceAssistantId) {
         console.error('[PracticeConversation] startCall: No practiceAssistantId available');
@@ -378,6 +413,38 @@ const PracticeConversation = () => {
                   className="w-full sm:w-auto"
                 >
                   Yes, continue
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={showPermissionDeniedModal} onOpenChange={setShowPermissionDeniedModal}>
+            <DialogContent className="sm:max-w-[550px]">
+              <DialogHeader>
+                <DialogTitle className="text-xl text-center text-destructive">
+                  Microphone Permission Blocked
+                </DialogTitle>
+                <DialogDescription className="space-y-4 text-left pt-4">
+                  <p>Your browser has blocked microphone access. This usually happens if you previously clicked "Block" or "Deny" when asked for permission.</p>
+                  
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+                    <p className="font-semibold text-amber-800">To fix this:</p>
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-amber-700">
+                      <li>Click the <strong>lock/info icon</strong> in your browser's address bar (left of the URL)</li>
+                      <li>Find <strong>"Microphone"</strong> in the permissions list</li>
+                      <li>Change it from "Block" to <strong>"Allow"</strong></li>
+                      <li>Refresh this page and try again</li>
+                    </ol>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    Alternatively, you can try using a different browser or an incognito/private window.
+                  </p>
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="pt-4">
+                <Button onClick={() => window.location.reload()}>
+                  Refresh Page
                 </Button>
               </DialogFooter>
             </DialogContent>
