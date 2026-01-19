@@ -129,6 +129,28 @@ const formatWholeNumber = (value: number | null | undefined): string => {
   return Math.round(Number(value)).toString();
 };
 
+// TIPI Items for Big Five personality
+const TIPI_ITEMS = [
+  { id: "T1", text: "Extraverted, enthusiastic", key: "tipi_1", dimension: "Extraversion", isReversed: false },
+  { id: "T2", text: "Critical, quarrelsome", key: "tipi_2", dimension: "Agreeableness", isReversed: true },
+  { id: "T3", text: "Dependable, self-disciplined", key: "tipi_3", dimension: "Conscientiousness", isReversed: false },
+  { id: "T4", text: "Anxious, easily upset", key: "tipi_4", dimension: "Emotional Stability", isReversed: true },
+  { id: "T5", text: "Open to new experiences, complex", key: "tipi_5", dimension: "Openness", isReversed: false },
+  { id: "T6", text: "Reserved, quiet", key: "tipi_6", dimension: "Extraversion", isReversed: true },
+  { id: "T7", text: "Sympathetic, warm", key: "tipi_7", dimension: "Agreeableness", isReversed: false },
+  { id: "T8", text: "Disorganized, careless", key: "tipi_8", dimension: "Conscientiousness", isReversed: true },
+  { id: "T9", text: "Calm, emotionally stable", key: "tipi_9", dimension: "Emotional Stability", isReversed: false },
+  { id: "T10", text: "Conventional, uncreative", key: "tipi_10", dimension: "Openness", isReversed: true },
+];
+
+const TIPI_DIMENSIONS = [
+  { key: "tipi_extraversion", label: "Extraversion" },
+  { key: "tipi_agreeableness", label: "Agreeableness" },
+  { key: "tipi_conscientiousness", label: "Conscientiousness" },
+  { key: "tipi_emotional_stability", label: "Emotional Stability" },
+  { key: "tipi_openness", label: "Openness" },
+];
+
 // Section navigation items - in experiment flow order
 const SECTIONS = [
   { id: 'demographics', label: 'Demographics', icon: User },
@@ -137,6 +159,7 @@ const SECTIONS = [
   { id: 'pets', label: 'PETS', icon: Heart },
   { id: 'tias', label: 'TIAS', icon: Brain },
   { id: 'godspeed', label: 'Godspeed', icon: Lightbulb },
+  { id: 'tipi', label: 'TIPI', icon: User },
   { id: 'intention', label: 'Intention', icon: Target },
   { id: 'feedback', label: 'Feedback', icon: MessageSquare },
 ];
@@ -437,7 +460,22 @@ const ResponseDetails = () => {
                   </div>
                 )}
 
-                {data.attention_check_1 === null && data.tias_attention_check_1 === null && data.godspeed_attention_check_1 === null && (
+                {/* TIPI Attention Check */}
+                {data.tipi_attention_check_1 !== null && (
+                  <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+                    <span className="font-medium">TIPI Attention Check</span>
+                    <div className="flex-1" />
+                    <span className="text-sm">Response: {data.tipi_attention_check_1}</span>
+                    <span className="text-sm text-muted-foreground">Expected: {data.tipi_attention_check_1_expected}</span>
+                    {data.tipi_attention_check_1 === data.tipi_attention_check_1_expected ? (
+                      <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" /> Pass</Badge>
+                    ) : (
+                      <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" /> Fail</Badge>
+                    )}
+                  </div>
+                )}
+
+                {data.attention_check_1 === null && data.tias_attention_check_1 === null && data.godspeed_attention_check_1 === null && data.tipi_attention_check_1 === null && (
                   <p className="text-muted-foreground italic">No attention check data available</p>
                 )}
               </div>
@@ -749,6 +787,70 @@ const ResponseDetails = () => {
                     );
                   })}
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* TIPI Section */}
+        <section ref={el => sectionRefs.current['tipi'] = el} id="tipi" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5 text-violet-500" />
+                TIPI - Ten-Item Personality Inventory
+              </CardTitle>
+              <div className="flex gap-4 text-sm flex-wrap">
+                {TIPI_DIMENSIONS.map(dim => {
+                  const value = data[dim.key as keyof typeof data] as number | null;
+                  return (
+                    <div key={dim.key}>
+                      <span className="text-muted-foreground">{dim.label}:</span>
+                      <span className="ml-1 font-semibold">{formatNumber(value)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                "I see myself as..." (1 = Disagree strongly, 7 = Agree strongly)
+              </p>
+              <div className="space-y-3">
+                {TIPI_ITEMS.map(item => {
+                  const value = data[item.key as keyof typeof data] as number | null;
+                  const position = data[`${item.key}_position` as keyof typeof data] as number | null;
+                  return (
+                    <div key={item.id} className="flex items-center gap-4 py-2 border-b last:border-0">
+                      <Badge variant="outline" className="font-mono w-12 justify-center flex-shrink-0">
+                        {item.id}
+                      </Badge>
+                      <Badge 
+                        variant={item.isReversed ? "destructive" : "secondary"} 
+                        className="flex-shrink-0 text-xs min-w-[100px] justify-center"
+                      >
+                        {item.dimension}{item.isReversed ? " (R)" : ""}
+                      </Badge>
+                      <span className="flex-1 text-sm">{item.text}</span>
+                      <div className="flex items-center gap-1">
+                        {[1,2,3,4,5,6,7].map(v => (
+                          <div 
+                            key={v}
+                            className={cn(
+                              "w-7 h-7 rounded flex items-center justify-center text-xs font-medium",
+                              value === v ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                            )}
+                          >
+                            {v}
+                          </div>
+                        ))}
+                      </div>
+                      {position !== null && (
+                        <span className="text-xs text-muted-foreground w-12">Pos: {position}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
