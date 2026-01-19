@@ -1656,6 +1656,44 @@ export const ExperimentResponsesTable = () => {
                     </button>
                   )}
 
+                  {/* TIPI Section */}
+                  {viewItem.tipi_extraversion !== null && (
+                    <button 
+                      onClick={() => {
+                        navigate(`/researcher/response/${viewItem.id}?section=tipi`);
+                        setViewItem(null);
+                      }}
+                      className="w-full text-left border-t pt-4 hover:bg-muted/50 rounded-lg p-3 -mx-1 transition-colors cursor-pointer group"
+                    >
+                      <h4 className="font-medium mb-2 group-hover:text-primary flex items-center gap-2">
+                        TIPI Personality Scores
+                        <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </h4>
+                      <div className="grid grid-cols-5 gap-2">
+                        <div>
+                          <label className="text-xs text-muted-foreground">Extraversion</label>
+                          <p className="font-bold text-sm">{formatNumber(viewItem.tipi_extraversion)}</p>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Agreeableness</label>
+                          <p className="font-bold text-sm">{formatNumber(viewItem.tipi_agreeableness)}</p>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Conscientiousness</label>
+                          <p className="font-bold text-sm">{formatNumber(viewItem.tipi_conscientiousness)}</p>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Emot. Stability</label>
+                          <p className="font-bold text-sm">{formatNumber(viewItem.tipi_emotional_stability)}</p>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Openness</label>
+                          <p className="font-bold text-sm">{formatNumber(viewItem.tipi_openness)}</p>
+                        </div>
+                      </div>
+                    </button>
+                  )}
+
                   <button 
                     onClick={() => {
                       navigate(`/researcher/response/${viewItem.id}?section=formality`);
