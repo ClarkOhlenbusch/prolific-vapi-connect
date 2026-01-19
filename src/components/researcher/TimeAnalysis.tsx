@@ -27,12 +27,13 @@ const PAGE_CONFIG: { [key: string]: { order: number; displayName: string } } = {
   'pets': { order: 8, displayName: 'PETS Questionnaire' },
   'tias': { order: 9, displayName: 'TIAS Questionnaire' },
   'godspeed': { order: 10, displayName: 'Godspeed Questionnaire' },
-  'intention': { order: 11, displayName: 'Intention Questionnaire' },
-  'feedback': { order: 12, displayName: 'Feedback Questionnaire' },
-  'debriefing': { order: 13, displayName: 'Debriefing' },
-  'complete': { order: 14, displayName: 'Complete' },
-  'no-consent': { order: 15, displayName: 'No Consent' },
-  'formality-breakdown': { order: 16, displayName: 'Formality Breakdown' },
+  'tipi': { order: 11, displayName: 'TIPI Questionnaire' },
+  'intention': { order: 12, displayName: 'Intention Questionnaire' },
+  'feedback': { order: 13, displayName: 'Feedback Questionnaire' },
+  'debriefing': { order: 14, displayName: 'Debriefing' },
+  'complete': { order: 15, displayName: 'Complete' },
+  'no-consent': { order: 16, displayName: 'No Consent' },
+  'formality-breakdown': { order: 17, displayName: 'Formality Breakdown' },
 };
 
 const CHART_COLORS = [

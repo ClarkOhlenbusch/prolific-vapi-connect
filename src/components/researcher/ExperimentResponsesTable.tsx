@@ -109,10 +109,10 @@ import { cn } from '@/lib/utils';
 
 type ExperimentResponse = ExperimentResponseWithDemographics;
 
-type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'ai_formality_score' | 'assistant_type' | 'batch_label' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total';
+type SortColumn = 'prolific_id' | 'created_at' | 'pets_total' | 'tias_total' | 'formality' | 'ai_formality_score' | 'assistant_type' | 'batch_label' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total' | 'tipi_extraversion' | 'tipi_agreeableness' | 'tipi_conscientiousness' | 'tipi_emotional_stability' | 'tipi_openness';
 type SortDirection = 'asc' | 'desc' | null;
 
-type ColumnId = 'select' | 'prolific_id' | 'created_at' | 'age' | 'gender' | 'pets_total' | 'tias_total' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total' | 'formality' | 'ai_formality_score' | 'assistant_type' | 'batch_label' | 'actions';
+type ColumnId = 'select' | 'prolific_id' | 'source' | 'created_at' | 'age' | 'gender' | 'pets_total' | 'tias_total' | 'godspeed_anthro_total' | 'godspeed_like_total' | 'godspeed_intel_total' | 'tipi_extraversion' | 'tipi_agreeableness' | 'tipi_conscientiousness' | 'tipi_emotional_stability' | 'tipi_openness' | 'formality' | 'ai_formality_score' | 'assistant_type' | 'batch_label' | 'actions';
 
 interface ColumnDef {
   id: ColumnId;
@@ -450,12 +450,13 @@ export const ExperimentResponsesTable = () => {
 
   // Column order state
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>([
-    'select', 'prolific_id', 'created_at', 'batch_label', 'assistant_type', 'formality', 'ai_formality_score', 'pets_total', 'tias_total', 'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'age', 'gender', 'actions'
+    'select', 'prolific_id', 'source', 'created_at', 'batch_label', 'assistant_type', 'formality', 'ai_formality_score', 'pets_total', 'tias_total', 'godspeed_anthro_total', 'godspeed_like_total', 'godspeed_intel_total', 'tipi_extraversion', 'tipi_agreeableness', 'tipi_conscientiousness', 'tipi_emotional_stability', 'tipi_openness', 'age', 'gender', 'actions'
   ]);
 
   const columns: ColumnDef[] = useMemo(() => [
     { id: 'select', label: '', sortable: false, filterable: false, width: 'w-12' },
     { id: 'prolific_id', label: 'Prolific ID', sortable: true, filterable: false },
+    { id: 'source', label: 'Source', sortable: false, filterable: false },
     { id: 'created_at', label: 'Created At', sortable: true, filterable: true },
     { id: 'age', label: 'Age', sortable: false, filterable: false },
     { id: 'gender', label: 'Gender', sortable: false, filterable: false },
@@ -464,6 +465,11 @@ export const ExperimentResponsesTable = () => {
     { id: 'godspeed_anthro_total', label: 'GS Anthro', sortable: true, filterable: false },
     { id: 'godspeed_like_total', label: 'GS Like', sortable: true, filterable: false },
     { id: 'godspeed_intel_total', label: 'GS Intel', sortable: true, filterable: false },
+    { id: 'tipi_extraversion', label: 'TIPI E', sortable: true, filterable: false },
+    { id: 'tipi_agreeableness', label: 'TIPI A', sortable: true, filterable: false },
+    { id: 'tipi_conscientiousness', label: 'TIPI C', sortable: true, filterable: false },
+    { id: 'tipi_emotional_stability', label: 'TIPI ES', sortable: true, filterable: false },
+    { id: 'tipi_openness', label: 'TIPI O', sortable: true, filterable: false },
     { id: 'formality', label: 'Formality (Self)', sortable: true, filterable: false },
     { id: 'ai_formality_score', label: 'AI F-Score', sortable: true, filterable: false },
     { id: 'assistant_type', label: 'Assistant', sortable: true, filterable: true },
@@ -1019,7 +1025,22 @@ export const ExperimentResponsesTable = () => {
         ) : null;
 
       case 'prolific_id':
-        return <TableCell className="font-mono text-sm" title={row.prolific_id}>{row.prolific_id.substring(0, 4)}...</TableCell>;
+        const isParticipant = row.prolific_id.length === 24;
+        return (
+          <TableCell className="font-mono text-sm" title={row.prolific_id}>
+            {row.prolific_id.substring(0, 7)}...
+          </TableCell>
+        );
+
+      case 'source':
+        const isRealParticipant = row.prolific_id.length === 24;
+        return (
+          <TableCell>
+            <Badge variant={isRealParticipant ? 'default' : 'outline'} className="text-xs">
+              {isRealParticipant ? 'Participant' : 'Researcher'}
+            </Badge>
+          </TableCell>
+        );
 
       case 'created_at':
         return <TableCell>{new Date(row.created_at).toLocaleDateString()}</TableCell>;
@@ -1044,6 +1065,21 @@ export const ExperimentResponsesTable = () => {
 
       case 'godspeed_intel_total':
         return <TableCell>{formatNumber(row.godspeed_intel_total)}</TableCell>;
+
+      case 'tipi_extraversion':
+        return <TableCell>{formatNumber(row.tipi_extraversion)}</TableCell>;
+
+      case 'tipi_agreeableness':
+        return <TableCell>{formatNumber(row.tipi_agreeableness)}</TableCell>;
+
+      case 'tipi_conscientiousness':
+        return <TableCell>{formatNumber(row.tipi_conscientiousness)}</TableCell>;
+
+      case 'tipi_emotional_stability':
+        return <TableCell>{formatNumber(row.tipi_emotional_stability)}</TableCell>;
+
+      case 'tipi_openness':
+        return <TableCell>{formatNumber(row.tipi_openness)}</TableCell>;
 
       case 'formality':
         return <TableCell>{formatNumber(row.formality)}</TableCell>;
