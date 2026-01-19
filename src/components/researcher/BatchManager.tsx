@@ -83,7 +83,8 @@ export const BatchManager = () => {
       const { data: batchData, error: batchError } = await supabase
         .from('experiment_batches')
         .select('*')
-        .order('display_order', { ascending: true });
+        .order('is_active', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (batchError) throw batchError;
 
