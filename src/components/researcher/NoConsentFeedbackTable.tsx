@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 interface NoConsentFeedback {
   id: string;
   feedback: string | null;
+  prolific_id: string | null;
   created_at: string;
 }
 
@@ -77,6 +78,7 @@ export const NoConsentFeedbackTable = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[180px]">Date</TableHead>
+                  <TableHead className="w-[200px]">Prolific ID</TableHead>
                   <TableHead>Feedback</TableHead>
                 </TableRow>
               </TableHeader>
@@ -85,6 +87,9 @@ export const NoConsentFeedbackTable = () => {
                   <TableRow key={item.id}>
                     <TableCell className="text-muted-foreground">
                       {format(new Date(item.created_at), 'MMM d, yyyy HH:mm')}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {item.prolific_id || <span className="text-muted-foreground italic">Unknown</span>}
                     </TableCell>
                     <TableCell>
                       {item.feedback || <span className="text-muted-foreground italic">No feedback provided</span>}
