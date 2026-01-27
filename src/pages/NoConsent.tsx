@@ -41,8 +41,8 @@ const NoConsent = () => {
           </p>
 
           <div className="space-y-2">
-            <Label htmlFor="feedback" className="text-muted-foreground">
-              (Optional) Would you like to share why you chose not to participate?
+            <Label htmlFor="feedback">
+              Please share why you chose not to participate <span className="text-destructive">*</span>
             </Label>
             <p className="text-xs text-muted-foreground italic">
               Your response is completely anonymous.
@@ -53,11 +53,12 @@ const NoConsent = () => {
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
               className="min-h-[100px]"
+              required
             />
           </div>
 
           <div className="text-center">
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
+            <Button onClick={handleSubmit} disabled={isSubmitting || !feedback.trim()}>
               {isSubmitting ? 'Submitting...' : 'Submit and return to Prolific'}
             </Button>
           </div>
