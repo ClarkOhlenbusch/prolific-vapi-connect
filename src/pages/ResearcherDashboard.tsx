@@ -14,7 +14,8 @@ import {
   Calculator,
   MessageSquare,
   Clock,
-  Layers
+  Layers,
+  UserX
 } from 'lucide-react';
 import { ExperimentResponsesTable } from '@/components/researcher/ExperimentResponsesTable';
 import { ParticipantCallsTable } from '@/components/researcher/ParticipantCallsTable';
@@ -25,6 +26,7 @@ import { FormalityCalculator } from '@/components/researcher/FormalityCalculator
 import { PromptLab } from '@/components/researcher/PromptLab';
 import { TimeAnalysis } from '@/components/researcher/TimeAnalysis';
 import { BatchManager } from '@/components/researcher/BatchManager';
+import { NoConsentFeedbackTable } from '@/components/researcher/NoConsentFeedbackTable';
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 
@@ -89,7 +91,7 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-9">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-10">
             <TabsTrigger value="summary" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Summary</span>
@@ -117,6 +119,10 @@ const ResearcherDashboard = () => {
             <TabsTrigger value="batches" className="flex items-center gap-2">
               <Layers className="h-4 w-4" />
               <span className="hidden sm:inline">Batches</span>
+            </TabsTrigger>
+            <TabsTrigger value="no-consent" className="flex items-center gap-2">
+              <UserX className="h-4 w-4" />
+              <span className="hidden sm:inline">No Consent</span>
             </TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="archived" className="flex items-center gap-2">
@@ -178,6 +184,10 @@ const ResearcherDashboard = () => {
 
           <TabsContent value="batches">
             <BatchManager />
+          </TabsContent>
+
+          <TabsContent value="no-consent">
+            <NoConsentFeedbackTable />
           </TabsContent>
 
           {isSuperAdmin && (
