@@ -739,16 +739,19 @@ export type Database = {
           created_at: string
           feedback: string | null
           id: string
+          prolific_id: string | null
         }
         Insert: {
           created_at?: string
           feedback?: string | null
           id?: string
+          prolific_id?: string | null
         }
         Update: {
           created_at?: string
           feedback?: string | null
           id?: string
+          prolific_id?: string | null
         }
         Relationships: []
       }
