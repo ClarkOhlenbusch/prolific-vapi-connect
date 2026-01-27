@@ -14,9 +14,11 @@ const NoConsent = () => {
     setIsSubmitting(true);
     
     try {
+      const prolificId = sessionStorage.getItem('prolificId') || null;
+      
       const { error } = await supabase
         .from('no_consent_feedback')
-        .insert({ feedback: feedback || null });
+        .insert({ feedback: feedback || null, prolific_id: prolificId });
 
       if (error) {
         console.error('Error saving feedback:', error);
