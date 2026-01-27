@@ -57,8 +57,12 @@ const NoConsent = () => {
             />
           </div>
 
+          {feedback.trim() && feedback.trim().split(/\s+/).length < 10 && (
+            <p className="text-sm text-destructive text-center">Please provide at least 10 words.</p>
+          )}
+
           <div className="text-center">
-            <Button onClick={handleSubmit} disabled={isSubmitting || !feedback.trim()}>
+            <Button onClick={handleSubmit} disabled={isSubmitting || feedback.trim().split(/\s+/).length < 10}>
               {isSubmitting ? 'Submitting...' : 'Submit and return to Prolific'}
             </Button>
           </div>
