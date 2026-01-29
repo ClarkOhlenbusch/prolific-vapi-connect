@@ -30,6 +30,8 @@ import {
   Archive
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useActivityLog } from '@/hooks/useActivityLog';
+import { DownloadConfirmDialog } from './DownloadConfirmDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +60,9 @@ export const ParticipantCallsTable = () => {
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [archiveMode, setArchiveMode] = useState<'single' | 'bulk'>('single');
   const [singleDeleteId, setSingleDeleteId] = useState<string | null>(null);
+  const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
   const { isSuperAdmin, user } = useResearcherAuth();
+  const { logActivity } = useActivityLog();
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -174,7 +178,7 @@ export const ParticipantCallsTable = () => {
     }
   };
 
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
     const headers = ['Prolific ID', 'Call ID', 'Created At', 'Expires At', 'Token Used'];
     
     const csvContent = [
@@ -192,8 +196,20 @@ export const ParticipantCallsTable = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `participant_calls_${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = `participant_calls_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = filename;
     a.click();
+
+    // Log the download activity
+    await logActivity({ 
+      action: 'download_participant_calls', 
+      details: { 
+        record_count: data.length,
+        filename 
+      } 
+    });
+
+    toast.success(`Exported ${data.length} participant calls`);
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -251,7 +267,7 @@ export const ParticipantCallsTable = () => {
             </Button>
           )}
           {isSuperAdmin && (
-            <Button onClick={exportToCSV} variant="outline" size="sm">
+            <Button onClick={() => setShowDownloadConfirm(true)} variant="outline" size="sm">
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
@@ -397,6 +413,14 @@ export const ParticipantCallsTable = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Download Confirmation Dialog */}
+      <DownloadConfirmDialog
+        open={showDownloadConfirm}
+        onOpenChange={setShowDownloadConfirm}
+        onConfirm={exportToCSV}
+        dataType="participant call data"
+      />
     </div>
   );
 };

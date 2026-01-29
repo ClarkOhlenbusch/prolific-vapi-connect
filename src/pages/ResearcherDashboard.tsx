@@ -15,7 +15,8 @@ import {
   MessageSquare,
   Clock,
   Layers,
-  UserX
+  UserX,
+  Activity
 } from 'lucide-react';
 import { ExperimentResponsesTable } from '@/components/researcher/ExperimentResponsesTable';
 import { ParticipantCallsTable } from '@/components/researcher/ParticipantCallsTable';
@@ -27,6 +28,7 @@ import { PromptLab } from '@/components/researcher/PromptLab';
 import { TimeAnalysis } from '@/components/researcher/TimeAnalysis';
 import { BatchManager } from '@/components/researcher/BatchManager';
 import { NoConsentFeedbackTable } from '@/components/researcher/NoConsentFeedbackTable';
+import { ActivityLogsTable } from '@/components/researcher/ActivityLogsTable';
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 
@@ -91,7 +93,7 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-10">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-11">
             <TabsTrigger value="summary" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Summary</span>
@@ -124,6 +126,12 @@ const ResearcherDashboard = () => {
               <UserX className="h-4 w-4" />
               <span className="hidden sm:inline">No Consent</span>
             </TabsTrigger>
+            {isSuperAdmin && (
+              <TabsTrigger value="activity" className="flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                <span className="hidden sm:inline">Activity</span>
+              </TabsTrigger>
+            )}
             {isSuperAdmin && (
               <TabsTrigger value="archived" className="flex items-center gap-2">
                 <Archive className="h-4 w-4" />
@@ -189,6 +197,22 @@ const ResearcherDashboard = () => {
           <TabsContent value="no-consent">
             <NoConsentFeedbackTable />
           </TabsContent>
+
+          {isSuperAdmin && (
+            <TabsContent value="activity">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Researcher Activity</CardTitle>
+                  <CardDescription>
+                    Track logins and data downloads by researchers
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ActivityLogsTable />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {isSuperAdmin && (
             <TabsContent value="archived">
