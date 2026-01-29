@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
+import { logActivityStandalone } from '@/hooks/useActivityLog';
 
 type ResearcherRole = 'super_admin' | 'viewer' | null;
 
@@ -137,6 +138,9 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
           return { error: 'You do not have researcher access. Please contact an administrator.' };
         }
         setRole(fetchedRole);
+        
+        // Log successful login
+        await logActivityStandalone(data.user.id, data.user.email || email, 'login');
       }
 
       return { error: null };

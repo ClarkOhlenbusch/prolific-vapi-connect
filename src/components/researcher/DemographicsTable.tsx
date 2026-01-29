@@ -21,6 +21,8 @@ import {
   Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useActivityLog } from '@/hooks/useActivityLog';
+import { DownloadConfirmDialog } from './DownloadConfirmDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,7 +53,9 @@ export const DemographicsTable = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewItem, setViewItem] = useState<Demographics | null>(null);
+  const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
   const { isSuperAdmin, user } = useResearcherAuth();
+  const { logActivity } = useActivityLog();
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -119,7 +123,7 @@ export const DemographicsTable = () => {
     }
   };
 
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
     const headers = ['Prolific ID', 'Age', 'Gender', 'Native English', 'Ethnicity', 'Created At'];
     
     const csvContent = [
@@ -138,8 +142,20 @@ export const DemographicsTable = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `demographics_${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = `demographics_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = filename;
     a.click();
+
+    // Log the download activity
+    await logActivity({ 
+      action: 'download_demographics', 
+      details: { 
+        record_count: data.length,
+        filename 
+      } 
+    });
+
+    toast.success(`Exported ${data.length} demographics records`);
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -178,7 +194,7 @@ export const DemographicsTable = () => {
         </div>
         
         {isSuperAdmin && (
-          <Button onClick={exportToCSV} variant="outline">
+          <Button onClick={() => setShowDownloadConfirm(true)} variant="outline">
             <Download className="h-4 w-4 mr-2" />
             Export CSV
           </Button>
@@ -331,6 +347,14 @@ export const DemographicsTable = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Download Confirmation Dialog */}
+      <DownloadConfirmDialog
+        open={showDownloadConfirm}
+        onOpenChange={setShowDownloadConfirm}
+        onConfirm={exportToCSV}
+        dataType="demographics data with participant information"
+      />
     </div>
   );
 };
