@@ -17,6 +17,8 @@ const ResearcherLogin = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [activationKey, setActivationKey] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -134,6 +136,65 @@ const ResearcherLogin = () => {
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    setIsLoading(true);
+
+    // Validate new passwords match
+    if (newPassword !== confirmNewPassword) {
+      setError('New passwords do not match');
+      setIsLoading(false);
+      return;
+    }
+
+    // Validate password strength
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      // First verify current credentials by signing in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        setError('Current email or password is incorrect');
+        setIsLoading(false);
+        return;
+      }
+
+      // Update the password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        setError(updateError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // Sign out after password change
+      await supabase.auth.signOut();
+
+      setSuccess('Password changed successfully! Please sign in with your new password.');
+      setActiveTab('login');
+      setPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (err) {
+      setError('An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -147,10 +208,11 @@ const ResearcherLogin = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2 mb-4">
+          <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setError(null); setSuccess(null); }}>
+            <TabsList className="grid w-full grid-cols-3 mb-4">
               <TabsTrigger value="login">Sign In</TabsTrigger>
-              <TabsTrigger value="create">Create Account</TabsTrigger>
+              <TabsTrigger value="create">Create</TabsTrigger>
+              <TabsTrigger value="change-password">Password</TabsTrigger>
             </TabsList>
 
             <TabsContent value="login">
@@ -280,6 +342,80 @@ const ResearcherLogin = () => {
                     </>
                   ) : (
                     'Create Account'
+                  )}
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="change-password">
+              <form onSubmit={handleChangePassword} className="space-y-4">
+                {error && activeTab === 'change-password' && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="change-email">Email</Label>
+                  <Input
+                    id="change-email"
+                    type="email"
+                    placeholder="researcher@university.edu"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="current-password">Current Password</Label>
+                  <Input
+                    id="current-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">New Password</Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-new-password">Confirm New Password</Label>
+                  <Input
+                    id="confirm-new-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+                
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Changing Password...
+                    </>
+                  ) : (
+                    'Change Password'
                   )}
                 </Button>
               </form>
