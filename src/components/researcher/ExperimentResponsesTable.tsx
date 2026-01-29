@@ -38,6 +38,8 @@ import {
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { useActivityLog } from '@/hooks/useActivityLog';
+import { DownloadConfirmDialog } from './DownloadConfirmDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -430,8 +432,10 @@ export const ExperimentResponsesTable = () => {
   const [showBulkBatchDialog, setShowBulkBatchDialog] = useState(false);
   const [bulkAssistantType, setBulkAssistantType] = useState<'formal' | 'informal'>('formal');
   const [bulkBatchLabel, setBulkBatchLabel] = useState('');
+  const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { isSuperAdmin, user } = useResearcherAuth();
+  const { logActivity } = useActivityLog();
 
   // Filter states
   const [filters, setFilters] = useState<FilterState>({
@@ -1004,6 +1008,20 @@ export const ExperimentResponsesTable = () => {
       a.download = filename;
       a.click();
       
+      // Log the download activity
+      await logActivity({ 
+        action: 'download_experiment_responses', 
+        details: { 
+          record_count: exportData.length,
+          filters: {
+            batch: filters.batch,
+            assistant_type: filters.assistantType,
+            search_term: searchTerm || null,
+          },
+          filename 
+        } 
+      });
+      
       toast.success(`Exported ${exportData.length} responses`);
     } catch (error) {
       console.error('Error exporting:', error);
@@ -1298,7 +1316,7 @@ export const ExperimentResponsesTable = () => {
           </DropdownMenu>
           
           {isSuperAdmin && (
-            <Button onClick={exportToCSV} variant="outline">
+            <Button onClick={() => setShowDownloadConfirm(true)} variant="outline">
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
@@ -1916,6 +1934,14 @@ export const ExperimentResponsesTable = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Download Confirmation Dialog */}
+      <DownloadConfirmDialog
+        open={showDownloadConfirm}
+        onOpenChange={setShowDownloadConfirm}
+        onConfirm={exportToCSV}
+        dataType="experiment responses with participant data"
+      />
     </div>
   );
 };
