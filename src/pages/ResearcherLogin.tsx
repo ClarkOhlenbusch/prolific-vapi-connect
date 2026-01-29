@@ -98,15 +98,27 @@ const ResearcherLogin = () => {
         return;
       }
 
+      // Check if this is a repeated signup (user already exists)
+      if (data.user?.identities?.length === 0) {
+        setError('An account with this email already exists. Please sign in instead.');
+        setIsLoading(false);
+        return;
+      }
+
       if (data.user) {
-        // Add viewer role
+        // Add viewer role - use upsert to handle edge cases
         const { error: roleError } = await supabase
           .from('researcher_roles')
-          .insert({ user_id: data.user.id, role: 'viewer' });
+          .upsert(
+            { user_id: data.user.id, role: 'viewer' },
+            { onConflict: 'user_id' }
+          );
 
         if (roleError) {
           console.error('Failed to add viewer role:', roleError);
-          // Don't show error to user, the account is created
+          setError('Account created but role assignment failed. Please contact an administrator.');
+          setIsLoading(false);
+          return;
         }
 
         setSuccess('Account created successfully! You can now sign in.');
