@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, UserPlus, Trash2, Shield, Eye, KeyRound } from 'lucide-react';
+import { ArrowLeft, UserPlus, Trash2, Shield, Eye, KeyRound, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminPasswordResetDialog } from '@/components/researcher/AdminPasswordResetDialog';
 
@@ -42,7 +42,7 @@ interface ResearcherUser {
   user_id: string;
   role: 'super_admin' | 'viewer';
   created_at: string;
-  email?: string;
+  email: string;
 }
 
 const ResearcherUserManagement = () => {
@@ -51,6 +51,7 @@ const ResearcherUserManagement = () => {
   const [users, setUsers] = useState<ResearcherUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState<'super_admin' | 'viewer'>('viewer');
   const [isAdding, setIsAdding] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
@@ -68,17 +69,23 @@ const ResearcherUserManagement = () => {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      // Get all researcher roles
-      const { data: roles, error } = await supabase
-        .from('researcher_roles')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data: sessionData } = await supabase.auth.getSession();
+      
+      const response = await supabase.functions.invoke('list-researchers', {
+        headers: {
+          Authorization: `Bearer ${sessionData.session?.access_token}`,
+        },
+      });
 
-      if (error) throw error;
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to fetch users');
+      }
 
-      // For now, we'll just show the user IDs since we can't query auth.users
-      // In a real app, you'd use an edge function to get user emails
-      setUsers(roles || []);
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      setUsers(response.data?.users || []);
     } catch (error) {
       console.error('Error fetching users:', error);
       toast.error('Failed to load users');
@@ -93,19 +100,47 @@ const ResearcherUserManagement = () => {
       return;
     }
 
+    if (!newUserPassword.trim()) {
+      toast.error('Please enter a password');
+      return;
+    }
+
+    if (newUserPassword.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+
     setIsAdding(true);
     try {
-      // First, we need to find the user by email
-      // This requires creating a user first via Supabase Auth
-      // For now, we'll show an info message about the workflow
-      toast.info(
-        'To add a researcher, they must first create an account by logging in at /researcher. Then you can update their role here.',
-        { duration: 5000 }
-      );
+      const { data: sessionData } = await supabase.auth.getSession();
+      
+      const response = await supabase.functions.invoke('create-researcher', {
+        body: { 
+          email: newUserEmail, 
+          password: newUserPassword,
+          role: newUserRole 
+        },
+        headers: {
+          Authorization: `Bearer ${sessionData.session?.access_token}`,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to create researcher');
+      }
+
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      toast.success(response.data?.message || 'Researcher created successfully');
       setNewUserEmail('');
+      setNewUserPassword('');
+      setNewUserRole('viewer');
+      fetchUsers();
     } catch (error) {
       console.error('Error adding user:', error);
-      toast.error('Failed to add user');
+      toast.error(error instanceof Error ? error.message : 'Failed to add user');
     } finally {
       setIsAdding(false);
     }
@@ -184,41 +219,63 @@ const ResearcherUserManagement = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5" />
-              Add Researcher Access
+              Create Researcher Account
             </CardTitle>
             <CardDescription>
-              Note: Users must first create an account by logging in at the researcher portal. 
-              Once they have an account, their role will appear here and you can update it.
+              Create a new researcher account with email and password. The user will be able to log in immediately.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex gap-4 items-end">
-              <div className="flex-1 space-y-2">
-                <Label htmlFor="email">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="researcher@example.com"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
-                />
+            <div className="grid gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="researcher@example.com"
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Minimum 8 characters"
+                    value={newUserPassword}
+                    onChange={(e) => setNewUserPassword(e.target.value)}
+                  />
+                </div>
               </div>
-              <div className="w-40 space-y-2">
-                <Label htmlFor="role">Role</Label>
-                <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as 'super_admin' | 'viewer')}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="viewer">Viewer</SelectItem>
-                    <SelectItem value="super_admin">Super Admin</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex gap-4 items-end">
+                <div className="w-40 space-y-2">
+                  <Label htmlFor="role">Role</Label>
+                  <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as 'super_admin' | 'viewer')}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="viewer">Viewer</SelectItem>
+                      <SelectItem value="super_admin">Super Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={handleAddUser} disabled={isAdding}>
+                  {isAdding ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Create Account
+                    </>
+                  )}
+                </Button>
               </div>
-              <Button onClick={handleAddUser} disabled={isAdding}>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Add User
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -246,7 +303,7 @@ const ResearcherUserManagement = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>User ID</TableHead>
+                    <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Added</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -255,14 +312,14 @@ const ResearcherUserManagement = () => {
                 <TableBody>
                   {users.map((researcherUser) => (
                     <TableRow key={researcherUser.id}>
-                      <TableCell className="font-mono text-sm">
+                      <TableCell className="font-medium">
                         {researcherUser.user_id === user?.id ? (
                           <span className="flex items-center gap-2">
-                            {researcherUser.user_id.slice(0, 8)}...
+                            {researcherUser.email}
                             <Badge variant="outline" className="text-xs">You</Badge>
                           </span>
                         ) : (
-                          `${researcherUser.user_id.slice(0, 8)}...`
+                          researcherUser.email
                         )}
                       </TableCell>
                       <TableCell>
@@ -311,7 +368,7 @@ const ResearcherUserManagement = () => {
                             variant="ghost"
                             size="icon"
                             onClick={() => {
-                              setResetPasswordEmail(researcherUser.email || undefined);
+                              setResetPasswordEmail(researcherUser.email);
                               setResetPasswordOpen(true);
                             }}
                             title="Reset Password"
