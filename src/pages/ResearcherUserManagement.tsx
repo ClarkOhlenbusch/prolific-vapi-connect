@@ -33,8 +33,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, UserPlus, Trash2, Shield, Eye } from 'lucide-react';
+import { ArrowLeft, UserPlus, Trash2, Shield, Eye, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
+import { AdminPasswordResetDialog } from '@/components/researcher/AdminPasswordResetDialog';
 
 interface ResearcherUser {
   id: string;
@@ -53,6 +54,8 @@ const ResearcherUserManagement = () => {
   const [newUserRole, setNewUserRole] = useState<'super_admin' | 'viewer'>('viewer');
   const [isAdding, setIsAdding] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
+  const [resetPasswordEmail, setResetPasswordEmail] = useState<string | undefined>();
 
   useEffect(() => {
     if (!isSuperAdmin) {
@@ -303,15 +306,28 @@ const ResearcherUserManagement = () => {
                         {new Date(researcherUser.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteUserId(researcherUser.user_id)}
-                          disabled={researcherUser.user_id === user?.id}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setResetPasswordEmail(researcherUser.email || undefined);
+                              setResetPasswordOpen(true);
+                            }}
+                            title="Reset Password"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleteUserId(researcherUser.user_id)}
+                            disabled={researcherUser.user_id === user?.id}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -340,6 +356,13 @@ const ResearcherUserManagement = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Password Reset Dialog */}
+      <AdminPasswordResetDialog
+        open={resetPasswordOpen}
+        onOpenChange={setResetPasswordOpen}
+        targetEmail={resetPasswordEmail}
+      />
     </div>
   );
 };

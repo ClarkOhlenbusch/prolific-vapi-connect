@@ -11,23 +11,72 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { email, newPassword, adminSecret } = await req.json();
-
-    // Simple secret to prevent unauthorized access
-    if (adminSecret !== 'UPDATE_PASSWORD_2024') {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'Invalid admin secret' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    const { targetEmail, newPassword } = await req.json();
+
+    if (!targetEmail || !newPassword) {
+      return new Response(
+        JSON.stringify({ error: 'Missing targetEmail or newPassword' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (newPassword.length < 8) {
+      return new Response(
+        JSON.stringify({ error: 'Password must be at least 8 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create client with user's token to verify their identity
+    const supabaseUser = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: { headers: { Authorization: authHeader } },
+        auth: { autoRefreshToken: false, persistSession: false }
+      }
+    );
+
+    // Get the calling user
+    const { data: { user: callingUser }, error: userError } = await supabaseUser.auth.getUser();
+    
+    if (userError || !callingUser) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid user session' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create admin client to check role and update password
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Get user by email
+    // Check if calling user is a super_admin
+    const { data: roleData, error: roleError } = await supabaseAdmin
+      .from('researcher_roles')
+      .select('role')
+      .eq('user_id', callingUser.id)
+      .single();
+
+    if (roleError || !roleData || roleData.role !== 'super_admin') {
+      return new Response(
+        JSON.stringify({ error: 'Only super admins can reset passwords' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get target user by email
     const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
     
     if (listError) {
@@ -37,9 +86,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const user = users.users.find(u => u.email === email);
+    const targetUser = users.users.find(u => u.email === targetEmail);
     
-    if (!user) {
+    if (!targetUser) {
       return new Response(
         JSON.stringify({ error: 'User not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -48,7 +97,7 @@ Deno.serve(async (req) => {
 
     // Update password
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-      user.id,
+      targetUser.id,
       { password: newPassword }
     );
 
