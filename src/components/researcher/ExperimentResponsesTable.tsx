@@ -1315,12 +1315,10 @@ export const ExperimentResponsesTable = () => {
             </DropdownMenuContent>
           </DropdownMenu>
           
-          {isSuperAdmin && (
-            <Button onClick={() => setShowDownloadConfirm(true)} variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-          )}
+          <Button onClick={() => setShowDownloadConfirm(true)} variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
         </div>
       </div>
 
