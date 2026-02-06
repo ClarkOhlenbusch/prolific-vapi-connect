@@ -333,7 +333,23 @@ export const BatchManager = () => {
                       {index + 1}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {batch.name}
+                      <div className="flex items-center gap-2">
+                        {batch.name}
+                        <button
+                          onClick={() => !batch.is_active && isSuperAdmin && handleSetActive(batch)}
+                          disabled={batch.is_active || !isSuperAdmin}
+                          title={batch.is_active ? "Active batch" : isSuperAdmin ? "Set as active batch" : "Only admins can change active batch"}
+                          className={`${batch.is_active || !isSuperAdmin ? "cursor-default" : "cursor-pointer"}`}
+                        >
+                          <Star 
+                            className={`h-4 w-4 ${
+                              batch.is_active 
+                                ? "text-yellow-500 fill-yellow-500" 
+                                : "text-muted-foreground hover:text-yellow-500"
+                            }`} 
+                          />
+                        </button>
+                      </div>
                     </TableCell>
                     <TableCell>
                       {batch.is_active ? (
@@ -378,22 +394,6 @@ export const BatchManager = () => {
                     {isSuperAdmin && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => !batch.is_active && handleSetActive(batch)}
-                            disabled={batch.is_active}
-                            title={batch.is_active ? "Active batch" : "Set as active batch"}
-                            className={batch.is_active ? "cursor-default" : ""}
-                          >
-                            <Star 
-                              className={`h-4 w-4 ${
-                                batch.is_active 
-                                  ? "text-yellow-500 fill-yellow-500" 
-                                  : "text-muted-foreground hover:text-yellow-500"
-                              }`} 
-                            />
-                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
