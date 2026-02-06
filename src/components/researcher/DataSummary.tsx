@@ -137,6 +137,7 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
     // Use dummy data for guest mode
     if (isGuestMode) {
       const guestResponses = GUEST_PARTICIPANTS.filter(p => p.status === 'Completed').map(p => ({
+        prolific_id: p.prolific_id,
         assistant_type: p.assistant_type,
         batch_label: p.batch_label,
         pets_total: p.pets_total,
