@@ -16,7 +16,8 @@ import {
   Layers,
   UserX,
   Activity,
-  Users
+  Users,
+  History
 } from 'lucide-react';
 import { UnifiedParticipantsTable } from '@/components/researcher/UnifiedParticipantsTable';
 import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponsesTable';
@@ -68,6 +69,13 @@ const ResearcherDashboard = () => {
           </div>
           
           <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/researcher/changelog')}
+            >
+              <History className="h-4 w-4 mr-2" />
+              Changelog
+            </Button>
             <Button 
               variant="outline" 
               onClick={() => navigate('/researcher/statistics')}
