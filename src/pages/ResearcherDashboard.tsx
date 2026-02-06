@@ -28,8 +28,12 @@ import { TimeAnalysis } from '@/components/researcher/TimeAnalysis';
 
 import { NoConsentFeedbackTable } from '@/components/researcher/NoConsentFeedbackTable';
 import { ActivityLogsTable } from '@/components/researcher/ActivityLogsTable';
+import { GlobalSourceFilter } from '@/components/researcher/GlobalSourceFilter';
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
+const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
+
+export type SourceFilterValue = 'all' | 'participant' | 'researcher';
 
 const ResearcherDashboard = () => {
   const { user, role, logout, isSuperAdmin, isGuestMode } = useResearcherAuth();
@@ -40,10 +44,19 @@ const ResearcherDashboard = () => {
     if (saved === 'participants') return 'responses';
     return saved || 'summary';
   });
+  const [sourceFilter, setSourceFilter] = useState<SourceFilterValue>(() => {
+    const saved = sessionStorage.getItem(SOURCE_FILTER_STORAGE_KEY);
+    if (saved === 'all' || saved === 'participant' || saved === 'researcher') return saved;
+    return 'participant'; // Default to participants only
+  });
 
   useEffect(() => {
     sessionStorage.setItem(TAB_STORAGE_KEY, activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    sessionStorage.setItem(SOURCE_FILTER_STORAGE_KEY, sourceFilter);
+  }, [sourceFilter]);
 
   const handleLogout = async () => {
     await logout();
@@ -114,6 +127,11 @@ const ResearcherDashboard = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
+        {/* Global Source Filter */}
+        <div className="mb-6">
+          <GlobalSourceFilter value={sourceFilter} onChange={setSourceFilter} />
+        </div>
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
             <TabsTrigger value="summary" className="flex items-center gap-1.5 px-3 py-2">
@@ -161,7 +179,7 @@ const ResearcherDashboard = () => {
           </TabsList>
 
           <TabsContent value="summary">
-            <DataSummary />
+            <DataSummary sourceFilter={sourceFilter} />
           </TabsContent>
 
           <TabsContent value="responses">
@@ -173,13 +191,13 @@ const ResearcherDashboard = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <UnifiedParticipantsTable />
+                <UnifiedParticipantsTable sourceFilter={sourceFilter} />
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="time">
-            <TimeAnalysis />
+            <TimeAnalysis sourceFilter={sourceFilter} />
           </TabsContent>
 
           <TabsContent value="formality">
@@ -191,7 +209,7 @@ const ResearcherDashboard = () => {
           </TabsContent>
 
           <TabsContent value="no-consent">
-            <NoConsentFeedbackTable />
+            <NoConsentFeedbackTable sourceFilter={sourceFilter} />
           </TabsContent>
 
           {isSuperAdmin && (

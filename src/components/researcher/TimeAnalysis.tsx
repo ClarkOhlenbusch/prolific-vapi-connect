@@ -11,6 +11,7 @@ import { Clock, Users, TrendingUp, Search, X, Route } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { ParticipantJourneyModal } from './ParticipantJourneyModal';
 import { GUEST_NAVIGATION_EVENTS } from '@/lib/guest-dummy-data';
+import { SourceFilterValue } from './GlobalSourceFilter';
 
 interface PageTimeData {
   page_name: string;
@@ -57,7 +58,16 @@ const CHART_COLORS = [
   'hsl(var(--chart-5))',
 ];
 
-export const TimeAnalysis = () => {
+// Helper to detect researcher IDs (Prolific IDs are exactly 24 characters)
+const isResearcherId = (prolificId: string): boolean => {
+  return prolificId.length !== 24;
+};
+
+interface TimeAnalysisProps {
+  sourceFilter: SourceFilterValue;
+}
+
+export const TimeAnalysis = ({ sourceFilter }: TimeAnalysisProps) => {
   const [data, setData] = useState<PageTimeData[]>([]);
   const [allEvents, setAllEvents] = useState<NavigationEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +80,7 @@ export const TimeAnalysis = () => {
 
   useEffect(() => {
     fetchTimeAnalysis();
-  }, [isGuestMode]);
+  }, [isGuestMode, sourceFilter]);
 
   const fetchTimeAnalysis = async () => {
     try {
@@ -90,6 +100,13 @@ export const TimeAnalysis = () => {
 
         if (error) throw error;
         events = fetchedEvents || [];
+      }
+
+      // Apply source filter
+      if (sourceFilter === 'participant') {
+        events = events.filter(e => !isResearcherId(e.prolific_id));
+      } else if (sourceFilter === 'researcher') {
+        events = events.filter(e => isResearcherId(e.prolific_id));
       }
 
       setAllEvents(events);
