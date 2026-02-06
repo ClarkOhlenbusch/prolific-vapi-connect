@@ -35,6 +35,7 @@ import {
 import { toast } from 'sonner';
 import { Plus, Edit, Trash2, Star, StickyNote } from 'lucide-react';
 import { format } from 'date-fns';
+import { GUEST_BATCHES, getGuestBatchStats } from '@/lib/guest-dummy-data';
 
 interface Batch {
   id: string;
@@ -59,7 +60,7 @@ interface BatchStats {
 }
 
 export const BatchManager = () => {
-  const { isSuperAdmin, user } = useResearcherAuth();
+  const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [batchStats, setBatchStats] = useState<Map<string, BatchStats>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
@@ -73,11 +74,23 @@ export const BatchManager = () => {
 
   useEffect(() => {
     fetchBatches();
-  }, []);
+  }, [isGuestMode]);
 
   const fetchBatches = async () => {
     try {
       setIsLoading(true);
+      
+      // Use dummy data for guest mode
+      if (isGuestMode) {
+        setBatches(GUEST_BATCHES);
+        const statsMap = new Map<string, BatchStats>();
+        GUEST_BATCHES.forEach(batch => {
+          statsMap.set(batch.name, getGuestBatchStats(batch.name));
+        });
+        setBatchStats(statsMap);
+        setIsLoading(false);
+        return;
+      }
       
       // Fetch batches
       const { data: batchData, error: batchError } = await supabase
@@ -300,7 +313,7 @@ export const BatchManager = () => {
               Manage experiment batches and track their responses
             </CardDescription>
           </div>
-          {isSuperAdmin && (
+          {isSuperAdmin && !isGuestMode && (
             <Button onClick={() => setShowCreateDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
               New Batch
@@ -321,7 +334,7 @@ export const BatchManager = () => {
                 <TableHead className="text-right">Avg TIAS</TableHead>
                 <TableHead className="text-right">Avg Formality</TableHead>
                 <TableHead>Notes</TableHead>
-                {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
+                {isSuperAdmin && !isGuestMode && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -336,10 +349,10 @@ export const BatchManager = () => {
                       <div className="flex items-center gap-2">
                         {batch.name}
                         <button
-                          onClick={() => !batch.is_active && isSuperAdmin && handleSetActive(batch)}
-                          disabled={batch.is_active || !isSuperAdmin}
-                          title={batch.is_active ? "Active batch" : isSuperAdmin ? "Set as active batch" : "Only admins can change active batch"}
-                          className={`${batch.is_active || !isSuperAdmin ? "cursor-default" : "cursor-pointer"}`}
+                          onClick={() => !batch.is_active && isSuperAdmin && !isGuestMode && handleSetActive(batch)}
+                          disabled={batch.is_active || !isSuperAdmin || isGuestMode}
+                          title={batch.is_active ? "Active batch" : (isSuperAdmin && !isGuestMode) ? "Set as active batch" : "Only admins can change active batch"}
+                          className={`${batch.is_active || !isSuperAdmin || isGuestMode ? "cursor-default" : "cursor-pointer"}`}
                         >
                           <Star 
                             className={`h-4 w-4 ${
@@ -391,7 +404,7 @@ export const BatchManager = () => {
                         {batch.notes || '—'}
                       </p>
                     </TableCell>
-                    {isSuperAdmin && (
+                    {isSuperAdmin && !isGuestMode && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button
@@ -426,7 +439,7 @@ export const BatchManager = () => {
               })}
               {batches.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={isSuperAdmin ? 11 : 10} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={(isSuperAdmin && !isGuestMode) ? 11 : 10} className="text-center text-muted-foreground py-8">
                     No batches created yet. Create a batch to start organizing your experiment responses.
                   </TableCell>
                 </TableRow>

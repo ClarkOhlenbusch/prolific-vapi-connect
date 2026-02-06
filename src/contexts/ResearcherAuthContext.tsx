@@ -5,6 +5,8 @@ import { logActivityStandalone } from '@/hooks/useActivityLog';
 
 type ResearcherRole = 'super_admin' | 'viewer' | null;
 
+const GUEST_MODE_KEY = 'researcher-guest-mode';
+
 interface ResearcherAuthContextType {
   user: User | null;
   session: Session | null;
@@ -12,9 +14,12 @@ interface ResearcherAuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
+  isGuestMode: boolean;
   login: (email: string, password: string) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
   refreshRole: () => Promise<void>;
+  enterGuestMode: () => void;
+  exitGuestMode: () => void;
 }
 
 const ResearcherAuthContext = createContext<ResearcherAuthContextType | undefined>(undefined);
@@ -24,6 +29,9 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<ResearcherRole>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isGuestMode, setIsGuestMode] = useState(() => {
+    return sessionStorage.getItem(GUEST_MODE_KEY) === 'true';
+  });
 
   const fetchRole = async (userId: string) => {
     try {
@@ -69,7 +77,23 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
     }
   };
 
+  const enterGuestMode = () => {
+    setIsGuestMode(true);
+    sessionStorage.setItem(GUEST_MODE_KEY, 'true');
+  };
+
+  const exitGuestMode = () => {
+    setIsGuestMode(false);
+    sessionStorage.removeItem(GUEST_MODE_KEY);
+  };
+
   useEffect(() => {
+    // If guest mode is active, don't show loading
+    if (isGuestMode) {
+      setIsLoading(false);
+      return;
+    }
+
     let isMounted = true;
     let requestSeq = 0;
 
@@ -117,9 +141,14 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [isGuestMode]);
 
   const login = async (email: string, password: string): Promise<{ error: string | null }> => {
+    // Exit guest mode if logging in
+    if (isGuestMode) {
+      exitGuestMode();
+    }
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -151,7 +180,11 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    if (isGuestMode) {
+      exitGuestMode();
+    } else {
+      await supabase.auth.signOut();
+    }
     setRole(null);
   };
 
@@ -160,11 +193,14 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
     session,
     role,
     isLoading,
-    isAuthenticated: !!user && !!role,
-    isSuperAdmin: role === 'super_admin',
+    isAuthenticated: isGuestMode || (!!user && !!role),
+    isSuperAdmin: !isGuestMode && role === 'super_admin',
+    isGuestMode,
     login,
     logout,
     refreshRole,
+    enterGuestMode,
+    exitGuestMode,
   };
 
   return (

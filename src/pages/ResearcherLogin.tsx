@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FlaskConical, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { FlaskConical, Loader2, AlertCircle, CheckCircle2, Eye } from 'lucide-react';
 
 const ACTIVATION_KEY = 'kN&B981$%ZSK';
 
@@ -23,7 +23,7 @@ const ResearcherLogin = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
-  const { login, isAuthenticated, isLoading: authLoading } = useResearcherAuth();
+  const { login, isAuthenticated, isLoading: authLoading, enterGuestMode } = useResearcherAuth();
   const navigate = useNavigate();
 
   // Redirect if already authenticated
@@ -267,6 +267,31 @@ const ResearcherLogin = () => {
                     'Sign In'
                   )}
                 </Button>
+
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or</span>
+                  </div>
+                </div>
+
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={() => {
+                    enterGuestMode();
+                    navigate('/researcher/dashboard', { replace: true });
+                  }}
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  View as Guest
+                </Button>
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Explore the dashboard with sample data
+                </p>
               </form>
             </TabsContent>
 

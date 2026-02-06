@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -9,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Clock, Users, TrendingUp, Search, X, Route } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { ParticipantJourneyModal } from './ParticipantJourneyModal';
+import { GUEST_NAVIGATION_EVENTS } from '@/lib/guest-dummy-data';
 
 interface PageTimeData {
   page_name: string;
@@ -64,30 +66,39 @@ export const TimeAnalysis = () => {
   const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
   const [matchingParticipants, setMatchingParticipants] = useState<string[]>([]);
   const [journeyModal, setJourneyModal] = useState<{ open: boolean; prolificId: string }>({ open: false, prolificId: '' });
+  const { isGuestMode } = useResearcherAuth();
 
   useEffect(() => {
     fetchTimeAnalysis();
-  }, []);
+  }, [isGuestMode]);
 
   const fetchTimeAnalysis = async () => {
     try {
       setLoading(true);
       
-      // Fetch navigation events with time data
-      const { data: events, error } = await supabase
-        .from('navigation_events')
-        .select('page_name, time_on_page_seconds, prolific_id')
-        .not('time_on_page_seconds', 'is', null);
+      let events: NavigationEvent[];
+      
+      // Use dummy data for guest mode
+      if (isGuestMode) {
+        events = GUEST_NAVIGATION_EVENTS;
+      } else {
+        // Fetch navigation events with time data
+        const { data: fetchedEvents, error } = await supabase
+          .from('navigation_events')
+          .select('page_name, time_on_page_seconds, prolific_id')
+          .not('time_on_page_seconds', 'is', null);
 
-      if (error) throw error;
+        if (error) throw error;
+        events = fetchedEvents || [];
+      }
 
-      setAllEvents(events || []);
+      setAllEvents(events);
 
       // Calculate averages per page
       const pageStats: { [key: string]: { totalTime: number; visits: number; participants: Set<string> } } = {};
       const allParticipants = new Set<string>();
 
-      events?.forEach((event) => {
+      events.forEach((event) => {
         const page = event.page_name;
         if (!pageStats[page]) {
           pageStats[page] = { totalTime: 0, visits: 0, participants: new Set() };
