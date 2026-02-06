@@ -32,7 +32,7 @@ import { ActivityLogsTable } from '@/components/researcher/ActivityLogsTable';
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 
 const ResearcherDashboard = () => {
-  const { user, role, logout, isSuperAdmin } = useResearcherAuth();
+  const { user, role, logout, isSuperAdmin, isGuestMode } = useResearcherAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(() => {
     const saved = sessionStorage.getItem(TAB_STORAGE_KEY);
@@ -62,38 +62,51 @@ const ResearcherDashboard = () => {
             <div>
               <h1 className="text-xl font-semibold">Research Dashboard</h1>
               <p className="text-sm text-muted-foreground">
-                {user?.email} • {role === 'super_admin' ? 'Super Admin' : 'Viewer'}
+                {isGuestMode ? (
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+                    Guest • Demo Mode
+                  </span>
+                ) : (
+                  <>
+                    {user?.email} • {role === 'super_admin' ? 'Super Admin' : 'Viewer'}
+                  </>
+                )}
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/researcher/changelog')}
-            >
-              <History className="h-4 w-4 mr-2" />
-              Changelog
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/researcher/statistics')}
-            >
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Statistical Analysis
-            </Button>
-            {isSuperAdmin && (
-              <Button 
-                variant="outline" 
-                onClick={() => navigate('/researcher/users')}
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                Manage Users
-              </Button>
+            {!isGuestMode && (
+              <>
+                <Button 
+                  variant="outline" 
+                  onClick={() => navigate('/researcher/changelog')}
+                >
+                  <History className="h-4 w-4 mr-2" />
+                  Changelog
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => navigate('/researcher/statistics')}
+                >
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Statistical Analysis
+                </Button>
+                {isSuperAdmin && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => navigate('/researcher/users')}
+                  >
+                    <Settings className="h-4 w-4 mr-2" />
+                    Manage Users
+                  </Button>
+                )}
+              </>
             )}
-            <Button variant="ghost" onClick={handleLogout}>
+            <Button variant={isGuestMode ? "default" : "ghost"} onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" />
-              Logout
+              {isGuestMode ? 'Exit Demo' : 'Logout'}
             </Button>
           </div>
         </div>
@@ -127,19 +140,19 @@ const ResearcherDashboard = () => {
               <UserX className="h-4 w-4" />
               <span className="hidden sm:inline">No Consent</span>
             </TabsTrigger>
-            {isSuperAdmin && (
+            {isSuperAdmin && !isGuestMode && (
               <TabsTrigger value="activity" className="flex items-center gap-1.5 px-3 py-2">
                 <Activity className="h-4 w-4" />
                 <span className="hidden sm:inline">Activity</span>
               </TabsTrigger>
             )}
-            {isSuperAdmin && (
+            {isSuperAdmin && !isGuestMode && (
               <TabsTrigger value="archived" className="flex items-center gap-1.5 px-3 py-2">
                 <Archive className="h-4 w-4" />
                 <span className="hidden sm:inline">Archived</span>
               </TabsTrigger>
             )}
-            {isSuperAdmin && (
+            {isSuperAdmin && !isGuestMode && (
               <TabsTrigger value="settings" className="flex items-center gap-1.5 px-3 py-2">
                 <Settings className="h-4 w-4" />
                 <span className="hidden sm:inline">Experiment Settings</span>
@@ -181,7 +194,7 @@ const ResearcherDashboard = () => {
             <NoConsentFeedbackTable />
           </TabsContent>
 
-          {isSuperAdmin && (
+          {isSuperAdmin && !isGuestMode && (
             <TabsContent value="activity">
               <Card>
                 <CardHeader>
@@ -197,7 +210,7 @@ const ResearcherDashboard = () => {
             </TabsContent>
           )}
 
-          {isSuperAdmin && (
+          {isSuperAdmin && !isGuestMode && (
             <TabsContent value="archived">
               <Card>
                 <CardHeader>
@@ -213,7 +226,7 @@ const ResearcherDashboard = () => {
             </TabsContent>
           )}
 
-          {isSuperAdmin && (
+          {isSuperAdmin && !isGuestMode && (
             <TabsContent value="settings">
               <ExperimentSettings />
             </TabsContent>
