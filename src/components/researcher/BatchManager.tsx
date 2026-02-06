@@ -194,12 +194,28 @@ export const BatchManager = () => {
 
   const handleSetActive = async (batch: Batch) => {
     try {
-      const { error } = await supabase
+      // Update the batch to be active
+      const { error: batchError } = await supabase
         .from('experiment_batches')
         .update({ is_active: true })
         .eq('id', batch.id);
 
-      if (error) throw error;
+      if (batchError) throw batchError;
+
+      // Also update the current_batch_label setting so new responses use this batch name
+      const { error: settingError } = await supabase
+        .from('experiment_settings')
+        .update({
+          setting_value: batch.name,
+          updated_at: new Date().toISOString(),
+          updated_by: user?.id,
+        })
+        .eq('setting_key', 'current_batch_label');
+
+      if (settingError) {
+        console.error('Error updating batch label setting:', settingError);
+        // Still show success since the batch was activated
+      }
 
       toast.success(`"${batch.name}" is now the active batch`);
       fetchBatches();
