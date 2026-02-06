@@ -95,50 +95,50 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex lg:gap-0.5">
-            <TabsTrigger value="summary" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-              <BarChart3 className="h-3.5 w-3.5" />
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
+            <TabsTrigger value="summary" className="flex items-center gap-1.5 px-3 py-2">
+              <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Summary</span>
             </TabsTrigger>
-            <TabsTrigger value="responses" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-              <Users className="h-3.5 w-3.5" />
+            <TabsTrigger value="responses" className="flex items-center gap-1.5 px-3 py-2">
+              <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Responses</span>
             </TabsTrigger>
-            <TabsTrigger value="time" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-              <Clock className="h-3.5 w-3.5" />
+            <TabsTrigger value="time" className="flex items-center gap-1.5 px-3 py-2">
+              <Clock className="h-4 w-4" />
               <span className="hidden sm:inline">Time</span>
             </TabsTrigger>
-            <TabsTrigger value="formality" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-              <Calculator className="h-3.5 w-3.5" />
+            <TabsTrigger value="formality" className="flex items-center gap-1.5 px-3 py-2">
+              <Calculator className="h-4 w-4" />
               <span className="hidden sm:inline">Formality</span>
             </TabsTrigger>
-            <TabsTrigger value="prompts" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-              <MessageSquare className="h-3.5 w-3.5" />
+            <TabsTrigger value="prompts" className="flex items-center gap-1.5 px-3 py-2">
+              <MessageSquare className="h-4 w-4" />
               <span className="hidden sm:inline">Prompts</span>
             </TabsTrigger>
-            <TabsTrigger value="batches" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-              <Layers className="h-3.5 w-3.5" />
+            <TabsTrigger value="batches" className="flex items-center gap-1.5 px-3 py-2">
+              <Layers className="h-4 w-4" />
               <span className="hidden sm:inline">Batches</span>
             </TabsTrigger>
-            <TabsTrigger value="no-consent" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-              <UserX className="h-3.5 w-3.5" />
+            <TabsTrigger value="no-consent" className="flex items-center gap-1.5 px-3 py-2">
+              <UserX className="h-4 w-4" />
               <span className="hidden sm:inline">No Consent</span>
             </TabsTrigger>
             {isSuperAdmin && (
-              <TabsTrigger value="activity" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-                <Activity className="h-3.5 w-3.5" />
+              <TabsTrigger value="activity" className="flex items-center gap-1.5 px-3 py-2">
+                <Activity className="h-4 w-4" />
                 <span className="hidden sm:inline">Activity</span>
               </TabsTrigger>
             )}
             {isSuperAdmin && (
-              <TabsTrigger value="archived" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-                <Archive className="h-3.5 w-3.5" />
+              <TabsTrigger value="archived" className="flex items-center gap-1.5 px-3 py-2">
+                <Archive className="h-4 w-4" />
                 <span className="hidden sm:inline">Archived</span>
               </TabsTrigger>
             )}
             {isSuperAdmin && (
-              <TabsTrigger value="settings" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
-                <Settings className="h-3.5 w-3.5" />
+              <TabsTrigger value="settings" className="flex items-center gap-1.5 px-3 py-2">
+                <Settings className="h-4 w-4" />
                 <span className="hidden sm:inline">Settings</span>
               </TabsTrigger>
             )}
