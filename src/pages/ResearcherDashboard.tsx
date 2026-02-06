@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { 
   FlaskConical, 
   LogOut, 
-  FileText, 
   BarChart3, 
   Archive,
   Settings,
@@ -16,10 +15,10 @@ import {
   Clock,
   Layers,
   UserX,
-  Activity
+  Activity,
+  Users
 } from 'lucide-react';
-import { ExperimentResponsesTable } from '@/components/researcher/ExperimentResponsesTable';
-import { ParticipantCallsTable } from '@/components/researcher/ParticipantCallsTable';
+import { UnifiedParticipantsTable } from '@/components/researcher/UnifiedParticipantsTable';
 import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponsesTable';
 import { DataSummary } from '@/components/researcher/DataSummary';
 import { ExperimentSettings } from '@/components/researcher/ExperimentSettings';
@@ -93,18 +92,14 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-11">
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-9">
             <TabsTrigger value="summary" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Summary</span>
             </TabsTrigger>
-            <TabsTrigger value="responses" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              <span className="hidden sm:inline">Responses</span>
-            </TabsTrigger>
-            <TabsTrigger value="calls" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              <span className="hidden sm:inline">Calls</span>
+            <TabsTrigger value="participants" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              <span className="hidden sm:inline">Participants</span>
             </TabsTrigger>
             <TabsTrigger value="time" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
@@ -150,30 +145,16 @@ const ResearcherDashboard = () => {
             <DataSummary />
           </TabsContent>
 
-          <TabsContent value="responses">
+          <TabsContent value="participants">
             <Card>
               <CardHeader>
-                <CardTitle>Experiment Responses</CardTitle>
+                <CardTitle>All Participants</CardTitle>
                 <CardDescription>
-                  View all participant experiment responses including PETS, TIAS, and feedback data
+                  View all participants with their completion status, experiment data, and journey timelines
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <ExperimentResponsesTable />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="calls">
-            <Card>
-              <CardHeader>
-                <CardTitle>Participant Calls</CardTitle>
-                <CardDescription>
-                  Call session data and metadata
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ParticipantCallsTable />
+                <UnifiedParticipantsTable />
               </CardContent>
             </Card>
           </TabsContent>
