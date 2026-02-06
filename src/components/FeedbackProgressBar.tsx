@@ -5,6 +5,7 @@ interface FeedbackProgressBarProps {
   wordCount: number;
   minWords: number;
   showValidationError: boolean;
+  showValidationSuccess?: boolean;
 }
 
 const MILESTONES = [
@@ -17,7 +18,8 @@ const MILESTONES = [
 export const FeedbackProgressBar = ({ 
   wordCount, 
   minWords, 
-  showValidationError 
+  showValidationError,
+  showValidationSuccess = false
 }: FeedbackProgressBarProps) => {
   const maxMilestone = MILESTONES[MILESTONES.length - 1].words;
   const progressValue = Math.min((wordCount / maxMilestone) * 100, 100);
@@ -73,10 +75,13 @@ export const FeedbackProgressBar = ({
       <div className="flex justify-between items-center text-sm">
         <span className={`flex items-center gap-1 ${
           showValidationError && !isMinimumMet 
-            ? 'text-destructive' 
-            : 'text-foreground/70'
+            ? 'text-destructive font-medium' 
+            : showValidationSuccess && isMinimumMet
+              ? 'text-green-600 dark:text-green-500 font-medium'
+              : 'text-foreground/70'
         }`}>
           {showValidationError && !isMinimumMet && <AlertCircle className="w-4 h-4" />}
+          {showValidationSuccess && isMinimumMet && <Check className="w-4 h-4 text-green-600 dark:text-green-500" />}
           {wordCount} / {minWords} words minimum
         </span>
       </div>

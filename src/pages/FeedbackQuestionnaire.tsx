@@ -34,6 +34,11 @@ const FeedbackQuestionnaire = () => {
   const styleDictationRef = useRef<VoiceDictationRef>(null);
   const experimentDictationRef = useRef<VoiceDictationRef>(null);
   
+  // Refs for scrolling to questions
+  const experienceQuestionRef = useRef<HTMLDivElement>(null);
+  const styleQuestionRef = useRef<HTMLDivElement>(null);
+  const experimentQuestionRef = useRef<HTMLDivElement>(null);
+  
   const MAX_CHARS = 2500;
   const MIN_WORDS = 35;
   
@@ -192,6 +197,18 @@ const FeedbackQuestionnaire = () => {
     if (!isResearcherMode) {
       if (!experienceStatus.isValid || !styleStatus.isValid || !experimentStatus.isValid) {
         setShowValidationErrors(true);
+        
+        // Scroll to the first question that doesn't meet the minimum
+        setTimeout(() => {
+          if (!experienceStatus.isValid && experienceQuestionRef.current) {
+            experienceQuestionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          } else if (!styleStatus.isValid && styleQuestionRef.current) {
+            styleQuestionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          } else if (!experimentStatus.isValid && experimentQuestionRef.current) {
+            experimentQuestionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+        
         toast({
           title: "Minimum Word Count Required",
           description: `Please write at least ${MIN_WORDS} words for each question before submitting.`,
@@ -358,7 +375,7 @@ const FeedbackQuestionnaire = () => {
         </CardHeader>
         <CardContent className="space-y-8">
           {/* Question 1: Voice Assistant Experience */}
-          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experienceStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
+          <div ref={experienceQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experienceStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && experienceStatus.isValid ? 'border border-green-500/30' : ''}`}>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Experience with Cali
@@ -424,12 +441,13 @@ const FeedbackQuestionnaire = () => {
                 wordCount={experienceStatus.count} 
                 minWords={MIN_WORDS} 
                 showValidationError={showValidationErrors && !experienceStatus.isValid}
+                showValidationSuccess={showValidationErrors && experienceStatus.isValid}
               />
             </div>
           </div>
 
           {/* Question 2: Communication Style and Formality */}
-          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !styleStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
+          <div ref={styleQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !styleStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && styleStatus.isValid ? 'border border-green-500/30' : ''}`}>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Communication Style (Formality)
@@ -492,12 +510,13 @@ const FeedbackQuestionnaire = () => {
                 wordCount={styleStatus.count} 
                 minWords={MIN_WORDS} 
                 showValidationError={showValidationErrors && !styleStatus.isValid}
+                showValidationSuccess={showValidationErrors && styleStatus.isValid}
               />
             </div>
           </div>
 
           {/* Question 3: Experiment Feedback */}
-          <div className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : ''}`}>
+          <div ref={experimentQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && experimentStatus.isValid ? 'border border-green-500/30' : ''}`}>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Feedback on the Experiment
@@ -561,6 +580,7 @@ const FeedbackQuestionnaire = () => {
                 wordCount={experimentStatus.count} 
                 minWords={MIN_WORDS} 
                 showValidationError={showValidationErrors && !experimentStatus.isValid}
+                showValidationSuccess={showValidationErrors && experimentStatus.isValid}
               />
             </div>
           </div>
