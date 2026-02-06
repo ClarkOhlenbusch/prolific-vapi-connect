@@ -35,7 +35,10 @@ const ResearcherDashboard = () => {
   const { user, role, logout, isSuperAdmin } = useResearcherAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(() => {
-    return sessionStorage.getItem(TAB_STORAGE_KEY) || 'summary';
+    const saved = sessionStorage.getItem(TAB_STORAGE_KEY);
+    // Migrate old 'participants' tab value to 'responses'
+    if (saved === 'participants') return 'responses';
+    return saved || 'summary';
   });
 
   useEffect(() => {
@@ -92,50 +95,50 @@ const ResearcherDashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid lg:grid-cols-9">
-            <TabsTrigger value="summary" className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex lg:gap-0.5">
+            <TabsTrigger value="summary" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Summary</span>
             </TabsTrigger>
-            <TabsTrigger value="participants" className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">Participants</span>
+            <TabsTrigger value="responses" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+              <Users className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Responses</span>
             </TabsTrigger>
-            <TabsTrigger value="time" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              <span className="hidden sm:inline">Time Analysis</span>
+            <TabsTrigger value="time" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Time</span>
             </TabsTrigger>
-            <TabsTrigger value="formality" className="flex items-center gap-2">
-              <Calculator className="h-4 w-4" />
+            <TabsTrigger value="formality" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+              <Calculator className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Formality</span>
             </TabsTrigger>
-            <TabsTrigger value="prompts" className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
+            <TabsTrigger value="prompts" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+              <MessageSquare className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Prompts</span>
             </TabsTrigger>
-            <TabsTrigger value="batches" className="flex items-center gap-2">
-              <Layers className="h-4 w-4" />
+            <TabsTrigger value="batches" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+              <Layers className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Batches</span>
             </TabsTrigger>
-            <TabsTrigger value="no-consent" className="flex items-center gap-2">
-              <UserX className="h-4 w-4" />
+            <TabsTrigger value="no-consent" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+              <UserX className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">No Consent</span>
             </TabsTrigger>
             {isSuperAdmin && (
-              <TabsTrigger value="activity" className="flex items-center gap-2">
-                <Activity className="h-4 w-4" />
+              <TabsTrigger value="activity" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+                <Activity className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Activity</span>
               </TabsTrigger>
             )}
             {isSuperAdmin && (
-              <TabsTrigger value="archived" className="flex items-center gap-2">
-                <Archive className="h-4 w-4" />
+              <TabsTrigger value="archived" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+                <Archive className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Archived</span>
               </TabsTrigger>
             )}
             {isSuperAdmin && (
-              <TabsTrigger value="settings" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
+              <TabsTrigger value="settings" className="flex items-center gap-1.5 text-xs px-2.5 py-1.5">
+                <Settings className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Settings</span>
               </TabsTrigger>
             )}
@@ -145,12 +148,12 @@ const ResearcherDashboard = () => {
             <DataSummary />
           </TabsContent>
 
-          <TabsContent value="participants">
+          <TabsContent value="responses">
             <Card>
               <CardHeader>
-                <CardTitle>All Participants</CardTitle>
+                <CardTitle>All Responses</CardTitle>
                 <CardDescription>
-                  View all participants with their completion status, experiment data, and journey timelines
+                  View all participant and researcher responses with completion status, experiment data, and journey timelines
                 </CardDescription>
               </CardHeader>
               <CardContent>
