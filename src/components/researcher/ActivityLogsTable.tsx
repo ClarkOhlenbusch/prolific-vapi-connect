@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { format } from 'date-fns';
 import {
   Table,
@@ -23,6 +24,7 @@ import {
   Download,
   RefreshCw,
 } from 'lucide-react';
+import { GUEST_ACTIVITY_LOGS } from '@/lib/guest-dummy-data';
 
 interface ActivityLog {
   id: string;
@@ -51,8 +53,26 @@ export const ActivityLogsTable = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const { isGuestMode } = useResearcherAuth();
 
   const fetchLogs = async () => {
+    // Use dummy data for guest mode
+    if (isGuestMode) {
+      let filtered = GUEST_ACTIVITY_LOGS as ActivityLog[];
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        filtered = filtered.filter(
+          log => log.user_email.toLowerCase().includes(query) || log.action.toLowerCase().includes(query)
+        );
+      }
+      const from = (currentPage - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE;
+      setLogs(filtered.slice(from, to));
+      setTotalCount(filtered.length);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       let query = supabase
@@ -83,7 +103,7 @@ export const ActivityLogsTable = () => {
 
   useEffect(() => {
     fetchLogs();
-  }, [currentPage, searchQuery]);
+  }, [currentPage, searchQuery, isGuestMode]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 

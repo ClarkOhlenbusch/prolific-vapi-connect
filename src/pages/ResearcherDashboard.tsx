@@ -140,19 +140,19 @@ const ResearcherDashboard = () => {
               <UserX className="h-4 w-4" />
               <span className="hidden sm:inline">No Consent</span>
             </TabsTrigger>
-            {isSuperAdmin && !isGuestMode && (
+            {isSuperAdmin && (
               <TabsTrigger value="activity" className="flex items-center gap-1.5 px-3 py-2">
                 <Activity className="h-4 w-4" />
                 <span className="hidden sm:inline">Activity</span>
               </TabsTrigger>
             )}
-            {isSuperAdmin && !isGuestMode && (
+            {isSuperAdmin && (
               <TabsTrigger value="archived" className="flex items-center gap-1.5 px-3 py-2">
                 <Archive className="h-4 w-4" />
                 <span className="hidden sm:inline">Archived</span>
               </TabsTrigger>
             )}
-            {isSuperAdmin && !isGuestMode && (
+            {isSuperAdmin && (
               <TabsTrigger value="settings" className="flex items-center gap-1.5 px-3 py-2">
                 <Settings className="h-4 w-4" />
                 <span className="hidden sm:inline">Experiment Settings</span>
@@ -194,13 +194,14 @@ const ResearcherDashboard = () => {
             <NoConsentFeedbackTable />
           </TabsContent>
 
-          {isSuperAdmin && !isGuestMode && (
+          {isSuperAdmin && (
             <TabsContent value="activity">
               <Card>
                 <CardHeader>
                   <CardTitle>Researcher Activity</CardTitle>
                   <CardDescription>
                     Track logins and data downloads by researchers
+                    {isGuestMode && <span className="ml-2 text-xs text-primary">(Demo data)</span>}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -210,13 +211,14 @@ const ResearcherDashboard = () => {
             </TabsContent>
           )}
 
-          {isSuperAdmin && !isGuestMode && (
+          {isSuperAdmin && (
             <TabsContent value="archived">
               <Card>
                 <CardHeader>
                   <CardTitle>Archived Responses</CardTitle>
                   <CardDescription>
                     Responses that have been archived (soft deleted) - only visible to super admins
+                    {isGuestMode && <span className="ml-2 text-xs text-primary">(Demo data)</span>}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -226,7 +228,7 @@ const ResearcherDashboard = () => {
             </TabsContent>
           )}
 
-          {isSuperAdmin && !isGuestMode && (
+          {isSuperAdmin && (
             <TabsContent value="settings">
               <ExperimentSettings />
             </TabsContent>

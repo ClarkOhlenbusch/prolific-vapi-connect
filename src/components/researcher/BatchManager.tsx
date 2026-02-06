@@ -175,6 +175,26 @@ export const BatchManager = () => {
       return;
     }
 
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      const maxOrder = batches.reduce((max, b) => Math.max(max, b.display_order), 0);
+      const newBatch: Batch = {
+        id: `guest-batch-${Date.now()}`,
+        name: newBatchName.trim(),
+        notes: newBatchNotes.trim() || null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        created_by: 'guest',
+        display_order: maxOrder + 1,
+      };
+      setBatches(prev => [newBatch, ...prev.map(b => ({ ...b, is_active: false }))]);
+      toast.success('Batch created and set as active (demo mode - changes not saved)');
+      setNewBatchName('');
+      setNewBatchNotes('');
+      setShowCreateDialog(false);
+      return;
+    }
+
     try {
       const maxOrder = batches.reduce((max, b) => Math.max(max, b.display_order), 0);
       
@@ -206,6 +226,13 @@ export const BatchManager = () => {
   };
 
   const handleSetActive = async (batch: Batch) => {
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      setBatches(prev => prev.map(b => ({ ...b, is_active: b.id === batch.id })));
+      toast.success(`"${batch.name}" is now the active batch (demo mode - changes not saved)`);
+      return;
+    }
+
     try {
       // Update the batch to be active
       const { error: batchError } = await supabase
@@ -241,6 +268,17 @@ export const BatchManager = () => {
   const handleUpdateNotes = async () => {
     if (!selectedBatch) return;
 
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      setBatches(prev => prev.map(b => 
+        b.id === selectedBatch.id ? { ...b, notes: editNotes.trim() || null } : b
+      ));
+      toast.success('Notes updated (demo mode - changes not saved)');
+      setShowEditDialog(false);
+      setSelectedBatch(null);
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('experiment_batches')
@@ -261,6 +299,15 @@ export const BatchManager = () => {
 
   const handleDeleteBatch = async () => {
     if (!selectedBatch) return;
+
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      setBatches(prev => prev.filter(b => b.id !== selectedBatch.id));
+      toast.success('Batch deleted (demo mode - changes not saved)');
+      setShowDeleteDialog(false);
+      setSelectedBatch(null);
+      return;
+    }
 
     try {
       const { error } = await supabase
@@ -313,7 +360,7 @@ export const BatchManager = () => {
               Manage experiment batches and track their responses
             </CardDescription>
           </div>
-          {isSuperAdmin && !isGuestMode && (
+          {isSuperAdmin && (
             <Button onClick={() => setShowCreateDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
               New Batch
@@ -334,7 +381,7 @@ export const BatchManager = () => {
                 <TableHead className="text-right">Avg TIAS</TableHead>
                 <TableHead className="text-right">Avg Formality</TableHead>
                 <TableHead>Notes</TableHead>
-                {isSuperAdmin && !isGuestMode && <TableHead className="text-right">Actions</TableHead>}
+                {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -349,10 +396,10 @@ export const BatchManager = () => {
                       <div className="flex items-center gap-2">
                         {batch.name}
                         <button
-                          onClick={() => !batch.is_active && isSuperAdmin && !isGuestMode && handleSetActive(batch)}
-                          disabled={batch.is_active || !isSuperAdmin || isGuestMode}
-                          title={batch.is_active ? "Active batch" : (isSuperAdmin && !isGuestMode) ? "Set as active batch" : "Only admins can change active batch"}
-                          className={`${batch.is_active || !isSuperAdmin || isGuestMode ? "cursor-default" : "cursor-pointer"}`}
+                          onClick={() => !batch.is_active && isSuperAdmin && handleSetActive(batch)}
+                          disabled={batch.is_active || !isSuperAdmin}
+                          title={batch.is_active ? "Active batch" : isSuperAdmin ? "Set as active batch" : "Only admins can change active batch"}
+                          className={`${batch.is_active || !isSuperAdmin ? "cursor-default" : "cursor-pointer"}`}
                         >
                           <Star 
                             className={`h-4 w-4 ${
@@ -404,7 +451,7 @@ export const BatchManager = () => {
                         {batch.notes || '—'}
                       </p>
                     </TableCell>
-                    {isSuperAdmin && !isGuestMode && (
+                    {isSuperAdmin && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button
@@ -439,7 +486,7 @@ export const BatchManager = () => {
               })}
               {batches.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={(isSuperAdmin && !isGuestMode) ? 11 : 10} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={isSuperAdmin ? 11 : 10} className="text-center text-muted-foreground py-8">
                     No batches created yet. Create a batch to start organizing your experiment responses.
                   </TableCell>
                 </TableRow>
