@@ -53,21 +53,35 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
     const recognitionRef = useRef<SpeechRecognition | null>(null);
     const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const shouldRestartRef = useRef(false);
-    const lastSpeechTimeRef = useRef<number>(Date.now());
+    const isListeningRef = useRef(false);
+    
+    // Store callbacks in refs to avoid recreating recognition
+    const onTranscriptRef = useRef(onTranscript);
+    const onInterimTranscriptRef = useRef(onInterimTranscript);
+    
+    // Keep refs in sync with props
+    useEffect(() => {
+      onTranscriptRef.current = onTranscript;
+    }, [onTranscript]);
+    
+    useEffect(() => {
+      onInterimTranscriptRef.current = onInterimTranscript;
+    }, [onInterimTranscript]);
 
     // Expose stopListening method to parent
     useImperativeHandle(ref, () => ({
       stopListening: () => {
         shouldRestartRef.current = false;
+        isListeningRef.current = false;
         if (silenceTimeoutRef.current) {
           clearTimeout(silenceTimeoutRef.current);
           silenceTimeoutRef.current = null;
         }
         if (recognitionRef.current) {
-          recognitionRef.current.stop();
+          recognitionRef.current.abort();
         }
         setIsListening(false);
-        onInterimTranscript?.("");
+        onInterimTranscriptRef.current?.("");
       }
     }));
 
@@ -75,27 +89,27 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
       if (silenceTimeoutRef.current) {
         clearTimeout(silenceTimeoutRef.current);
       }
-      lastSpeechTimeRef.current = Date.now();
       silenceTimeoutRef.current = setTimeout(() => {
         // Stop listening after silence timeout
         shouldRestartRef.current = false;
+        isListeningRef.current = false;
         if (recognitionRef.current) {
           recognitionRef.current.stop();
         }
         setIsListening(false);
-        onInterimTranscript?.("");
+        onInterimTranscriptRef.current?.("");
       }, silenceTimeoutMs);
-    }, [silenceTimeoutMs, onInterimTranscript]);
+    }, [silenceTimeoutMs]);
 
     useEffect(() => {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
       
-      if (!SpeechRecognition) {
+      if (!SpeechRecognitionAPI) {
         setIsSupported(false);
         return;
       }
 
-      const recognition = new SpeechRecognition();
+      const recognition = new SpeechRecognitionAPI();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-US";
@@ -114,14 +128,25 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
         }
 
         // Reset silence timeout on any speech activity
-        resetSilenceTimeout();
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+        }
+        silenceTimeoutRef.current = setTimeout(() => {
+          shouldRestartRef.current = false;
+          isListeningRef.current = false;
+          if (recognitionRef.current) {
+            recognitionRef.current.stop();
+          }
+          setIsListening(false);
+          onInterimTranscriptRef.current?.("");
+        }, silenceTimeoutMs);
 
         // Send interim transcript for live preview
-        onInterimTranscript?.(interim);
+        onInterimTranscriptRef.current?.(interim);
 
         if (finalTranscript) {
-          onTranscript(finalTranscript);
-          onInterimTranscript?.("");
+          onTranscriptRef.current(finalTranscript);
+          onInterimTranscriptRef.current?.("");
         }
       };
 
@@ -130,37 +155,44 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
         // Don't stop on "aborted" or "no-speech" errors - these are expected
         if (event.error !== "aborted" && event.error !== "no-speech") {
           shouldRestartRef.current = false;
+          isListeningRef.current = false;
           setIsListening(false);
-          onInterimTranscript?.("");
+          onInterimTranscriptRef.current?.("");
         }
       };
 
       recognition.onend = () => {
         // Auto-restart if we should keep listening (handles browser auto-stop)
-        if (shouldRestartRef.current && isListening) {
+        if (shouldRestartRef.current && isListeningRef.current) {
           try {
-            recognition.start();
+            setTimeout(() => {
+              if (shouldRestartRef.current && isListeningRef.current) {
+                recognition.start();
+              }
+            }, 100);
           } catch (error) {
             // If we can't restart, stop gracefully
             shouldRestartRef.current = false;
+            isListeningRef.current = false;
             setIsListening(false);
-            onInterimTranscript?.("");
+            onInterimTranscriptRef.current?.("");
           }
         } else {
           setIsListening(false);
-          onInterimTranscript?.("");
+          onInterimTranscriptRef.current?.("");
         }
       };
 
       recognition.onstart = () => {
+        isListeningRef.current = true;
         setIsListening(true);
-        resetSilenceTimeout();
       };
 
       recognitionRef.current = recognition;
 
       return () => {
         shouldRestartRef.current = false;
+        isListeningRef.current = false;
         if (silenceTimeoutRef.current) {
           clearTimeout(silenceTimeoutRef.current);
         }
@@ -168,19 +200,20 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
           recognitionRef.current.abort();
         }
       };
-    }, [onTranscript, onInterimTranscript, resetSilenceTimeout, isListening]);
+    }, [silenceTimeoutMs]);
 
     const toggleListening = useCallback(() => {
       if (!recognitionRef.current) return;
 
       if (isListening) {
         shouldRestartRef.current = false;
+        isListeningRef.current = false;
         if (silenceTimeoutRef.current) {
           clearTimeout(silenceTimeoutRef.current);
           silenceTimeoutRef.current = null;
         }
         recognitionRef.current.stop();
-        onInterimTranscript?.("");
+        onInterimTranscriptRef.current?.("");
       } else {
         try {
           shouldRestartRef.current = true;
@@ -189,7 +222,7 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
           console.error("Failed to start speech recognition:", error);
         }
       }
-    }, [isListening, onInterimTranscript]);
+    }, [isListening]);
 
     if (!isSupported) {
       return null;
