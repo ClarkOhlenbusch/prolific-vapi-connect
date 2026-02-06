@@ -18,7 +18,8 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  ChevronDown
+  ChevronDown,
+  Route
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { ParticipantJourneyModal } from '@/components/researcher/ParticipantJourneyModal';
 
 type Demographics = Tables<'demographics'>;
 
@@ -153,6 +155,7 @@ const TIPI_DIMENSIONS = [
 
 // Section navigation items - in experiment flow order
 const SECTIONS = [
+  { id: 'journey', label: 'Journey', icon: Route },
   { id: 'demographics', label: 'Demographics', icon: User },
   { id: 'attention', label: 'Attention Checks', icon: AlertCircle },
   { id: 'formality', label: 'Formality', icon: Scale },
@@ -172,6 +175,7 @@ const ResponseDetails = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formalityCalcId, setFormalityCalcId] = useState<string | null>(null);
+  const [journeyModalOpen, setJourneyModalOpen] = useState(false);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
   useEffect(() => {
@@ -347,6 +351,27 @@ const ResponseDetails = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Journey Section */}
+        <section ref={el => sectionRefs.current['journey'] = el} id="journey" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Route className="h-5 w-5 text-primary" />
+                Participant Journey
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                View the participant's navigation timeline through the experiment, including page visits, time spent, and any back button usage.
+              </p>
+              <Button onClick={() => setJourneyModalOpen(true)} variant="outline">
+                <Route className="h-4 w-4 mr-2" />
+                View Full Journey Timeline
+              </Button>
+            </CardContent>
+          </Card>
+        </section>
 
         {/* Demographics Section */}
         <section ref={el => sectionRefs.current['demographics'] = el} id="demographics" className="scroll-mt-32">
@@ -928,6 +953,15 @@ const ResponseDetails = () => {
           </Card>
         </section>
       </div>
+
+      {/* Journey Modal */}
+      <ParticipantJourneyModal
+        open={journeyModalOpen}
+        onOpenChange={setJourneyModalOpen}
+        prolificId={data.prolific_id}
+        status="Completed"
+        condition={data.assistant_type}
+      />
     </div>
   );
 };

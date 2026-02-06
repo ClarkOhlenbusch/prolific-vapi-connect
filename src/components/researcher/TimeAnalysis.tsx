@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Clock, Users, TrendingUp } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Clock, Users, TrendingUp, Search, X, Route } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { ParticipantJourneyModal } from './ParticipantJourneyModal';
 
 interface PageTimeData {
   page_name: string;
@@ -13,6 +17,12 @@ interface PageTimeData {
   avg_time_seconds: number;
   total_visits: number;
   unique_participants: number;
+}
+
+interface NavigationEvent {
+  page_name: string;
+  time_on_page_seconds: number | null;
+  prolific_id: string;
 }
 
 // Page order with display names - keys match database page_name values (lowercase)
@@ -47,8 +57,13 @@ const CHART_COLORS = [
 
 export const TimeAnalysis = () => {
   const [data, setData] = useState<PageTimeData[]>([]);
+  const [allEvents, setAllEvents] = useState<NavigationEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalParticipants, setTotalParticipants] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
+  const [matchingParticipants, setMatchingParticipants] = useState<string[]>([]);
+  const [journeyModal, setJourneyModal] = useState<{ open: boolean; prolificId: string }>({ open: false, prolificId: '' });
 
   useEffect(() => {
     fetchTimeAnalysis();
@@ -65,6 +80,8 @@ export const TimeAnalysis = () => {
         .not('time_on_page_seconds', 'is', null);
 
       if (error) throw error;
+
+      setAllEvents(events || []);
 
       // Calculate averages per page
       const pageStats: { [key: string]: { totalTime: number; visits: number; participants: Set<string> } } = {};
@@ -105,6 +122,63 @@ export const TimeAnalysis = () => {
     }
   };
 
+  // Calculate individual participant data
+  const individualData = useMemo(() => {
+    if (!selectedParticipant) return [];
+
+    const participantEvents = allEvents.filter(e => e.prolific_id === selectedParticipant);
+    const pageStats: { [key: string]: { totalTime: number; visits: number } } = {};
+
+    participantEvents.forEach((event) => {
+      const page = event.page_name;
+      if (!pageStats[page]) {
+        pageStats[page] = { totalTime: 0, visits: 0 };
+      }
+      pageStats[page].totalTime += Number(event.time_on_page_seconds) || 0;
+      pageStats[page].visits += 1;
+    });
+
+    return Object.entries(pageStats)
+      .map(([page_name, stats]) => {
+        const config = PAGE_CONFIG[page_name] || { order: 99, displayName: formatPageName(page_name) };
+        return {
+          page_name,
+          display_name: config.displayName,
+          order: config.order,
+          avg_time_seconds: stats.totalTime,
+          total_visits: stats.visits,
+          unique_participants: 1
+        };
+      })
+      .sort((a, b) => a.order - b.order);
+  }, [selectedParticipant, allEvents]);
+
+  // Search for matching participants
+  useEffect(() => {
+    if (searchTerm.length < 2) {
+      setMatchingParticipants([]);
+      return;
+    }
+
+    const uniqueParticipants = [...new Set(allEvents.map(e => e.prolific_id))];
+    const matches = uniqueParticipants
+      .filter(p => p.toLowerCase().includes(searchTerm.toLowerCase()))
+      .slice(0, 10);
+    setMatchingParticipants(matches);
+  }, [searchTerm, allEvents]);
+
+  const handleSelectParticipant = (prolificId: string) => {
+    setSelectedParticipant(prolificId);
+    setSearchTerm(prolificId);
+    setMatchingParticipants([]);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedParticipant(null);
+    setSearchTerm('');
+    setMatchingParticipants([]);
+  };
+
   const formatPageName = (name: string): string => {
     // Convert camelCase or PascalCase to Title Case with spaces
     return name
@@ -122,10 +196,11 @@ export const TimeAnalysis = () => {
     return `${minutes}m ${remainingSeconds}s`;
   };
 
-  const totalAvgTime = data.reduce((sum, page) => sum + page.avg_time_seconds, 0);
+  const displayData = selectedParticipant ? individualData : data;
+  const totalAvgTime = displayData.reduce((sum, page) => sum + page.avg_time_seconds, 0);
 
   // Prepare chart data
-  const chartData = data.map((page) => ({
+  const chartData = displayData.map((page) => ({
     name: page.display_name,
     shortName: page.display_name.length > 15 ? page.display_name.substring(0, 12) + '...' : page.display_name,
     time: Math.round(page.avg_time_seconds),
@@ -152,17 +227,81 @@ export const TimeAnalysis = () => {
 
   return (
     <div className="space-y-6">
+      {/* Search Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Search className="h-5 w-5" />
+            Search Participant
+          </CardTitle>
+          <CardDescription>
+            Search for a specific participant to see their individual time breakdown
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 items-center">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by Prolific ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+              {matchingParticipants.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
+                  {matchingParticipants.map((p) => (
+                    <button
+                      key={p}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted font-mono"
+                      onClick={() => handleSelectParticipant(p)}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {selectedParticipant && (
+              <>
+                <Badge variant="secondary" className="font-mono">
+                  {selectedParticipant}
+                </Badge>
+                <Button variant="ghost" size="sm" onClick={handleClearSelection}>
+                  <X className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setJourneyModal({ open: true, prolificId: selectedParticipant })}
+                >
+                  <Route className="h-4 w-4 mr-2" />
+                  View Full Journey
+                </Button>
+              </>
+            )}
+          </div>
+          {selectedParticipant && (
+            <p className="text-sm text-muted-foreground mt-2">
+              Showing individual time data for this participant
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Avg. Completion Time</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {selectedParticipant ? 'Total Time' : 'Total Avg. Completion Time'}
+            </CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatTime(totalAvgTime)}</div>
             <p className="text-xs text-muted-foreground">
-              Sum of average time per page
+              {selectedParticipant ? 'Sum of time on each page' : 'Sum of average time per page'}
             </p>
           </CardContent>
         </Card>
@@ -172,21 +311,25 @@ export const TimeAnalysis = () => {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.length}</div>
+            <div className="text-2xl font-bold">{displayData.length}</div>
             <p className="text-xs text-muted-foreground">
-              Unique pages with time data
+              {selectedParticipant ? 'Pages visited by participant' : 'Unique pages with time data'}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Participants</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {selectedParticipant ? 'Viewing' : 'Total Participants'}
+            </CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalParticipants}</div>
+            <div className="text-2xl font-bold">
+              {selectedParticipant ? '1 participant' : totalParticipants}
+            </div>
             <p className="text-xs text-muted-foreground">
-              With navigation data
+              {selectedParticipant ? 'Individual view' : 'With navigation data'}
             </p>
           </CardContent>
         </Card>
@@ -195,9 +338,14 @@ export const TimeAnalysis = () => {
       {/* Visual Chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Time Distribution by Page</CardTitle>
+          <CardTitle>
+            {selectedParticipant ? 'Time per Page' : 'Time Distribution by Page'}
+          </CardTitle>
           <CardDescription>
-            Visual representation of average time spent on each page (in seconds)
+            {selectedParticipant 
+              ? 'Time spent on each page by this participant (in seconds)'
+              : 'Visual representation of average time spent on each page (in seconds)'
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -224,12 +372,13 @@ export const TimeAnalysis = () => {
                 <Tooltip
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
-                      const data = payload[0].payload;
+                      const tooltipData = payload[0].payload;
                       return (
                         <div className="bg-popover border rounded-lg shadow-lg p-3">
-                          <p className="font-medium">{data.fullName}</p>
+                          <p className="font-medium">{tooltipData.fullName}</p>
                           <p className="text-sm text-muted-foreground">
-                            Avg. time: <span className="font-mono">{formatTime(data.time)}</span>
+                            {selectedParticipant ? 'Time: ' : 'Avg. time: '}
+                            <span className="font-mono">{formatTime(tooltipData.time)}</span>
                           </p>
                         </div>
                       );
@@ -254,9 +403,14 @@ export const TimeAnalysis = () => {
       {/* Time Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Average Time per Page</CardTitle>
+          <CardTitle>
+            {selectedParticipant ? 'Time per Page' : 'Average Time per Page'}
+          </CardTitle>
           <CardDescription>
-            Detailed breakdown of time spent on each page during the experiment flow
+            {selectedParticipant 
+              ? 'Time spent on each page by this participant'
+              : 'Detailed breakdown of time spent on each page during the experiment flow'
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -265,13 +419,17 @@ export const TimeAnalysis = () => {
               <TableRow>
                 <TableHead className="w-16">Order</TableHead>
                 <TableHead>Page</TableHead>
-                <TableHead className="text-right">Avg. Time</TableHead>
-                <TableHead className="text-right">Total Visits</TableHead>
-                <TableHead className="text-right">Unique Participants</TableHead>
+                <TableHead className="text-right">
+                  {selectedParticipant ? 'Time' : 'Avg. Time'}
+                </TableHead>
+                <TableHead className="text-right">Visits</TableHead>
+                {!selectedParticipant && (
+                  <TableHead className="text-right">Unique Participants</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((page) => (
+              {displayData.map((page) => (
                 <TableRow key={page.page_name}>
                   <TableCell className="font-mono text-muted-foreground">
                     {page.order < 99 ? page.order : '-'}
@@ -281,12 +439,14 @@ export const TimeAnalysis = () => {
                     <span className="font-mono">{formatTime(page.avg_time_seconds)}</span>
                   </TableCell>
                   <TableCell className="text-right">{page.total_visits}</TableCell>
-                  <TableCell className="text-right">{page.unique_participants}</TableCell>
+                  {!selectedParticipant && (
+                    <TableCell className="text-right">{page.unique_participants}</TableCell>
+                  )}
                 </TableRow>
               ))}
-              {data.length === 0 && (
+              {displayData.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={selectedParticipant ? 4 : 5} className="text-center text-muted-foreground py-8">
                     No time tracking data available
                   </TableCell>
                 </TableRow>
@@ -295,6 +455,15 @@ export const TimeAnalysis = () => {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Journey Modal */}
+      <ParticipantJourneyModal
+        open={journeyModal.open}
+        onOpenChange={(open) => setJourneyModal(prev => ({ ...prev, open }))}
+        prolificId={journeyModal.prolificId}
+        status="Pending"
+        condition={null}
+      />
     </div>
   );
 };
