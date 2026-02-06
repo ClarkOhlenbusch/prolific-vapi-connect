@@ -194,7 +194,8 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
     role,
     isLoading,
     isAuthenticated: isGuestMode || (!!user && !!role),
-    isSuperAdmin: !isGuestMode && role === 'super_admin',
+    // Guests get super admin UI (all tabs visible) but with dummy data
+    isSuperAdmin: isGuestMode || role === 'super_admin',
     isGuestMode,
     login,
     logout,

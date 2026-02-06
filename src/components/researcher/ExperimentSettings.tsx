@@ -24,8 +24,10 @@ const PRACTICE_ASSISTANT_IDS = {
   informal: "30394944-4d48-4586-8e6d-cd3d6b347e80",
 };
 
+import { GUEST_EXPERIMENT_SETTINGS } from "@/lib/guest-dummy-data";
+
 export const ExperimentSettings = () => {
-  const { isSuperAdmin, user } = useResearcherAuth();
+  const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const [assistantType, setAssistantType] = useState<"formal" | "informal">("informal");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -51,13 +53,31 @@ export const ExperimentSettings = () => {
   const [isLoadingBatchCounts, setIsLoadingBatchCounts] = useState(false);
 
   useEffect(() => {
+    // Use dummy data for guest mode
+    if (isGuestMode) {
+      setAssistantType(GUEST_EXPERIMENT_SETTINGS.assistantType);
+      setAlternatingEnabled(GUEST_EXPERIMENT_SETTINGS.alternatingEnabled);
+      setActiveMode(GUEST_EXPERIMENT_SETTINGS.alternatingEnabled ? "alternating" : "static");
+      setFormalCount(GUEST_EXPERIMENT_SETTINGS.formalCount);
+      setInformalCount(GUEST_EXPERIMENT_SETTINGS.informalCount);
+      setOffsetCount(GUEST_EXPERIMENT_SETTINGS.offsetCount);
+      setOffsetType(GUEST_EXPERIMENT_SETTINGS.offsetType);
+      setOffsetInput(String(GUEST_EXPERIMENT_SETTINGS.offsetCount));
+      setLastUpdated(GUEST_EXPERIMENT_SETTINGS.lastUpdated);
+      setAvailableBatches(GUEST_EXPERIMENT_SETTINGS.availableBatches);
+      setBatchCounts({ formal: 24, informal: 18 });
+      setIsLoading(false);
+      return;
+    }
     fetchSettings();
     fetchAvailableBatches();
-  }, []);
+  }, [isGuestMode]);
 
   useEffect(() => {
-    fetchBatchCounts();
-  }, [selectedBatches]);
+    if (!isGuestMode) {
+      fetchBatchCounts();
+    }
+  }, [selectedBatches, isGuestMode]);
 
   const fetchSettings = async () => {
     try {
@@ -153,12 +173,20 @@ export const ExperimentSettings = () => {
   };
 
   const handleSelectAssistant = async (type: "formal" | "informal") => {
+    if (type === assistantType) return;
+
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      setAssistantType(type);
+      setLastUpdated(new Date().toISOString());
+      toast.success(`Switched to ${type} assistant (demo mode - changes not saved)`);
+      return;
+    }
+
     if (!isSuperAdmin) {
       toast.error("Only super admins can change this setting");
       return;
     }
-
-    if (type === assistantType) return;
 
     setIsSaving(true);
 
@@ -190,12 +218,21 @@ export const ExperimentSettings = () => {
   };
 
   const handleModeChange = async (mode: "alternating" | "static") => {
+    const enabled = mode === "alternating";
+
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      setAlternatingEnabled(enabled);
+      setActiveMode(mode);
+      toast.success((enabled ? "Switched to Alternating Mode" : "Switched to Static Mode") + " (demo mode - changes not saved)");
+      return;
+    }
+
     if (!isSuperAdmin) {
       toast.error("Only super admins can change this setting");
       return;
     }
 
-    const enabled = mode === "alternating";
     setIsSavingAlternating(true);
 
     try {
@@ -226,14 +263,21 @@ export const ExperimentSettings = () => {
   };
 
   const handleSetOffset = async () => {
-    if (!isSuperAdmin) {
-      toast.error("Only super admins can change this setting");
-      return;
-    }
-
     const count = parseInt(offsetInput, 10);
     if (isNaN(count) || count < 0) {
       toast.error("Please enter a valid number");
+      return;
+    }
+
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      setOffsetCount(count);
+      toast.success(`Next ${count} real participants will be assigned to ${offsetType} (demo mode - changes not saved)`);
+      return;
+    }
+
+    if (!isSuperAdmin) {
+      toast.error("Only super admins can change this setting");
       return;
     }
 
@@ -279,12 +323,22 @@ export const ExperimentSettings = () => {
   };
 
   const handleResetCounters = async () => {
-    if (!isSuperAdmin) {
-      toast.error("Only super admins can change this setting");
+    if (!confirm("Are you sure you want to reset both counters to 0? This cannot be undone.")) {
       return;
     }
 
-    if (!confirm("Are you sure you want to reset both counters to 0? This cannot be undone.")) {
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      setFormalCount(0);
+      setInformalCount(0);
+      setOffsetCount(0);
+      setOffsetInput("0");
+      toast.success("Counters reset to 0 (demo mode - changes not saved)");
+      return;
+    }
+
+    if (!isSuperAdmin) {
+      toast.error("Only super admins can change this setting");
       return;
     }
 

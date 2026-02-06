@@ -317,6 +317,154 @@ export const GUEST_PROMPTS: GuestPrompt[] = [
   },
 ];
 
+// Activity logs for guest mode
+export interface GuestActivityLog {
+  id: string;
+  user_id: string;
+  user_email: string;
+  action: string;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export const GUEST_ACTIVITY_LOGS: GuestActivityLog[] = [
+  {
+    id: 'log-001',
+    user_id: 'user-001',
+    user_email: 'researcher@university.edu',
+    action: 'login',
+    details: {},
+    created_at: generateDate(0),
+  },
+  {
+    id: 'log-002',
+    user_id: 'user-001',
+    user_email: 'researcher@university.edu',
+    action: 'download_experiment_responses',
+    details: { count: 42, filters: { status: 'completed' } },
+    created_at: generateDate(1),
+  },
+  {
+    id: 'log-003',
+    user_id: 'user-002',
+    user_email: 'assistant@university.edu',
+    action: 'login',
+    details: {},
+    created_at: generateDate(2),
+  },
+  {
+    id: 'log-004',
+    user_id: 'user-001',
+    user_email: 'researcher@university.edu',
+    action: 'download_demographics',
+    details: { count: 42 },
+    created_at: generateDate(3),
+  },
+  {
+    id: 'log-005',
+    user_id: 'user-002',
+    user_email: 'assistant@university.edu',
+    action: 'download_formality_scores',
+    details: { count: 38 },
+    created_at: generateDate(4),
+  },
+  {
+    id: 'log-006',
+    user_id: 'user-001',
+    user_email: 'researcher@university.edu',
+    action: 'login',
+    details: {},
+    created_at: generateDate(5),
+  },
+  {
+    id: 'log-007',
+    user_id: 'user-003',
+    user_email: 'pi@university.edu',
+    action: 'login',
+    details: {},
+    created_at: generateDate(7),
+  },
+  {
+    id: 'log-008',
+    user_id: 'user-003',
+    user_email: 'pi@university.edu',
+    action: 'download_participant_calls',
+    details: { count: 47 },
+    created_at: generateDate(8),
+  },
+];
+
+// Archived responses for guest mode
+export interface GuestArchivedResponse {
+  id: string;
+  original_table: string;
+  original_id: string;
+  archived_data: Record<string, unknown>;
+  archived_by: string;
+  archived_at: string;
+  archive_reason: string | null;
+}
+
+export const GUEST_ARCHIVED_RESPONSES: GuestArchivedResponse[] = [
+  {
+    id: 'archived-001',
+    original_table: 'experiment_responses',
+    original_id: 'resp-deleted-001',
+    archived_data: {
+      prolific_id: generateProlificId(900),
+      call_id: generateCallId(900),
+      pets_total: 32,
+      tias_total: 28,
+      formality: 2.1,
+      assistant_type: 'informal',
+    },
+    archived_by: 'researcher@university.edu',
+    archived_at: generateDate(10),
+    archive_reason: 'Participant withdrew consent after completion',
+  },
+  {
+    id: 'archived-002',
+    original_table: 'experiment_responses',
+    original_id: 'resp-deleted-002',
+    archived_data: {
+      prolific_id: generateProlificId(901),
+      call_id: generateCallId(901),
+      pets_total: 15,
+      tias_total: 12,
+      formality: 1.5,
+      assistant_type: 'formal',
+    },
+    archived_by: 'researcher@university.edu',
+    archived_at: generateDate(15),
+    archive_reason: 'Failed multiple attention checks',
+  },
+  {
+    id: 'archived-003',
+    original_table: 'demographics',
+    original_id: 'demo-deleted-001',
+    archived_data: {
+      prolific_id: generateProlificId(902),
+      age: '25-34',
+      gender: 'male',
+    },
+    archived_by: 'pi@university.edu',
+    archived_at: generateDate(20),
+    archive_reason: 'Duplicate submission detected',
+  },
+];
+
+// Experiment settings for guest mode
+export const GUEST_EXPERIMENT_SETTINGS = {
+  assistantType: 'informal' as const,
+  alternatingEnabled: true,
+  formalCount: 24,
+  informalCount: 18,
+  offsetCount: 0,
+  offsetType: 'informal' as const,
+  lastUpdated: generateDate(2),
+  availableBatches: ['Main Collection', 'Pilot Study', 'Follow-up'],
+};
+
 // Summary stats for DataSummary
 export const GUEST_SUMMARY_STATS = {
   totalResponses: 42,
