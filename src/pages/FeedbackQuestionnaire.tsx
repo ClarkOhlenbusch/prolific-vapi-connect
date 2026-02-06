@@ -1,16 +1,16 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Mic } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { usePageTracking } from "@/hooks/usePageTracking";
 import { FeedbackProgressBar } from "@/components/FeedbackProgressBar";
 import { ExperimentProgress } from "@/components/ExperimentProgress";
-import { VoiceDictation } from "@/components/VoiceDictation";
+import { VoiceDictation, VoiceDictationRef } from "@/components/VoiceDictation";
 
 const FeedbackQuestionnaire = () => {
   const navigate = useNavigate();
@@ -25,9 +25,24 @@ const FeedbackQuestionnaire = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
+  const [interimExperience, setInterimExperience] = useState("");
+  const [interimStyle, setInterimStyle] = useState("");
+  const [interimExperiment, setInterimExperiment] = useState("");
+  
+  // Refs to stop dictation when clicking on another field
+  const experienceDictationRef = useRef<VoiceDictationRef>(null);
+  const styleDictationRef = useRef<VoiceDictationRef>(null);
+  const experimentDictationRef = useRef<VoiceDictationRef>(null);
   
   const MAX_CHARS = 2500;
   const MIN_WORDS = 35;
+  
+  // Stop all dictation sessions
+  const stopAllDictation = useCallback(() => {
+    experienceDictationRef.current?.stopListening();
+    styleDictationRef.current?.stopListening();
+    experimentDictationRef.current?.stopListening();
+  }, []);
 
   const { trackBackButtonClick } = usePageTracking({
     pageName: "feedback",
@@ -167,6 +182,9 @@ const FeedbackQuestionnaire = () => {
   };
 
   const handleSubmit = async () => {
+    // Stop all dictation when submitting
+    stopAllDictation();
+    
     const experienceStatus = getWordCountStatus(voiceAssistantExperience);
     const styleStatus = getWordCountStatus(communicationStyleFeedback);
     const experimentStatus = getWordCountStatus(experimentFeedback);
@@ -330,6 +348,13 @@ const FeedbackQuestionnaire = () => {
               The more detail you provide, the more helpful your feedback and the higher your bonus payout may be.
             </p>
           </div>
+          {/* Voice dictation hint */}
+          <div className="flex items-center justify-center gap-2 text-muted-foreground mt-2">
+            <Mic className="h-4 w-4" />
+            <p className="text-sm">
+              <span className="font-medium">Tip:</span> Click the "Dictate" button to speak your response instead of typing
+            </p>
+          </div>
         </CardHeader>
         <CardContent className="space-y-8">
           {/* Question 1: Voice Assistant Experience */}
@@ -352,31 +377,48 @@ const FeedbackQuestionnaire = () => {
               </ul>
             </div>
             <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-              <div className="flex items-start gap-2">
+              <div className="relative">
                 <Textarea
-                  value={voiceAssistantExperience}
+                  value={voiceAssistantExperience + interimExperience}
                   onChange={(e) => {
-                    if (e.target.value.length <= MAX_CHARS) {
+                    // Only update if not currently showing interim text
+                    if (!interimExperience && e.target.value.length <= MAX_CHARS) {
                       setVoiceAssistantExperience(e.target.value);
                     }
+                  }}
+                  onFocus={() => {
+                    // Stop other dictation sessions when focusing this field
+                    styleDictationRef.current?.stopListening();
+                    experimentDictationRef.current?.stopListening();
                   }}
                   onKeyDown={(e) => {
                     if (e.key === " ") {
                       e.stopPropagation();
                     }
                   }}
-                  className={`min-h-[150px] resize-none bg-background flex-1 ${showValidationErrors && !experienceStatus.isValid ? 'border-destructive' : ''}`}
-                  placeholder="Describe your experience with Cali..."
+                  className={`min-h-[150px] resize-none bg-background pr-24 ${showValidationErrors && !experienceStatus.isValid ? 'border-destructive' : ''}`}
+                  placeholder="Describe your experience with Cali... (or click Dictate to speak)"
                 />
-                <VoiceDictation
-                  onTranscript={(text) => {
-                    setVoiceAssistantExperience((prev) => {
-                      const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
-                      return newValue.length <= MAX_CHARS ? newValue : prev;
-                    });
-                  }}
-                  disabled={isSubmitting}
-                />
+                <div className="absolute top-2 right-2">
+                  <VoiceDictation
+                    ref={experienceDictationRef}
+                    onTranscript={(text) => {
+                      setVoiceAssistantExperience((prev) => {
+                        const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
+                        return newValue.length <= MAX_CHARS ? newValue : prev;
+                      });
+                    }}
+                    onInterimTranscript={(text) => {
+                      if (text) {
+                        const prefix = voiceAssistantExperience && !voiceAssistantExperience.endsWith(" ") ? " " : "";
+                        setInterimExperience(prefix + text);
+                      } else {
+                        setInterimExperience("");
+                      }
+                    }}
+                    disabled={isSubmitting}
+                  />
+                </div>
               </div>
               <FeedbackProgressBar 
                 wordCount={experienceStatus.count} 
@@ -405,31 +447,46 @@ const FeedbackQuestionnaire = () => {
               </ul>
             </div>
             <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-              <div className="flex items-start gap-2">
+              <div className="relative">
                 <Textarea
-                  value={communicationStyleFeedback}
+                  value={communicationStyleFeedback + interimStyle}
                   onChange={(e) => {
-                    if (e.target.value.length <= MAX_CHARS) {
+                    if (!interimStyle && e.target.value.length <= MAX_CHARS) {
                       setCommunicationStyleFeedback(e.target.value);
                     }
+                  }}
+                  onFocus={() => {
+                    experienceDictationRef.current?.stopListening();
+                    experimentDictationRef.current?.stopListening();
                   }}
                   onKeyDown={(e) => {
                     if (e.key === " ") {
                       e.stopPropagation();
                     }
                   }}
-                  className={`min-h-[150px] resize-none bg-background flex-1 ${showValidationErrors && !styleStatus.isValid ? 'border-destructive' : ''}`}
-                  placeholder="Describe Cali's communication style..."
+                  className={`min-h-[150px] resize-none bg-background pr-24 ${showValidationErrors && !styleStatus.isValid ? 'border-destructive' : ''}`}
+                  placeholder="Describe Cali's communication style... (or click Dictate to speak)"
                 />
-                <VoiceDictation
-                  onTranscript={(text) => {
-                    setCommunicationStyleFeedback((prev) => {
-                      const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
-                      return newValue.length <= MAX_CHARS ? newValue : prev;
-                    });
-                  }}
-                  disabled={isSubmitting}
-                />
+                <div className="absolute top-2 right-2">
+                  <VoiceDictation
+                    ref={styleDictationRef}
+                    onTranscript={(text) => {
+                      setCommunicationStyleFeedback((prev) => {
+                        const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
+                        return newValue.length <= MAX_CHARS ? newValue : prev;
+                      });
+                    }}
+                    onInterimTranscript={(text) => {
+                      if (text) {
+                        const prefix = communicationStyleFeedback && !communicationStyleFeedback.endsWith(" ") ? " " : "";
+                        setInterimStyle(prefix + text);
+                      } else {
+                        setInterimStyle("");
+                      }
+                    }}
+                    disabled={isSubmitting}
+                  />
+                </div>
               </div>
               <FeedbackProgressBar 
                 wordCount={styleStatus.count} 
@@ -459,31 +516,46 @@ const FeedbackQuestionnaire = () => {
               </ul>
             </div>
             <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-              <div className="flex items-start gap-2">
+              <div className="relative">
                 <Textarea
-                  value={experimentFeedback}
+                  value={experimentFeedback + interimExperiment}
                   onChange={(e) => {
-                    if (e.target.value.length <= MAX_CHARS) {
+                    if (!interimExperiment && e.target.value.length <= MAX_CHARS) {
                       setExperimentFeedback(e.target.value);
                     }
+                  }}
+                  onFocus={() => {
+                    experienceDictationRef.current?.stopListening();
+                    styleDictationRef.current?.stopListening();
                   }}
                   onKeyDown={(e) => {
                     if (e.key === " ") {
                       e.stopPropagation();
                     }
                   }}
-                  placeholder="Share your feedback on the experiment..."
-                  className={`min-h-[150px] resize-none bg-background flex-1 ${showValidationErrors && !experimentStatus.isValid ? 'border-destructive' : ''}`}
+                  placeholder="Share your feedback on the experiment... (or click Dictate to speak)"
+                  className={`min-h-[150px] resize-none bg-background pr-24 ${showValidationErrors && !experimentStatus.isValid ? 'border-destructive' : ''}`}
                 />
-                <VoiceDictation
-                  onTranscript={(text) => {
-                    setExperimentFeedback((prev) => {
-                      const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
-                      return newValue.length <= MAX_CHARS ? newValue : prev;
-                    });
-                  }}
-                  disabled={isSubmitting}
-                />
+                <div className="absolute top-2 right-2">
+                  <VoiceDictation
+                    ref={experimentDictationRef}
+                    onTranscript={(text) => {
+                      setExperimentFeedback((prev) => {
+                        const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
+                        return newValue.length <= MAX_CHARS ? newValue : prev;
+                      });
+                    }}
+                    onInterimTranscript={(text) => {
+                      if (text) {
+                        const prefix = experimentFeedback && !experimentFeedback.endsWith(" ") ? " " : "";
+                        setInterimExperiment(prefix + text);
+                      } else {
+                        setInterimExperiment("");
+                      }
+                    }}
+                    disabled={isSubmitting}
+                  />
+                </div>
               </div>
               <FeedbackProgressBar 
                 wordCount={experimentStatus.count} 
