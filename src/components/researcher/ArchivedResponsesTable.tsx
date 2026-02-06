@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import {
   Table,
   TableBody,
@@ -37,6 +38,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { GUEST_ARCHIVED_RESPONSES } from '@/lib/guest-dummy-data';
 
 interface ArchivedResponse {
   id: string;
@@ -58,8 +60,24 @@ export const ArchivedResponsesTable = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [restoreId, setRestoreId] = useState<string | null>(null);
   const [viewItem, setViewItem] = useState<ArchivedResponse | null>(null);
+  const { isGuestMode } = useResearcherAuth();
 
   const fetchData = async () => {
+    // Use dummy data for guest mode
+    if (isGuestMode) {
+      let filtered = GUEST_ARCHIVED_RESPONSES as ArchivedResponse[];
+      if (searchTerm) {
+        const query = searchTerm.toLowerCase();
+        filtered = filtered.filter(item => item.original_table.toLowerCase().includes(query));
+      }
+      const from = currentPage * PAGE_SIZE;
+      const to = from + PAGE_SIZE;
+      setData(filtered.slice(from, to));
+      setTotalCount(filtered.length);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       let query = supabase
@@ -88,10 +106,19 @@ export const ArchivedResponsesTable = () => {
 
   useEffect(() => {
     fetchData();
-  }, [currentPage, searchTerm]);
+  }, [currentPage, searchTerm, isGuestMode]);
 
   const handleRestore = async () => {
     if (!restoreId) return;
+
+    // In guest mode, just simulate restoration (update local state)
+    if (isGuestMode) {
+      setData(prev => prev.filter(item => item.id !== restoreId));
+      setTotalCount(prev => prev - 1);
+      toast.success('Response restored successfully (demo mode - changes not saved)');
+      setRestoreId(null);
+      return;
+    }
 
     try {
       const itemToRestore = data.find(item => item.id === restoreId);

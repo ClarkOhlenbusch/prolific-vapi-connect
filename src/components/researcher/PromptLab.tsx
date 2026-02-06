@@ -239,8 +239,58 @@ export function PromptLab() {
   };
   
   const handleSavePrompt = async () => {
-    if (!user || !formName.trim() || !formText.trim()) {
+    if (!formName.trim() || !formText.trim()) {
       toast.error('Name and prompt text are required');
+      return;
+    }
+    
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      if (editingPrompt) {
+        setPrompts(prev => prev.map(p => 
+          p.id === editingPrompt.id 
+            ? {
+                ...p,
+                name: formName.trim(),
+                prompt_text: formText,
+                condition: formCondition,
+                batch_label: formBatch.trim() || null,
+                vapi_assistant_id: formVapiId.trim() || null,
+                vapi_assistant_name: formVapiName.trim() || null,
+                notes: formNotes.trim() || null,
+                updated_at: new Date().toISOString(),
+              }
+            : p
+        ));
+        toast.success('Prompt updated (demo mode - changes not saved)');
+      } else {
+        const newPrompt: VapiPrompt = {
+          id: `guest-prompt-${Date.now()}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          created_by: 'guest',
+          name: formName.trim(),
+          prompt_text: formText,
+          condition: formCondition,
+          batch_label: formBatch.trim() || null,
+          version: 1,
+          parent_version_id: null,
+          vapi_assistant_id: formVapiId.trim() || null,
+          vapi_assistant_name: formVapiName.trim() || null,
+          notes: formNotes.trim() || null,
+          is_active: true,
+        };
+        setPrompts(prev => [newPrompt, ...prev]);
+        toast.success('Prompt saved (demo mode - changes not saved)');
+      }
+      
+      setShowAddDialog(false);
+      resetForm();
+      return;
+    }
+    
+    if (!user) {
+      toast.error('You must be logged in to save prompts');
       return;
     }
     
@@ -295,6 +345,13 @@ export function PromptLab() {
   
   const handleDeletePrompt = async (id: string) => {
     if (!confirm('Are you sure you want to delete this prompt?')) return;
+    
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      setPrompts(prev => prev.filter(p => p.id !== id));
+      toast.success('Prompt deleted (demo mode - changes not saved)');
+      return;
+    }
     
     try {
       const { error } = await supabase
