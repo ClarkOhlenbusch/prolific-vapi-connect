@@ -44,6 +44,68 @@ export type Database = {
         }
         Relationships: []
       }
+      changelog_changes: {
+        Row: {
+          change_type: string
+          created_at: string
+          description: string
+          display_order: number
+          entry_id: string
+          id: string
+        }
+        Insert: {
+          change_type: string
+          created_at?: string
+          description: string
+          display_order?: number
+          entry_id: string
+          id?: string
+        }
+        Update: {
+          change_type?: string
+          created_at?: string
+          description?: string
+          display_order?: number
+          entry_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "changelog_changes_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "changelog_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      changelog_entries: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          release_date: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          release_date: string
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          release_date?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: []
+      }
       data_withdrawal_requests: {
         Row: {
           call_id: string
