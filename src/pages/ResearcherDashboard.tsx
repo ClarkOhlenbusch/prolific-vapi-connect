@@ -13,7 +13,6 @@ import {
   Calculator,
   MessageSquare,
   Clock,
-  Layers,
   UserX,
   Activity,
   Users,
@@ -26,7 +25,7 @@ import { ExperimentSettings } from '@/components/researcher/ExperimentSettings';
 import { FormalityCalculator } from '@/components/researcher/FormalityCalculator';
 import { PromptLab } from '@/components/researcher/PromptLab';
 import { TimeAnalysis } from '@/components/researcher/TimeAnalysis';
-import { BatchManager } from '@/components/researcher/BatchManager';
+
 import { NoConsentFeedbackTable } from '@/components/researcher/NoConsentFeedbackTable';
 import { ActivityLogsTable } from '@/components/researcher/ActivityLogsTable';
 
@@ -124,10 +123,6 @@ const ResearcherDashboard = () => {
               <MessageSquare className="h-4 w-4" />
               <span className="hidden sm:inline">Prompts</span>
             </TabsTrigger>
-            <TabsTrigger value="batches" className="flex items-center gap-1.5 px-3 py-2">
-              <Layers className="h-4 w-4" />
-              <span className="hidden sm:inline">Batches</span>
-            </TabsTrigger>
             <TabsTrigger value="no-consent" className="flex items-center gap-1.5 px-3 py-2">
               <UserX className="h-4 w-4" />
               <span className="hidden sm:inline">No Consent</span>
@@ -147,7 +142,7 @@ const ResearcherDashboard = () => {
             {isSuperAdmin && (
               <TabsTrigger value="settings" className="flex items-center gap-1.5 px-3 py-2">
                 <Settings className="h-4 w-4" />
-                <span className="hidden sm:inline">Settings</span>
+                <span className="hidden sm:inline">Experiment Settings</span>
               </TabsTrigger>
             )}
           </TabsList>
@@ -180,10 +175,6 @@ const ResearcherDashboard = () => {
 
           <TabsContent value="prompts">
             <PromptLab />
-          </TabsContent>
-
-          <TabsContent value="batches">
-            <BatchManager />
           </TabsContent>
 
           <TabsContent value="no-consent">
