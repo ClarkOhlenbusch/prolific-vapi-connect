@@ -33,7 +33,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { Plus, CheckCircle, Edit, Trash2, Star, StickyNote } from 'lucide-react';
+import { Plus, Edit, Trash2, Star, StickyNote } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Batch {
@@ -334,9 +334,6 @@ export const BatchManager = () => {
                     </TableCell>
                     <TableCell className="font-medium">
                       {batch.name}
-                      {batch.is_active && (
-                        <Star className="h-4 w-4 inline ml-2 text-yellow-500 fill-yellow-500" />
-                      )}
                     </TableCell>
                     <TableCell>
                       {batch.is_active ? (
@@ -381,16 +378,22 @@ export const BatchManager = () => {
                     {isSuperAdmin && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {!batch.is_active && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleSetActive(batch)}
-                              title="Set as active batch"
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </Button>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => !batch.is_active && handleSetActive(batch)}
+                            disabled={batch.is_active}
+                            title={batch.is_active ? "Active batch" : "Set as active batch"}
+                            className={batch.is_active ? "cursor-default" : ""}
+                          >
+                            <Star 
+                              className={`h-4 w-4 ${
+                                batch.is_active 
+                                  ? "text-yellow-500 fill-yellow-500" 
+                                  : "text-muted-foreground hover:text-yellow-500"
+                              }`} 
+                            />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
