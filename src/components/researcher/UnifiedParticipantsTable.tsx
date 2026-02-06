@@ -79,7 +79,13 @@ const formatNumber = (value: number | null | undefined): string => {
   return Number(value).toFixed(2);
 };
 
-export const UnifiedParticipantsTable = () => {
+import { SourceFilterValue } from './GlobalSourceFilter';
+
+interface UnifiedParticipantsTableProps {
+  sourceFilter: SourceFilterValue;
+}
+
+export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: UnifiedParticipantsTableProps) => {
   const navigate = useNavigate();
   const [data, setData] = useState<UnifiedParticipant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,7 +97,6 @@ export const UnifiedParticipantsTable = () => {
   const [statusFilter, setStatusFilter] = useState<string>('completed'); // Default to completed
   const [conditionFilter, setConditionFilter] = useState<string>('all');
   const [batchFilter, setBatchFilter] = useState<string>('all');
-  const [sourceFilter, setSourceFilter] = useState<string>('all'); // New: researcher vs participant filter
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [archiveMode, setArchiveMode] = useState<'single' | 'bulk'>('single');
   const [singleArchiveId, setSingleArchiveId] = useState<string | null>(null);
@@ -222,10 +227,10 @@ export const UnifiedParticipantsTable = () => {
       result = result.filter(p => p.status === 'Pending');
     }
 
-    // Source filter (researcher vs participant)
-    if (sourceFilter === 'researcher') {
+    // Source filter (uses global filter from dashboard)
+    if (globalSourceFilter === 'researcher') {
       result = result.filter(p => isResearcherId(p.prolific_id));
-    } else if (sourceFilter === 'participant') {
+    } else if (globalSourceFilter === 'participant') {
       result = result.filter(p => !isResearcherId(p.prolific_id));
     }
 
@@ -244,7 +249,7 @@ export const UnifiedParticipantsTable = () => {
     }
 
     return result;
-  }, [data, searchTerm, statusFilter, conditionFilter, batchFilter, sourceFilter]);
+  }, [data, searchTerm, statusFilter, conditionFilter, batchFilter, globalSourceFilter]);
 
   const paginatedData = useMemo(() => {
     const start = currentPage * pageSize;
@@ -258,7 +263,7 @@ export const UnifiedParticipantsTable = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchTerm, statusFilter, conditionFilter, batchFilter, sourceFilter]);
+  }, [searchTerm, statusFilter, conditionFilter, batchFilter, globalSourceFilter]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -453,17 +458,6 @@ export const UnifiedParticipantsTable = () => {
               {availableBatches.map(batch => (
                 <SelectItem key={batch} value={batch}>{batch}</SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="w-full sm:w-[140px]">
-              <SelectValue placeholder="Source" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="participant">Participants</SelectItem>
-              <SelectItem value="researcher">Researchers</SelectItem>
             </SelectContent>
           </Select>
         </div>

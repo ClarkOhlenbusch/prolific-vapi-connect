@@ -19,8 +19,13 @@ import {
   GUEST_SUMMARY_STATS, 
   GUEST_COMPARISON_STATS 
 } from '@/lib/guest-dummy-data';
+import { SourceFilterValue } from './GlobalSourceFilter';
 
 type AssistantFilter = 'both' | 'formal' | 'informal';
+
+interface DataSummaryProps {
+  sourceFilter: SourceFilterValue;
+}
 
 interface SummaryData {
   totalResponses: number;
@@ -107,7 +112,12 @@ const calculateStats = (responses: any[]): AssistantTypeStats => {
   };
 };
 
-export const DataSummary = () => {
+// Helper to detect researcher IDs (Prolific IDs are exactly 24 characters)
+const isResearcherId = (prolificId: string): boolean => {
+  return prolificId.length !== 24;
+};
+
+export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
   const [data, setData] = useState<SummaryData | null>(null);
   const [comparison, setComparison] = useState<ComparisonData | null>(null);
   const [allResponses, setAllResponses] = useState<any[]>([]);
@@ -208,14 +218,22 @@ export const DataSummary = () => {
     fetchSummary();
   }, [isSuperAdmin, isGuestMode]);
 
-  // Recalculate stats when filters change
+  // Recalculate stats when filters change (including source filter)
   useEffect(() => {
     if (allResponses.length === 0) return;
 
-    // First filter by batch (if any selected)
-    let batchFiltered = allResponses;
+    // First filter by source
+    let sourceFiltered = allResponses;
+    if (sourceFilter === 'participant') {
+      sourceFiltered = allResponses.filter(r => !isResearcherId(r.prolific_id || ''));
+    } else if (sourceFilter === 'researcher') {
+      sourceFiltered = allResponses.filter(r => isResearcherId(r.prolific_id || ''));
+    }
+
+    // Then filter by batch (if any selected)
+    let batchFiltered = sourceFiltered;
     if (selectedBatches.size > 0) {
-      batchFiltered = allResponses.filter(r => r.batch_label && selectedBatches.has(r.batch_label));
+      batchFiltered = sourceFiltered.filter(r => r.batch_label && selectedBatches.has(r.batch_label));
     }
 
     // Then filter by assistant type for the main stats
@@ -245,7 +263,7 @@ export const DataSummary = () => {
       totalResponses: filteredResponses.length,
       ...stats,
     } : null);
-  }, [assistantFilter, selectedBatches, allResponses]);
+  }, [assistantFilter, selectedBatches, allResponses, sourceFilter]);
 
   const toggleBatch = (batch: string) => {
     setSelectedBatches(prev => {

@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { GUEST_NO_CONSENT_FEEDBACK } from '@/lib/guest-dummy-data';
+import { SourceFilterValue } from './GlobalSourceFilter';
 
 interface NoConsentFeedback {
   id: string;
@@ -22,10 +23,30 @@ interface NoConsentFeedback {
   created_at: string;
 }
 
-export const NoConsentFeedbackTable = () => {
+// Helper to detect researcher IDs (Prolific IDs are exactly 24 characters)
+const isResearcherId = (prolificId: string | null): boolean => {
+  if (!prolificId) return false;
+  return prolificId.length !== 24;
+};
+
+interface NoConsentFeedbackTableProps {
+  sourceFilter: SourceFilterValue;
+}
+
+export const NoConsentFeedbackTable = ({ sourceFilter }: NoConsentFeedbackTableProps) => {
   const [feedbackData, setFeedbackData] = useState<NoConsentFeedback[]>([]);
   const [loading, setLoading] = useState(true);
   const { isGuestMode } = useResearcherAuth();
+
+  // Filter feedback based on source filter
+  const filteredFeedbackData = feedbackData.filter(item => {
+    if (sourceFilter === 'participant') {
+      return !isResearcherId(item.prolific_id);
+    } else if (sourceFilter === 'researcher') {
+      return isResearcherId(item.prolific_id);
+    }
+    return true;
+  });
 
   useEffect(() => {
     fetchFeedback();
@@ -74,11 +95,11 @@ export const NoConsentFeedbackTable = () => {
               Anonymous feedback from participants who declined to participate
             </CardDescription>
           </div>
-          <Badge variant="secondary">{feedbackData.length} responses</Badge>
+          <Badge variant="secondary">{filteredFeedbackData.length} responses</Badge>
         </div>
       </CardHeader>
       <CardContent>
-        {feedbackData.length === 0 ? (
+        {filteredFeedbackData.length === 0 ? (
           <p className="text-muted-foreground text-center py-8">
             No feedback received yet.
           </p>
@@ -93,7 +114,7 @@ export const NoConsentFeedbackTable = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {feedbackData.map((item) => (
+                {filteredFeedbackData.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="text-muted-foreground">
                       {format(new Date(item.created_at), 'MMM d, yyyy HH:mm')}
