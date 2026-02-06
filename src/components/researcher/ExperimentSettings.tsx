@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useResearcherAuth } from "@/contexts/ResearcherAuthContext";
-import { RefreshCw, RotateCcw, Users, Filter } from "lucide-react";
+import { RefreshCw, RotateCcw, Users, Filter, Layers } from "lucide-react";
+import { BatchManager } from "./BatchManager";
 
 const ASSISTANT_IDS = {
   formal: "77569740-f001-4419-92f8-78a6ed2dde70",
@@ -800,6 +801,22 @@ export const ExperimentSettings = () => {
               Only super admins can modify these settings
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Batch Manager Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Layers className="h-5 w-5" />
+            Batch Manager
+          </CardTitle>
+          <CardDescription>
+            Create, manage, and organize experiment batches
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BatchManager />
         </CardContent>
       </Card>
     </div>
