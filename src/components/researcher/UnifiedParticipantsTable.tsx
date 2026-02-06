@@ -28,9 +28,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Archive,
-  ExternalLink,
-  Route,
-  Eye
+  Route
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useActivityLog } from '@/hooks/useActivityLog';
@@ -92,6 +90,7 @@ export const UnifiedParticipantsTable = () => {
   const [statusFilter, setStatusFilter] = useState<string>('completed'); // Default to completed
   const [conditionFilter, setConditionFilter] = useState<string>('all');
   const [batchFilter, setBatchFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all'); // New: researcher vs participant filter
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [archiveMode, setArchiveMode] = useState<'single' | 'bulk'>('single');
   const [singleArchiveId, setSingleArchiveId] = useState<string | null>(null);
@@ -183,6 +182,11 @@ export const UnifiedParticipantsTable = () => {
     fetchData();
   }, []);
 
+  // Helper to detect researcher IDs (starts with "researcher_" or is an email-like pattern)
+  const isResearcherId = (prolificId: string): boolean => {
+    return prolificId.startsWith('researcher_') || prolificId.includes('@');
+  };
+
   // Filter and paginate data
   const filteredData = useMemo(() => {
     let result = data;
@@ -203,6 +207,13 @@ export const UnifiedParticipantsTable = () => {
       result = result.filter(p => p.status === 'Pending');
     }
 
+    // Source filter (researcher vs participant)
+    if (sourceFilter === 'researcher') {
+      result = result.filter(p => isResearcherId(p.prolific_id));
+    } else if (sourceFilter === 'participant') {
+      result = result.filter(p => !isResearcherId(p.prolific_id));
+    }
+
     // Condition filter
     if (conditionFilter !== 'all') {
       result = result.filter(p => p.assistant_type === conditionFilter);
@@ -218,7 +229,7 @@ export const UnifiedParticipantsTable = () => {
     }
 
     return result;
-  }, [data, searchTerm, statusFilter, conditionFilter, batchFilter]);
+  }, [data, searchTerm, statusFilter, conditionFilter, batchFilter, sourceFilter]);
 
   const paginatedData = useMemo(() => {
     const start = currentPage * pageSize;
@@ -232,7 +243,7 @@ export const UnifiedParticipantsTable = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchTerm, statusFilter, conditionFilter, batchFilter]);
+  }, [searchTerm, statusFilter, conditionFilter, batchFilter, sourceFilter]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -429,6 +440,17 @@ export const UnifiedParticipantsTable = () => {
               ))}
             </SelectContent>
           </Select>
+
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="w-full sm:w-[140px]">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sources</SelectItem>
+              <SelectItem value="participant">Participants</SelectItem>
+              <SelectItem value="researcher">Researchers</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         
         <div className="flex gap-2">
@@ -484,9 +506,13 @@ export const UnifiedParticipantsTable = () => {
               </TableRow>
             ) : (
               paginatedData.map((row) => (
-                <TableRow key={row.id} className={selectedIds.has(row.id) ? 'bg-muted/50' : ''}>
+                <TableRow 
+                  key={row.id} 
+                  className={`${selectedIds.has(row.id) ? 'bg-muted/50' : ''} ${row.status === 'Completed' ? 'cursor-pointer hover:bg-muted/30' : ''}`}
+                  onClick={() => row.status === 'Completed' && handleViewDetails(row)}
+                >
                   {isSuperAdmin && (
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={selectedIds.has(row.id)}
                         onCheckedChange={(checked) => handleSelectOne(row.id, !!checked)}
@@ -525,18 +551,8 @@ export const UnifiedParticipantsTable = () => {
                   <TableCell className="text-right font-mono text-sm">
                     {formatNumber(row.tias_total)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
-                      {row.status === 'Completed' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewDetails(row)}
-                          title="View Details"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      )}
                       <Button
                         variant="ghost"
                         size="sm"
