@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useResearcherAuth } from "@/contexts/ResearcherAuthContext";
-import { RefreshCw, RotateCcw, Users, Filter, Layers } from "lucide-react";
+import { RefreshCw, RotateCcw, Users, Filter } from "lucide-react";
 import { BatchManager } from "./BatchManager";
 
 const ASSISTANT_IDS = {
@@ -34,11 +34,6 @@ export const ExperimentSettings = () => {
   // Mode toggle: "alternating" or "static"
   const [activeMode, setActiveMode] = useState<"alternating" | "static">("alternating");
 
-  // Batch label state
-  const [batchLabel, setBatchLabel] = useState("");
-  const [batchLabelInput, setBatchLabelInput] = useState("");
-  const [isSavingBatch, setIsSavingBatch] = useState(false);
-  const [batchLastUpdated, setBatchLastUpdated] = useState<string | null>(null);
 
   // Alternating mode state
   const [alternatingEnabled, setAlternatingEnabled] = useState(false);
@@ -71,7 +66,6 @@ export const ExperimentSettings = () => {
         .select("*")
         .in("setting_key", [
           "active_assistant_type",
-          "current_batch_label",
           "alternating_mode_enabled",
           "formal_participant_count",
           "informal_participant_count",
@@ -92,13 +86,6 @@ export const ExperimentSettings = () => {
         if (assistantSetting) {
           setAssistantType(assistantSetting as "formal" | "informal");
           setLastUpdated(getUpdated("active_assistant_type") || null);
-        }
-
-        const batchSetting = getValue("current_batch_label");
-        if (batchSetting !== undefined) {
-          setBatchLabel(batchSetting);
-          setBatchLabelInput(batchSetting);
-          setBatchLastUpdated(getUpdated("current_batch_label") || null);
         }
 
         // Alternating mode settings
@@ -199,41 +186,6 @@ export const ExperimentSettings = () => {
       toast.error("Failed to update setting");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleSaveBatchLabel = async () => {
-    if (!isSuperAdmin) {
-      toast.error("Only super admins can change this setting");
-      return;
-    }
-
-    setIsSavingBatch(true);
-
-    try {
-      const { error } = await supabase
-        .from("experiment_settings")
-        .update({
-          setting_value: batchLabelInput.trim(),
-          updated_at: new Date().toISOString(),
-          updated_by: user?.id,
-        })
-        .eq("setting_key", "current_batch_label");
-
-      if (error) {
-        console.error("Error updating batch label:", error);
-        toast.error("Failed to update batch label");
-        return;
-      }
-
-      setBatchLabel(batchLabelInput.trim());
-      setBatchLastUpdated(new Date().toISOString());
-      toast.success(batchLabelInput.trim() ? `Batch label set to "${batchLabelInput.trim()}"` : "Batch label cleared");
-    } catch (error) {
-      console.error("Error:", error);
-      toast.error("Failed to update batch label");
-    } finally {
-      setIsSavingBatch(false);
     }
   };
 
@@ -744,81 +696,8 @@ export const ExperimentSettings = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Batch Label Configuration - Always visible */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Batch Label Configuration</CardTitle>
-          <CardDescription>
-            Configure the batch label for new participant data
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
-            <div className="space-y-1 flex-1 mr-4">
-              <Label htmlFor="batch-label" className="text-base font-medium">
-                Current Batch Label
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                All new responses will be tagged with this label
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Input
-                id="batch-label"
-                placeholder="e.g., Pilot-1, Wave-A"
-                value={batchLabelInput}
-                onChange={(e) => setBatchLabelInput(e.target.value)}
-                disabled={!isSuperAdmin || isSavingBatch}
-                className="w-48"
-              />
-              <Button
-                onClick={handleSaveBatchLabel}
-                disabled={!isSuperAdmin || isSavingBatch || batchLabelInput === batchLabel}
-                size="sm"
-              >
-                {isSavingBatch ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Current active label:</span>
-            {batchLabel ? (
-              <Badge variant="outline">{batchLabel}</Badge>
-            ) : (
-              <span className="text-sm text-muted-foreground italic">None</span>
-            )}
-          </div>
-
-          {batchLastUpdated && (
-            <p className="text-xs text-muted-foreground">
-              Last updated: {new Date(batchLastUpdated).toLocaleString()}
-            </p>
-          )}
-
-          {!isSuperAdmin && (
-            <p className="text-sm text-amber-600">
-              Only super admins can modify these settings
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Batch Manager Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Layers className="h-5 w-5" />
-            Batch Manager
-          </CardTitle>
-          <CardDescription>
-            Create, manage, and organize experiment batches
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <BatchManager />
-        </CardContent>
-      </Card>
+      <BatchManager />
     </div>
   );
 };
