@@ -1,12 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff, Loader2 } from "lucide-react";
+import { Mic, MicOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface VoiceDictationProps {
   onTranscript: (text: string) => void;
+  onInterimTranscript?: (text: string) => void;
   disabled?: boolean;
   className?: string;
+  silenceTimeoutMs?: number;
+}
+
+export interface VoiceDictationRef {
+  stopListening: () => void;
 }
 
 // Extend Window interface for SpeechRecognition
@@ -40,116 +46,183 @@ declare global {
   }
 }
 
-export const VoiceDictation = ({ onTranscript, disabled, className }: VoiceDictationProps) => {
-  const [isListening, setIsListening] = useState(false);
-  const [isSupported, setIsSupported] = useState(true);
-  const [interimTranscript, setInterimTranscript] = useState("");
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>(
+  ({ onTranscript, onInterimTranscript, disabled, className, silenceTimeoutMs = 15000 }, ref) => {
+    const [isListening, setIsListening] = useState(false);
+    const [isSupported, setIsSupported] = useState(true);
+    const recognitionRef = useRef<SpeechRecognition | null>(null);
+    const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const shouldRestartRef = useRef(false);
+    const lastSpeechTimeRef = useRef<number>(Date.now());
 
-  useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-      setIsSupported(false);
-      return;
-    }
+    // Expose stopListening method to parent
+    useImperativeHandle(ref, () => ({
+      stopListening: () => {
+        shouldRestartRef.current = false;
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+          silenceTimeoutRef.current = null;
+        }
+        if (recognitionRef.current) {
+          recognitionRef.current.stop();
+        }
+        setIsListening(false);
+        onInterimTranscript?.("");
+      }
+    }));
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
+    const resetSilenceTimeout = useCallback(() => {
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+      }
+      lastSpeechTimeRef.current = Date.now();
+      silenceTimeoutRef.current = setTimeout(() => {
+        // Stop listening after silence timeout
+        shouldRestartRef.current = false;
+        if (recognitionRef.current) {
+          recognitionRef.current.stop();
+        }
+        setIsListening(false);
+        onInterimTranscript?.("");
+      }, silenceTimeoutMs);
+    }, [silenceTimeoutMs, onInterimTranscript]);
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let finalTranscript = "";
-      let interim = "";
+    useEffect(() => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      
+      if (!SpeechRecognition) {
+        setIsSupported(false);
+        return;
+      }
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let finalTranscript = "";
+        let interim = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interim += transcript;
+          }
+        }
+
+        // Reset silence timeout on any speech activity
+        resetSilenceTimeout();
+
+        // Send interim transcript for live preview
+        onInterimTranscript?.(interim);
+
+        if (finalTranscript) {
+          onTranscript(finalTranscript);
+          onInterimTranscript?.("");
+        }
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error("Speech recognition error:", event.error);
+        // Don't stop on "aborted" or "no-speech" errors - these are expected
+        if (event.error !== "aborted" && event.error !== "no-speech") {
+          shouldRestartRef.current = false;
+          setIsListening(false);
+          onInterimTranscript?.("");
+        }
+      };
+
+      recognition.onend = () => {
+        // Auto-restart if we should keep listening (handles browser auto-stop)
+        if (shouldRestartRef.current && isListening) {
+          try {
+            recognition.start();
+          } catch (error) {
+            // If we can't restart, stop gracefully
+            shouldRestartRef.current = false;
+            setIsListening(false);
+            onInterimTranscript?.("");
+          }
         } else {
-          interim += transcript;
+          setIsListening(false);
+          onInterimTranscript?.("");
+        }
+      };
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        resetSilenceTimeout();
+      };
+
+      recognitionRef.current = recognition;
+
+      return () => {
+        shouldRestartRef.current = false;
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+        }
+        if (recognitionRef.current) {
+          recognitionRef.current.abort();
+        }
+      };
+    }, [onTranscript, onInterimTranscript, resetSilenceTimeout, isListening]);
+
+    const toggleListening = useCallback(() => {
+      if (!recognitionRef.current) return;
+
+      if (isListening) {
+        shouldRestartRef.current = false;
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+          silenceTimeoutRef.current = null;
+        }
+        recognitionRef.current.stop();
+        onInterimTranscript?.("");
+      } else {
+        try {
+          shouldRestartRef.current = true;
+          recognitionRef.current.start();
+        } catch (error) {
+          console.error("Failed to start speech recognition:", error);
         }
       }
+    }, [isListening, onInterimTranscript]);
 
-      setInterimTranscript(interim);
-
-      if (finalTranscript) {
-        onTranscript(finalTranscript);
-      }
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      console.error("Speech recognition error:", event.error);
-      if (event.error !== "aborted") {
-        setIsListening(false);
-      }
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-      setInterimTranscript("");
-    };
-
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
-    recognitionRef.current = recognition;
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-      }
-    };
-  }, [onTranscript]);
-
-  const toggleListening = useCallback(() => {
-    if (!recognitionRef.current) return;
-
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      try {
-        recognitionRef.current.start();
-      } catch (error) {
-        console.error("Failed to start speech recognition:", error);
-      }
+    if (!isSupported) {
+      return null;
     }
-  }, [isListening]);
 
-  if (!isSupported) {
-    return null;
-  }
-
-  return (
-    <div className={cn("flex items-center gap-2", className)}>
+    return (
       <Button
         type="button"
         variant={isListening ? "destructive" : "outline"}
-        size="icon"
+        size="sm"
         onClick={toggleListening}
         disabled={disabled}
-        className="h-8 w-8 shrink-0"
-        title={isListening ? "Stop dictation" : "Start voice dictation"}
+        className={cn(
+          "shrink-0 gap-2 transition-all",
+          isListening && "animate-pulse",
+          className
+        )}
+        title={isListening ? "Stop dictation" : "Click to dictate your response"}
       >
         {isListening ? (
-          <MicOff className="h-4 w-4" />
+          <>
+            <MicOff className="h-4 w-4" />
+            <span className="hidden sm:inline">Stop</span>
+          </>
         ) : (
-          <Mic className="h-4 w-4" />
+          <>
+            <Mic className="h-4 w-4" />
+            <span className="hidden sm:inline">Dictate</span>
+          </>
         )}
       </Button>
-      {isListening && interimTranscript && (
-        <span className="text-xs text-muted-foreground italic truncate max-w-[200px]">
-          {interimTranscript}...
-        </span>
-      )}
-      {isListening && !interimTranscript && (
-        <span className="text-xs text-muted-foreground flex items-center gap-1">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Listening...
-        </span>
-      )}
-    </div>
-  );
-};
+    );
+  }
+);
+
+VoiceDictation.displayName = "VoiceDictation";
