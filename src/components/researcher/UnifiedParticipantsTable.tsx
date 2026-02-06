@@ -182,9 +182,9 @@ export const UnifiedParticipantsTable = () => {
     fetchData();
   }, []);
 
-  // Helper to detect researcher IDs (starts with "researcher_" or is an email-like pattern)
+  // Helper to detect researcher IDs (Prolific IDs are exactly 24 characters)
   const isResearcherId = (prolificId: string): boolean => {
-    return prolificId.startsWith('researcher_') || prolificId.includes('@');
+    return prolificId.length !== 24;
   };
 
   // Filter and paginate data
