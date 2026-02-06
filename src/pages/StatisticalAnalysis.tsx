@@ -136,11 +136,21 @@ interface HypothesisResult {
   summary: string;
 }
 
+// Helper to detect researcher IDs (Prolific IDs are exactly 24 characters)
+const isResearcherId = (prolificId: string): boolean => {
+  return prolificId.length !== 24;
+};
+
+type SourceFilterValue = 'all' | 'participant' | 'researcher';
+
 const StatisticalAnalysis = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [responses, setResponses] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('hypotheses');
+  
+  // Read source filter from sessionStorage (set by dashboard)
+  const sourceFilter = (sessionStorage.getItem('researcher-dashboard-source-filter') || 'participant') as SourceFilterValue;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -150,7 +160,16 @@ const StatisticalAnalysis = () => {
           .select('*');
 
         if (error) throw error;
-        setResponses(data || []);
+        
+        // Apply source filter
+        let filteredData = data || [];
+        if (sourceFilter === 'participant') {
+          filteredData = filteredData.filter(r => !isResearcherId(r.prolific_id));
+        } else if (sourceFilter === 'researcher') {
+          filteredData = filteredData.filter(r => isResearcherId(r.prolific_id));
+        }
+        
+        setResponses(filteredData);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -159,7 +178,7 @@ const StatisticalAnalysis = () => {
     };
 
     fetchData();
-  }, []);
+  }, [sourceFilter]);
 
   const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults } = useMemo(() => {
     const formal = responses.filter(r => r.assistant_type === 'formal');
