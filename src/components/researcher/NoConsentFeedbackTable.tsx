@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import {
   Table,
   TableBody,
@@ -12,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import { GUEST_NO_CONSENT_FEEDBACK } from '@/lib/guest-dummy-data';
 
 interface NoConsentFeedback {
   id: string;
@@ -23,12 +25,20 @@ interface NoConsentFeedback {
 export const NoConsentFeedbackTable = () => {
   const [feedbackData, setFeedbackData] = useState<NoConsentFeedback[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isGuestMode } = useResearcherAuth();
 
   useEffect(() => {
     fetchFeedback();
-  }, []);
+  }, [isGuestMode]);
 
   const fetchFeedback = async () => {
+    // Use dummy data for guest mode
+    if (isGuestMode) {
+      setFeedbackData(GUEST_NO_CONSENT_FEEDBACK);
+      setLoading(false);
+      return;
+    }
+    
     try {
       const { data, error } = await supabase
         .from('no_consent_feedback')

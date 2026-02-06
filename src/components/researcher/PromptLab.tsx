@@ -60,6 +60,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { GUEST_PROMPTS } from '@/lib/guest-dummy-data';
 
 interface VapiPrompt {
   id: string;
@@ -95,7 +96,7 @@ interface DiffResult {
 const STORAGE_KEY = 'prompt-lab-draft';
 
 export function PromptLab() {
-  const { user, isSuperAdmin } = useResearcherAuth();
+  const { user, isSuperAdmin, isGuestMode } = useResearcherAuth();
   const [activeTab, setActiveTab] = useState<'prompts' | 'diff'>('prompts');
   
   // Prompts state
@@ -167,7 +168,7 @@ export function PromptLab() {
   // Load prompts from database
   useEffect(() => {
     loadPrompts();
-  }, []);
+  }, [isGuestMode]);
   
   // Auto-save diff state to localStorage
   useEffect(() => {
@@ -190,6 +191,14 @@ export function PromptLab() {
   
   const loadPrompts = async () => {
     setIsLoading(true);
+    
+    // Use dummy data for guest mode
+    if (isGuestMode) {
+      setPrompts(GUEST_PROMPTS as VapiPrompt[]);
+      setIsLoading(false);
+      return;
+    }
+    
     try {
       const { data, error } = await supabase
         .from('vapi_prompts')

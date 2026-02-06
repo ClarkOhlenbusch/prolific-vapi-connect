@@ -12,7 +12,7 @@ export const ResearcherProtectedRoute = ({
   children, 
   requireSuperAdmin = false 
 }: ResearcherProtectedRouteProps) => {
-  const { isAuthenticated, isSuperAdmin, isLoading } = useResearcherAuth();
+  const { isAuthenticated, isSuperAdmin, isLoading, isGuestMode } = useResearcherAuth();
 
   if (isLoading) {
     return (
@@ -26,7 +26,8 @@ export const ResearcherProtectedRoute = ({
     return <Navigate to="/researcher" replace />;
   }
 
-  if (requireSuperAdmin && !isSuperAdmin) {
+  // Block admin-only routes for guests
+  if (requireSuperAdmin && (isGuestMode || !isSuperAdmin)) {
     return <Navigate to="/researcher/dashboard" replace />;
   }
 
