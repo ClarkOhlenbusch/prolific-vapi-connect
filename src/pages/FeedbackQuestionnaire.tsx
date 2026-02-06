@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { usePageTracking } from "@/hooks/usePageTracking";
 import { FeedbackProgressBar } from "@/components/FeedbackProgressBar";
 import { ExperimentProgress } from "@/components/ExperimentProgress";
+import { VoiceDictation } from "@/components/VoiceDictation";
 
 const FeedbackQuestionnaire = () => {
   const navigate = useNavigate();
@@ -351,21 +352,32 @@ const FeedbackQuestionnaire = () => {
               </ul>
             </div>
             <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-              <Textarea
-                value={voiceAssistantExperience}
-                onChange={(e) => {
-                  if (e.target.value.length <= MAX_CHARS) {
-                    setVoiceAssistantExperience(e.target.value);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === " ") {
-                    e.stopPropagation();
-                  }
-                }}
-                className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !experienceStatus.isValid ? 'border-destructive' : ''}`}
-                placeholder="Describe your experience with Cali..."
-              />
+              <div className="flex items-start gap-2">
+                <Textarea
+                  value={voiceAssistantExperience}
+                  onChange={(e) => {
+                    if (e.target.value.length <= MAX_CHARS) {
+                      setVoiceAssistantExperience(e.target.value);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === " ") {
+                      e.stopPropagation();
+                    }
+                  }}
+                  className={`min-h-[150px] resize-none bg-background flex-1 ${showValidationErrors && !experienceStatus.isValid ? 'border-destructive' : ''}`}
+                  placeholder="Describe your experience with Cali..."
+                />
+                <VoiceDictation
+                  onTranscript={(text) => {
+                    setVoiceAssistantExperience((prev) => {
+                      const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
+                      return newValue.length <= MAX_CHARS ? newValue : prev;
+                    });
+                  }}
+                  disabled={isSubmitting}
+                />
+              </div>
               <FeedbackProgressBar 
                 wordCount={experienceStatus.count} 
                 minWords={MIN_WORDS} 
@@ -393,21 +405,32 @@ const FeedbackQuestionnaire = () => {
               </ul>
             </div>
             <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-              <Textarea
-                value={communicationStyleFeedback}
-                onChange={(e) => {
-                  if (e.target.value.length <= MAX_CHARS) {
-                    setCommunicationStyleFeedback(e.target.value);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === " ") {
-                    e.stopPropagation();
-                  }
-                }}
-                className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !styleStatus.isValid ? 'border-destructive' : ''}`}
-                placeholder="Describe Cali's communication style..."
-              />
+              <div className="flex items-start gap-2">
+                <Textarea
+                  value={communicationStyleFeedback}
+                  onChange={(e) => {
+                    if (e.target.value.length <= MAX_CHARS) {
+                      setCommunicationStyleFeedback(e.target.value);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === " ") {
+                      e.stopPropagation();
+                    }
+                  }}
+                  className={`min-h-[150px] resize-none bg-background flex-1 ${showValidationErrors && !styleStatus.isValid ? 'border-destructive' : ''}`}
+                  placeholder="Describe Cali's communication style..."
+                />
+                <VoiceDictation
+                  onTranscript={(text) => {
+                    setCommunicationStyleFeedback((prev) => {
+                      const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
+                      return newValue.length <= MAX_CHARS ? newValue : prev;
+                    });
+                  }}
+                  disabled={isSubmitting}
+                />
+              </div>
               <FeedbackProgressBar 
                 wordCount={styleStatus.count} 
                 minWords={MIN_WORDS} 
@@ -436,21 +459,32 @@ const FeedbackQuestionnaire = () => {
               </ul>
             </div>
             <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-              <Textarea
-                value={experimentFeedback}
-                onChange={(e) => {
-                  if (e.target.value.length <= MAX_CHARS) {
-                    setExperimentFeedback(e.target.value);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === " ") {
-                    e.stopPropagation();
-                  }
-                }}
-                placeholder="Share your feedback on the experiment..."
-                className={`min-h-[150px] resize-none bg-background ${showValidationErrors && !experimentStatus.isValid ? 'border-destructive' : ''}`}
-              />
+              <div className="flex items-start gap-2">
+                <Textarea
+                  value={experimentFeedback}
+                  onChange={(e) => {
+                    if (e.target.value.length <= MAX_CHARS) {
+                      setExperimentFeedback(e.target.value);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === " ") {
+                      e.stopPropagation();
+                    }
+                  }}
+                  placeholder="Share your feedback on the experiment..."
+                  className={`min-h-[150px] resize-none bg-background flex-1 ${showValidationErrors && !experimentStatus.isValid ? 'border-destructive' : ''}`}
+                />
+                <VoiceDictation
+                  onTranscript={(text) => {
+                    setExperimentFeedback((prev) => {
+                      const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
+                      return newValue.length <= MAX_CHARS ? newValue : prev;
+                    });
+                  }}
+                  disabled={isSubmitting}
+                />
+              </div>
               <FeedbackProgressBar 
                 wordCount={experimentStatus.count} 
                 minWords={MIN_WORDS} 
