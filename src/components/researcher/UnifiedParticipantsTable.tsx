@@ -45,6 +45,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Tables } from '@/integrations/supabase/types';
+import { GUEST_PARTICIPANTS } from '@/lib/guest-dummy-data';
 
 type ParticipantCall = Tables<'participant_calls'>;
 type ExperimentResponse = Tables<'experiment_responses'>;
@@ -103,11 +104,25 @@ export const UnifiedParticipantsTable = () => {
   }>({ open: false, prolificId: '', status: 'Pending', condition: null });
   
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
-  const { isSuperAdmin, user } = useResearcherAuth();
+  const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const { logActivity } = useActivityLog();
 
   const fetchData = async () => {
     setIsLoading(true);
+    
+    // Use dummy data for guest mode
+    if (isGuestMode) {
+      const batches = new Set<string>();
+      GUEST_PARTICIPANTS.forEach(p => {
+        if (p.batch_label) batches.add(p.batch_label);
+      });
+      setAvailableBatches(Array.from(batches).sort());
+      setData(GUEST_PARTICIPANTS);
+      setSelectedIds(new Set());
+      setIsLoading(false);
+      return;
+    }
+    
     try {
       // Fetch participant_calls
       const { data: calls, error: callsError } = await supabase

@@ -14,6 +14,11 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { ChevronDown, X } from 'lucide-react';
+import { 
+  GUEST_PARTICIPANTS, 
+  GUEST_SUMMARY_STATS, 
+  GUEST_COMPARISON_STATS 
+} from '@/lib/guest-dummy-data';
 
 type AssistantFilter = 'both' | 'formal' | 'informal';
 
@@ -110,7 +115,7 @@ export const DataSummary = () => {
   const [assistantFilter, setAssistantFilter] = useState<AssistantFilter>('both');
   const [selectedBatches, setSelectedBatches] = useState<Set<string>>(new Set());
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
-  const { isSuperAdmin } = useResearcherAuth();
+  const { isSuperAdmin, isGuestMode } = useResearcherAuth();
 
   // Get unique batches from responses
   const extractBatches = (responses: any[]) => {
@@ -119,6 +124,46 @@ export const DataSummary = () => {
   };
 
   useEffect(() => {
+    // Use dummy data for guest mode
+    if (isGuestMode) {
+      const guestResponses = GUEST_PARTICIPANTS.filter(p => p.status === 'Completed').map(p => ({
+        assistant_type: p.assistant_type,
+        batch_label: p.batch_label,
+        pets_total: p.pets_total,
+        pets_er: Math.round((p.pets_total || 0) / 2),
+        pets_ut: Math.round((p.pets_total || 0) / 2),
+        tias_total: p.tias_total,
+        formality: p.formality,
+        intention_1: 4 + Math.random() * 2,
+        intention_2: 4 + Math.random() * 2,
+        godspeed_anthro_total: 2.5 + Math.random() * 1.5,
+        godspeed_like_total: 3 + Math.random() * 1.5,
+        godspeed_intel_total: 3.5 + Math.random() * 1.5,
+        ai_formality_score: p.assistant_type === 'formal' ? 55 + Math.random() * 15 : 40 + Math.random() * 15,
+      }));
+      
+      setAllResponses(guestResponses);
+      setAvailableBatches(extractBatches(guestResponses));
+      setComparison(GUEST_COMPARISON_STATS);
+      setData({
+        totalResponses: GUEST_SUMMARY_STATS.totalResponses,
+        totalCalls: GUEST_SUMMARY_STATS.totalCalls,
+        totalArchived: GUEST_SUMMARY_STATS.totalArchived,
+        avgPetsTotal: GUEST_SUMMARY_STATS.avgPetsTotal,
+        avgPetsER: GUEST_SUMMARY_STATS.avgPetsER,
+        avgPetsUT: GUEST_SUMMARY_STATS.avgPetsUT,
+        avgTiasTotal: GUEST_SUMMARY_STATS.avgTiasTotal,
+        avgFormality: GUEST_SUMMARY_STATS.avgFormality,
+        avgIntention1: GUEST_SUMMARY_STATS.avgIntention1,
+        avgIntention2: GUEST_SUMMARY_STATS.avgIntention2,
+        avgGodspeedAnthro: GUEST_SUMMARY_STATS.avgGodspeedAnthro,
+        avgGodspeedLike: GUEST_SUMMARY_STATS.avgGodspeedLike,
+        avgGodspeedIntel: GUEST_SUMMARY_STATS.avgGodspeedIntel,
+      });
+      setIsLoading(false);
+      return;
+    }
+
     const fetchSummary = async () => {
       try {
         // Fetch counts in parallel
@@ -161,7 +206,7 @@ export const DataSummary = () => {
     };
 
     fetchSummary();
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, isGuestMode]);
 
   // Recalculate stats when filters change
   useEffect(() => {

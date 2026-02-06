@@ -93,6 +93,8 @@ interface SavedCalculation {
 }
 
 export function FormalityCalculator() {
+  const { user, isGuestMode } = useResearcherAuth();
+  
   // Input state
   const [mode, setMode] = useState<'csv' | 'manual' | 'compare'>('manual');
   const [manualText, setManualText] = useState('');
@@ -272,7 +274,6 @@ export function FormalityCalculator() {
   }, [compareTexts, aiOnly, mode]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { user } = useResearcherAuth();
   
   // Auto-save compare texts to localStorage
   useEffect(() => {
