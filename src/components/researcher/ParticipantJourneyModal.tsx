@@ -77,6 +77,58 @@ const formatPageName = (name: string): string => {
     .join(' ');
 };
 
+const formatMicPermission = (value?: string | null): string | null => {
+  if (!value) return null;
+  switch (value) {
+    case "granted":
+      return "Granted";
+    case "denied":
+      return "Denied";
+    case "prompt":
+      return "Prompt";
+    case "unsupported":
+      return "Unsupported";
+    case "error":
+      return "Error";
+    default:
+      return "Unknown";
+  }
+};
+
+const formatMicAudio = (value: unknown): string | null => {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string") {
+    if (value === "detected") return "Detected";
+    if (value === "not_detected") return "Not detected";
+    if (value === "error") return "Error";
+  }
+  if (typeof value === "boolean") {
+    return value ? "Detected" : "Not detected";
+  }
+  return "Unknown";
+};
+
+const isCallIssueEvent = (event: NavigationEvent): boolean => {
+  if (event.event_type === "call_start_failed" || event.event_type === "call_error") return true;
+  if (event.event_type === "call_end") {
+    return Boolean(event.metadata?.isError);
+  }
+  return false;
+};
+
+const getCallIssueMessage = (event: NavigationEvent): string | null => {
+  if (event.event_type === "call_start_failed") {
+    return event.metadata?.reason || "Call start failed";
+  }
+  if (event.event_type === "call_error") {
+    return event.metadata?.errorMessage || event.metadata?.error || "Call error";
+  }
+  if (event.event_type === "call_end" && event.metadata?.isError) {
+    return event.metadata?.endedReason || "Call ended with error";
+  }
+  return null;
+};
+
 export const ParticipantJourneyModal = ({
   open,
   onOpenChange,
@@ -126,8 +178,49 @@ export const ParticipantJourneyModal = ({
     return `~${hours}h ${minutes}m`;
   };
 
+  const getDiagnosticsByPage = () => {
+    const diagnostics: Record<string, {
+      micPermission?: string | null;
+      micAudio?: string | null;
+      callIssueCount: number;
+      lastCallIssue?: string | null;
+      lastCallEndReason?: string | null;
+    }> = {};
+
+    events.forEach((event) => {
+      const pageKey = event.page_name;
+      if (!diagnostics[pageKey]) {
+        diagnostics[pageKey] = { callIssueCount: 0 };
+      }
+      const pageDiag = diagnostics[pageKey];
+
+      if (event.event_type === "mic_permission") {
+        pageDiag.micPermission = formatMicPermission(event.metadata?.state as string | null);
+      }
+
+      if (event.event_type === "mic_audio_check") {
+        pageDiag.micAudio = formatMicAudio(event.metadata?.detected);
+      }
+
+      if (event.event_type === "call_end") {
+        const reason = event.metadata?.endedReason || event.metadata?.reason || null;
+        if (event.metadata?.endedReason || !pageDiag.lastCallEndReason) {
+          pageDiag.lastCallEndReason = reason;
+        }
+      }
+
+      if (isCallIssueEvent(event)) {
+        pageDiag.callIssueCount += 1;
+        pageDiag.lastCallIssue = getCallIssueMessage(event);
+      }
+    });
+
+    return diagnostics;
+  };
+
   // Group events by page for timeline display
   const getTimelineEvents = () => {
+    const diagnosticsByPage = getDiagnosticsByPage();
     const timeline: {
       pageName: string;
       displayName: string;
@@ -135,12 +228,18 @@ export const ParticipantJourneyModal = ({
       timeSpent: number | null;
       hasBackButton: boolean;
       isLast: boolean;
+      micPermission?: string | null;
+      micAudio?: string | null;
+      callIssueCount?: number;
+      lastCallIssue?: string | null;
+      lastCallEndReason?: string | null;
     }[] = [];
 
     // Process events to create timeline entries
     // page_leave events contain the time_on_page_seconds
     events.forEach((event, index) => {
       if (event.event_type === 'page_leave') {
+        const pageDiagnostics = diagnosticsByPage[event.page_name] || { callIssueCount: 0 };
         timeline.push({
           pageName: event.page_name,
           displayName: formatPageName(event.page_name),
@@ -151,6 +250,11 @@ export const ParticipantJourneyModal = ({
           timeSpent: event.time_on_page_seconds,
           hasBackButton: false,
           isLast: false,
+          micPermission: pageDiagnostics.micPermission,
+          micAudio: pageDiagnostics.micAudio,
+          callIssueCount: pageDiagnostics.callIssueCount,
+          lastCallIssue: pageDiagnostics.lastCallIssue,
+          lastCallEndReason: pageDiagnostics.lastCallEndReason,
         });
       } else if (event.event_type === 'back_button_click') {
         // Find the last timeline entry for this page and mark it
@@ -290,6 +394,29 @@ export const ParticipantJourneyModal = ({
                         <div>
                           Time spent: {formatTime(event.timeSpent)}
                         </div>
+                        {(event.micPermission || event.micAudio || (event.callIssueCount && event.callIssueCount > 0)) && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {event.micPermission && (
+                              <Badge variant="outline">Mic: {event.micPermission}</Badge>
+                            )}
+                            {event.micAudio && (
+                              <Badge variant="outline">Audio: {event.micAudio}</Badge>
+                            )}
+                            {event.callIssueCount && event.callIssueCount > 0 && (
+                              <Badge variant="destructive">Call issues: {event.callIssueCount}</Badge>
+                            )}
+                          </div>
+                        )}
+                        {event.lastCallIssue && (
+                          <div className="text-xs text-muted-foreground">
+                            Last issue: {event.lastCallIssue}
+                          </div>
+                        )}
+                        {event.lastCallEndReason && (
+                          <div className="text-xs text-muted-foreground">
+                            Ended: {event.lastCallEndReason}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

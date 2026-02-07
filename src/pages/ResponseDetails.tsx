@@ -31,6 +31,7 @@ import {
 import { ParticipantJourneyModal } from '@/components/researcher/ParticipantJourneyModal';
 
 type Demographics = Tables<'demographics'>;
+type NavigationEvent = Tables<'navigation_events'>;
 
 interface ExperimentResponseWithDemographics extends Tables<'experiment_responses'> {
   demographics?: Demographics | null;
@@ -153,6 +154,40 @@ const TIPI_DIMENSIONS = [
   { key: "tipi_openness", label: "Openness" },
 ];
 
+const MIC_STATE_LABELS: Record<string, string> = {
+  granted: "Granted",
+  denied: "Denied",
+  prompt: "Prompt",
+  unsupported: "Unsupported",
+  error: "Error",
+  unknown: "Unknown",
+};
+
+const formatMicPermission = (value?: string | null): string | null => {
+  if (!value) return null;
+  return MIC_STATE_LABELS[value] || "Unknown";
+};
+
+const formatMicAudio = (value: unknown): string | null => {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string") {
+    if (value === "detected") return "Detected";
+    if (value === "not_detected") return "Not detected";
+    if (value === "error") return "Error";
+  }
+  if (typeof value === "boolean") {
+    return value ? "Detected" : "Not detected";
+  }
+  return "Unknown";
+};
+
+const formatMicSummary = (practice?: string | null, main?: string | null): string => {
+  const parts: string[] = [];
+  if (practice) parts.push(`Practice: ${practice}`);
+  if (main) parts.push(`Main: ${main}`);
+  return parts.length ? parts.join(" • ") : "Unknown";
+};
+
 // Section navigation items - in experiment flow order
 const SECTIONS = [
   { id: 'journey', label: 'Journey', icon: Route },
@@ -176,6 +211,10 @@ const ResponseDetails = () => {
   const [error, setError] = useState<string | null>(null);
   const [formalityCalcId, setFormalityCalcId] = useState<string | null>(null);
   const [journeyModalOpen, setJourneyModalOpen] = useState(false);
+  const [journeyDiagnostics, setJourneyDiagnostics] = useState<{
+    practice: { micPermission?: string | null; micAudio?: string | null };
+    main: { micPermission?: string | null; micAudio?: string | null };
+  } | null>(null);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
   useEffect(() => {
@@ -183,6 +222,7 @@ const ResponseDetails = () => {
       if (!id) return;
       
       setIsLoading(true);
+      setJourneyDiagnostics(null);
       try {
         // Fetch experiment response
         const { data: response, error: responseError } = await supabase
@@ -201,12 +241,45 @@ const ResponseDetails = () => {
           .eq('prolific_id', response.prolific_id)
           .maybeSingle();
 
-        // Fetch formality calculation if exists
-        const { data: formalityCalc } = await supabase
-          .from('formality_calculations')
-          .select('id')
-          .eq('linked_call_id', response.call_id)
-          .maybeSingle();
+        const [{ data: formalityCalc }, { data: navigationEvents }] = await Promise.all([
+          supabase
+            .from('formality_calculations')
+            .select('id')
+            .eq('linked_call_id', response.call_id)
+            .maybeSingle(),
+          supabase
+            .from('navigation_events')
+            .select('page_name, event_type, metadata, created_at')
+            .eq('prolific_id', response.prolific_id)
+            .in('event_type', ['mic_permission', 'mic_audio_check'])
+            .order('created_at', { ascending: true }),
+        ]);
+
+        if (navigationEvents) {
+          const diagnostics = {
+            practice: { micPermission: null, micAudio: null },
+            main: { micPermission: null, micAudio: null },
+          };
+
+          navigationEvents.forEach((event: NavigationEvent) => {
+            const pageKey = event.page_name === 'practice-conversation'
+              ? 'practice'
+              : event.page_name === 'voice-conversation'
+                ? 'main'
+                : null;
+            if (!pageKey) return;
+            const metadata = (event.metadata || {}) as Record<string, unknown>;
+
+            if (event.event_type === 'mic_permission') {
+              diagnostics[pageKey].micPermission = formatMicPermission(metadata.state as string | null);
+            }
+            if (event.event_type === 'mic_audio_check') {
+              diagnostics[pageKey].micAudio = formatMicAudio(metadata.detected);
+            }
+          });
+
+          setJourneyDiagnostics(diagnostics);
+        }
 
         setData({ ...response, demographics });
         setFormalityCalcId(formalityCalc?.id || null);
@@ -347,6 +420,18 @@ const ResponseDetails = () => {
               <div>
                 <label className="text-sm text-muted-foreground">PETS Total</label>
                 <p className="text-sm font-semibold">{formatNumber(data.pets_total)}</p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Mic Permission</label>
+                <p className="text-sm">
+                  {formatMicSummary(journeyDiagnostics?.practice?.micPermission, journeyDiagnostics?.main?.micPermission)}
+                </p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Mic Audio Detected</label>
+                <p className="text-sm">
+                  {formatMicSummary(journeyDiagnostics?.practice?.micAudio, journeyDiagnostics?.main?.micAudio)}
+                </p>
               </div>
             </div>
           </CardContent>
