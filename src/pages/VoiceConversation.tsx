@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Vapi from "@vapi-ai/web";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,7 @@ import { Mic, Phone, Clock } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { ExperimentProgress } from "@/components/ExperimentProgress";
 import { usePageTracking } from "@/hooks/usePageTracking";
+import { logNavigationEvent, runMicDiagnostics } from "@/lib/participant-telemetry";
 
 const VoiceConversation = () => {
   const [prolificId, setProlificId] = useState<string | null>(null);
@@ -35,15 +36,31 @@ const VoiceConversation = () => {
   const [assistantId, setAssistantId] = useState<string | null>(null);
   const vapiRef = useRef<Vapi | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const callIdRef = useRef<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isResearcherMode } = useResearcherMode();
+  const pageName = "voice-conversation";
+
+  const logEvent = useCallback((eventType: string, metadata: Record<string, unknown> = {}) => {
+    void logNavigationEvent({
+      prolificId,
+      callId: callIdRef.current,
+      pageName,
+      eventType,
+      metadata,
+    });
+  }, [prolificId]);
 
   usePageTracking({
-    pageName: 'voice-conversation',
+    pageName,
     prolificId,
     callId,
   });
+
+  useEffect(() => {
+    callIdRef.current = callId;
+  }, [callId]);
   useEffect(() => {
     // Load IDs from sessionStorage, no validation/redirects
     const storedId = sessionStorage.getItem("prolificId");
@@ -110,6 +127,8 @@ const VoiceConversation = () => {
       // Listen for end-of-call-report to get the actual end reason
       if (message.type === "end-of-call-report") {
         const endedReason = message.endedReason;
+        const isError = endedReason === "pipeline-error" || endedReason === "assistant-error";
+        logEvent("call_end", { endedReason, isError });
         if (endedReason === "assistant-ended-call") {
           toast({
             title: "Call Completed Successfully",
@@ -127,6 +146,7 @@ const VoiceConversation = () => {
     vapi.on("call-end", () => {
       setIsCallActive(false);
       setCallTracked(false);
+      logEvent("call_end", { reason: "call-end" });
 
       // If we're restarting, don't show "ended" state
       if (!isRestarting) {
@@ -142,6 +162,10 @@ const VoiceConversation = () => {
     vapi.on("error", (error) => {
       // Log errors but don't show toast - end-of-call-report handles messaging
       console.error("Vapi error:", error);
+      logEvent("call_error", {
+        errorName: (error as { name?: string })?.name,
+        errorMessage: (error as { message?: string })?.message,
+      });
     });
     return () => {
       vapi.stop();
@@ -175,7 +199,10 @@ const VoiceConversation = () => {
     setShowPreCallModal(true);
   };
   const startCall = async () => {
-    if (!vapiRef.current || !prolificId) return;
+    if (!vapiRef.current || !prolificId) {
+      logEvent("call_start_failed", { reason: "missing_vapi_or_prolific" });
+      return;
+    }
 
     // Prevent duplicate calls if already tracking
     if (callTracked || callId) {
@@ -186,6 +213,46 @@ const VoiceConversation = () => {
     setElapsedTime(0); // Reset timer
 
     try {
+      const micDiagnostics = await runMicDiagnostics();
+      logEvent("mic_permission", {
+        state: micDiagnostics.permissionState,
+        source: micDiagnostics.permissionSource,
+        errorName: micDiagnostics.errorName,
+        errorMessage: micDiagnostics.errorMessage,
+      });
+      if (micDiagnostics.audioDetected !== "unknown") {
+        logEvent("mic_audio_check", {
+          detected: micDiagnostics.audioDetected,
+          peakRms: micDiagnostics.peakRms,
+          sampleMs: micDiagnostics.sampleMs,
+        });
+      }
+
+      if (micDiagnostics.permissionState === "denied") {
+        setIsConnecting(false);
+        toast({
+          title: "Microphone Permission Blocked",
+          description: "Please enable microphone access and try again.",
+          variant: "destructive",
+        });
+        logEvent("call_start_failed", { reason: "mic_permission_denied" });
+        return;
+      }
+      if (micDiagnostics.permissionState === "error") {
+        setIsConnecting(false);
+        toast({
+          title: "Microphone Error",
+          description: "Could not access microphone. Please check your device.",
+          variant: "destructive",
+        });
+        logEvent("call_start_failed", {
+          reason: "mic_access_error",
+          errorName: micDiagnostics.errorName,
+          errorMessage: micDiagnostics.errorMessage,
+        });
+        return;
+      }
+
       const sessionToken = localStorage.getItem("sessionToken");
       if (!sessionToken) {
         toast({
@@ -212,6 +279,10 @@ const VoiceConversation = () => {
         },
       });
       if (validationError || !validationData?.success) {
+        logEvent("call_start_failed", {
+          reason: "initiate_vapi_call_failed",
+          errorMessage: validationError?.message,
+        });
         const errorMsg = validationError?.message || "";
         if (errorMsg.includes("expired")) {
           toast({
@@ -251,6 +322,7 @@ const VoiceConversation = () => {
       // Store the call ID from the Vapi SDK
       if (call?.id) {
         setCallId(call.id);
+        callIdRef.current = call.id;
 
         // Fire-and-forget update as fallback (webhook will handle this primarily)
         supabase.functions
@@ -267,12 +339,22 @@ const VoiceConversation = () => {
           });
       }
       setCallTracked(true);
+      logEvent("call_start", {
+        assistantId: activeAssistantId,
+        assistantType: assistantType || "unknown",
+        isRestarting,
+        callId: call?.id || null,
+      });
       toast({
         title: "Call Started",
         description: "Your conversation is being tracked.",
       });
     } catch (error) {
       setIsConnecting(false);
+      logEvent("call_start_failed", {
+        reason: "vapi_start_error",
+        errorMessage: (error as { message?: string })?.message,
+      });
       toast({
         title: "Failed to Start Call",
         description: "Please check your microphone permissions.",

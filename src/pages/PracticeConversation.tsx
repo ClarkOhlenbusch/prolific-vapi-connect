@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Vapi from '@vapi-ai/web';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
 import { supabase } from '@/integrations/supabase/client';
 import { usePageTracking } from '@/hooks/usePageTracking';
+import { logNavigationEvent, runMicDiagnostics } from '@/lib/participant-telemetry';
 
 const PracticeConversation = () => {
   const [searchParams] = useSearchParams();
@@ -23,12 +24,24 @@ const PracticeConversation = () => {
   const [practiceAssistantId, setPracticeAssistantId] = useState<string | null>(null);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   const vapiRef = useRef<Vapi | null>(null);
+  const callIdRef = useRef<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isResearcherMode } = useResearcherMode();
+  const pageName = 'practice-conversation';
+
+  const logEvent = useCallback((eventType: string, metadata: Record<string, unknown> = {}) => {
+    void logNavigationEvent({
+      prolificId,
+      callId: callIdRef.current,
+      pageName,
+      eventType,
+      metadata,
+    });
+  }, [prolificId]);
 
   usePageTracking({
-    pageName: 'practice-conversation',
+    pageName,
     prolificId,
     callId: null,
   });
@@ -119,6 +132,7 @@ const PracticeConversation = () => {
       console.log('[Vapi Debug] Event: call-end');
       setIsCallActive(false);
       setShowAudioConfirmModal(true);
+      logEvent('call_end', { reason: 'call-end' });
     });
     vapi.on('speech-start', () => {
       setIsSpeaking(true);
@@ -135,9 +149,18 @@ const PracticeConversation = () => {
           description: "Proceed with next section.",
         });
       }
+      if (message.type === 'end-of-call-report') {
+        const endedReason = message.endedReason;
+        const isError = endedReason === 'assistant-error' || endedReason === 'pipeline-error';
+        logEvent('call_end', { endedReason, isError });
+      }
     });
     vapi.on('error', error => {
       console.error('[Vapi Debug] Event: error', error);
+      logEvent('call_error', {
+        errorName: error?.name,
+        errorMessage: error?.message,
+      });
       // Check if it's a timeout-related error (meeting ended due to time limit)
       const errorMessage = error?.message?.toLowerCase() || '';
       if (
@@ -172,40 +195,45 @@ const PracticeConversation = () => {
   const startCall = async () => {
     if (!vapiRef.current || !prolificId) {
       console.log('[PracticeConversation] startCall: Missing vapiRef or prolificId');
+      logEvent('call_start_failed', { reason: 'missing_vapi_or_prolific' });
       return;
     }
     setShowPreCallModal(false);
     setIsConnecting(true);
     
     // Check microphone permission first
-    try {
-      const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-      console.log('[Vapi Debug] Microphone permission status:', permissionStatus.state);
-      
-      if (permissionStatus.state === 'denied') {
-        setIsConnecting(false);
-        setShowPermissionDeniedModal(true);
-        return;
-      }
-    } catch (err) {
-      // permissions.query not supported in all browsers, continue anyway
-      console.log('[Vapi Debug] permissions.query not supported, continuing...');
+    const micDiagnostics = await runMicDiagnostics();
+    logEvent('mic_permission', {
+      state: micDiagnostics.permissionState,
+      source: micDiagnostics.permissionSource,
+      errorName: micDiagnostics.errorName,
+      errorMessage: micDiagnostics.errorMessage,
+    });
+    if (micDiagnostics.audioDetected !== 'unknown') {
+      logEvent('mic_audio_check', {
+        detected: micDiagnostics.audioDetected,
+        peakRms: micDiagnostics.peakRms,
+        sampleMs: micDiagnostics.sampleMs,
+      });
     }
-    
-    try {
-      // Try to get microphone access first
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (err: any) {
-      console.error('[Vapi Debug] Microphone access error:', err);
+
+    if (micDiagnostics.permissionState === 'denied') {
       setIsConnecting(false);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setShowPermissionDeniedModal(true);
-        return;
-      }
+      setShowPermissionDeniedModal(true);
+      logEvent('call_start_failed', { reason: 'mic_permission_denied' });
+      return;
+    }
+    if (micDiagnostics.permissionState === 'error') {
+      setIsConnecting(false);
       toast({
         title: "Microphone Error",
         description: "Could not access microphone. Please check your device.",
         variant: "destructive"
+      });
+      logEvent('call_start_failed', {
+        reason: 'mic_access_error',
+        errorName: micDiagnostics.errorName,
+        errorMessage: micDiagnostics.errorMessage,
       });
       return;
     }
@@ -213,6 +241,7 @@ const PracticeConversation = () => {
     try {
       if (!practiceAssistantId) {
         console.error('[PracticeConversation] startCall: No practiceAssistantId available');
+        logEvent('call_start_failed', { reason: 'missing_practice_assistant_id' });
         toast({
           title: "Configuration Error",
           description: "Practice assistant not configured. Please try again.",
@@ -224,7 +253,7 @@ const PracticeConversation = () => {
 
       console.log('[PracticeConversation] Starting call with assistant:', practiceAssistantId);
       // Start the practice call using Vapi SDK
-      await vapiRef.current.start(practiceAssistantId, {
+      const call = await vapiRef.current.start(practiceAssistantId, {
         variableValues: {
           prolificId: prolificId
         },
@@ -232,6 +261,12 @@ const PracticeConversation = () => {
           prolificId: prolificId,
           researcherMode: isResearcherMode,
         },
+      });
+      callIdRef.current = call?.id || null;
+      logEvent('call_start', {
+        assistantId: practiceAssistantId,
+        isResearcherMode,
+        callId: call?.id || null,
       });
       console.log('[PracticeConversation] Call started successfully');
       toast({
@@ -241,6 +276,10 @@ const PracticeConversation = () => {
     } catch (error) {
       console.error('[PracticeConversation] Failed to start call:', error);
       setIsConnecting(false);
+      logEvent('call_start_failed', {
+        reason: 'vapi_start_error',
+        errorMessage: (error as { message?: string })?.message,
+      });
       toast({
         title: "Failed to Start",
         description: "Please check your microphone permissions and try again.",
@@ -254,6 +293,7 @@ const PracticeConversation = () => {
     }
   };
   const handleAudioWorking = () => {
+    logEvent('audio_confirm', { heardAssistant: true });
     setShowAudioConfirmModal(false);
     sessionStorage.setItem('flowStep', '2');
     const sessionToken = localStorage.getItem('sessionToken');
@@ -261,6 +301,7 @@ const PracticeConversation = () => {
   };
 
   const handleAudioNotWorking = () => {
+    logEvent('audio_confirm', { heardAssistant: false });
     setShowAudioConfirmModal(false);
   };
   if (!prolificId) {

@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, AlertCircle, CheckCircle2, Eye } from 'lucide-react';
+import { FlaskConical, Loader2, AlertCircle, CheckCircle2, Eye } from 'lucide-react';
 
 const ACTIVATION_KEY = 'kN&B981$%ZSK';
 
@@ -199,12 +199,8 @@ const ResearcherLogin = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 flex items-center justify-center">
-            <img
-              src="/ProlificFavicon.png"
-              alt="Prolific Voice"
-              className="h-12 w-12 object-contain"
-            />
+          <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+            <FlaskConical className="h-6 w-6 text-primary" />
           </div>
           <CardTitle className="text-2xl">Researcher Portal</CardTitle>
           <CardDescription>
