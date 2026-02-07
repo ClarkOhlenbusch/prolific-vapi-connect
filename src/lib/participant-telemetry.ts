@@ -4,13 +4,51 @@ import type { Json } from "@/integrations/supabase/types";
 export type MicPermissionState = "granted" | "denied" | "prompt" | "unsupported" | "error" | "unknown";
 export type MicPermissionSource = "permissions.query" | "getUserMedia" | "unknown";
 export type MicAudioStatus = "detected" | "not_detected" | "error" | "unknown";
+export type CallFailureReasonCode =
+  | "none"
+  | "mic_permission_denied"
+  | "mic_not_found"
+  | "mic_in_use"
+  | "mic_constraints_failed"
+  | "mic_access_error"
+  | "no_mic_audio_detected"
+  | "session_validation_failed"
+  | "vapi_start_error"
+  | "assistant_pipeline_error"
+  | "assistant_error"
+  | "network_error"
+  | "call_timeout"
+  | "unknown";
+
+interface ConnectionInfo {
+  effectiveType?: string;
+  downlink?: number;
+  rtt?: number;
+  saveData?: boolean;
+}
+
+export interface ClientTelemetryContext {
+  userAgent?: string;
+  platform?: string;
+  language?: string;
+  isSecureContext: boolean;
+  online?: boolean;
+  connection?: ConnectionInfo;
+  inputDeviceCount?: number;
+}
 
 export interface MicDiagnosticsResult {
   permissionState: MicPermissionState;
   permissionSource: MicPermissionSource;
   audioDetected: MicAudioStatus;
+  reasonCode?: CallFailureReasonCode;
   peakRms?: number;
   sampleMs?: number;
+  getUserMediaDurationMs?: number;
+  inputDeviceCount?: number;
+  trackEnabled?: boolean;
+  trackMuted?: boolean;
+  trackReadyState?: string;
   errorName?: string;
   errorMessage?: string;
 }
@@ -34,6 +72,121 @@ const toErrorDetails = (error: unknown): { name?: string; message?: string } | n
     return { name: err.name, message: err.message };
   }
   return { message: String(error) };
+};
+
+const toRoundedMs = (value: number) => Math.max(0, Math.round(value));
+
+const getConnectionInfo = (): ConnectionInfo | undefined => {
+  if (typeof navigator === "undefined") return undefined;
+  const connection = (
+    navigator as Navigator & {
+      connection?: { effectiveType?: string; downlink?: number; rtt?: number; saveData?: boolean };
+      mozConnection?: { effectiveType?: string; downlink?: number; rtt?: number; saveData?: boolean };
+      webkitConnection?: { effectiveType?: string; downlink?: number; rtt?: number; saveData?: boolean };
+    }
+  ).connection
+    || (navigator as Navigator & { mozConnection?: ConnectionInfo }).mozConnection
+    || (navigator as Navigator & { webkitConnection?: ConnectionInfo }).webkitConnection;
+  if (!connection) return undefined;
+  return {
+    effectiveType: connection.effectiveType,
+    downlink: connection.downlink,
+    rtt: connection.rtt,
+    saveData: connection.saveData,
+  };
+};
+
+const countInputDevices = async (): Promise<number | undefined> => {
+  if (typeof navigator === "undefined") return undefined;
+  if (!navigator?.mediaDevices?.enumerateDevices) return undefined;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter((device) => device.kind === "audioinput").length;
+  } catch {
+    return undefined;
+  }
+};
+
+export const collectClientContext = async (): Promise<ClientTelemetryContext> => ({
+  userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+  platform: typeof navigator !== "undefined" ? navigator.platform : undefined,
+  language: typeof navigator !== "undefined" ? navigator.language : undefined,
+  isSecureContext: typeof window !== "undefined" ? window.isSecureContext : false,
+  online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
+  connection: getConnectionInfo(),
+  inputDeviceCount: await countInputDevices(),
+});
+
+export const generateCallAttemptId = (): string => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `attempt-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+};
+
+export const mapMicErrorToReasonCode = (
+  errorName?: string,
+  permissionState?: MicPermissionState
+): CallFailureReasonCode => {
+  if (permissionState === "denied") return "mic_permission_denied";
+  switch (errorName) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return "mic_permission_denied";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "mic_not_found";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "mic_in_use";
+    case "OverconstrainedError":
+    case "ConstraintNotSatisfiedError":
+      return "mic_constraints_failed";
+    case "AbortError":
+    case "SecurityError":
+      return "mic_access_error";
+    default:
+      return "unknown";
+  }
+};
+
+export const mapVapiErrorToReasonCode = (
+  errorName?: string,
+  errorMessage?: string
+): CallFailureReasonCode => {
+  const normalizedMessage = (errorMessage || "").toLowerCase();
+  if (normalizedMessage.includes("pipeline")) return "assistant_pipeline_error";
+  if (normalizedMessage.includes("assistant")) return "assistant_error";
+  if (
+    normalizedMessage.includes("network")
+    || normalizedMessage.includes("connection")
+    || normalizedMessage.includes("ice")
+    || normalizedMessage.includes("webrtc")
+  ) {
+    return "network_error";
+  }
+  if (
+    normalizedMessage.includes("timeout")
+    || normalizedMessage.includes("exceeded")
+    || normalizedMessage.includes("max-duration")
+  ) {
+    return "call_timeout";
+  }
+  if (errorName === "NotAllowedError") return "mic_permission_denied";
+  return "vapi_start_error";
+};
+
+export const mapCallEndReasonToFailureCode = (endedReason?: string): CallFailureReasonCode => {
+  switch (endedReason) {
+    case "assistant-error":
+      return "assistant_error";
+    case "pipeline-error":
+      return "assistant_pipeline_error";
+    case "exceeded-max-duration":
+      return "call_timeout";
+    default:
+      return "none";
+  }
 };
 
 const getAudioContext = (): AudioContext | null => {
@@ -95,11 +248,22 @@ const measureStreamAudio = async (stream: MediaStream, sampleMs: number, rmsThre
 export const runMicDiagnostics = async (
   options: { sampleMs?: number; rmsThreshold?: number } = {}
 ): Promise<MicDiagnosticsResult> => {
+  if (typeof navigator === "undefined") {
+    return {
+      permissionState: "unsupported",
+      permissionSource: "unknown",
+      audioDetected: "unknown",
+      reasonCode: "mic_access_error",
+    };
+  }
+
   const sampleMs = options.sampleMs ?? 800;
   const rmsThreshold = options.rmsThreshold ?? 0.02;
+  const diagnosticsStart = performance.now();
 
   let permissionState: MicPermissionState = "unknown";
   let permissionSource: MicPermissionSource = "unknown";
+  const inputDeviceCount = await countInputDevices();
 
   if (typeof navigator !== "undefined" && navigator.permissions?.query) {
     try {
@@ -117,6 +281,8 @@ export const runMicDiagnostics = async (
       permissionState: permissionState === "unknown" ? "unsupported" : permissionState,
       permissionSource,
       audioDetected: "unknown",
+      inputDeviceCount,
+      reasonCode: "mic_access_error",
       errorName: "MediaDevicesUnsupported",
     };
   }
@@ -126,6 +292,8 @@ export const runMicDiagnostics = async (
       permissionState,
       permissionSource,
       audioDetected: "unknown",
+      inputDeviceCount,
+      reasonCode: "mic_permission_denied",
     };
   }
 
@@ -135,11 +303,16 @@ export const runMicDiagnostics = async (
     permissionSource = "getUserMedia";
 
     let audioDetected: MicAudioStatus = "unknown";
+    let reasonCode: CallFailureReasonCode = "none";
     let peakRms: number | undefined;
+    const audioTrack = stream.getAudioTracks()[0];
     try {
       const analysis = await measureStreamAudio(stream, sampleMs, rmsThreshold);
       audioDetected = analysis.detected ? "detected" : "not_detected";
       peakRms = analysis.peakRms;
+      if (audioDetected === "not_detected") {
+        reasonCode = "no_mic_audio_detected";
+      }
     } catch (error) {
       audioDetected = "error";
       const err = toErrorDetails(error);
@@ -148,8 +321,14 @@ export const runMicDiagnostics = async (
         permissionState,
         permissionSource,
         audioDetected,
+        reasonCode: mapMicErrorToReasonCode(err?.name, permissionState),
         peakRms,
         sampleMs,
+        getUserMediaDurationMs: toRoundedMs(performance.now() - diagnosticsStart),
+        inputDeviceCount,
+        trackEnabled: audioTrack?.enabled,
+        trackMuted: audioTrack?.muted,
+        trackReadyState: audioTrack?.readyState,
         errorName: err?.name,
         errorMessage: err?.message,
       };
@@ -160,8 +339,14 @@ export const runMicDiagnostics = async (
       permissionState,
       permissionSource,
       audioDetected,
+      reasonCode,
       peakRms,
       sampleMs,
+      getUserMediaDurationMs: toRoundedMs(performance.now() - diagnosticsStart),
+      inputDeviceCount,
+      trackEnabled: audioTrack?.enabled,
+      trackMuted: audioTrack?.muted,
+      trackReadyState: audioTrack?.readyState,
     };
   } catch (error) {
     const err = toErrorDetails(error);
@@ -171,9 +356,12 @@ export const runMicDiagnostics = async (
       permissionState: deniedNames.has(errName) ? "denied" : "error",
       permissionSource: "getUserMedia",
       audioDetected: "error",
+      reasonCode: mapMicErrorToReasonCode(err?.name, permissionState),
       errorName: err?.name,
       errorMessage: err?.message,
       sampleMs,
+      getUserMediaDurationMs: toRoundedMs(performance.now() - diagnosticsStart),
+      inputDeviceCount,
     };
   }
 };

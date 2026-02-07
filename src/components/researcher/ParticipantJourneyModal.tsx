@@ -108,6 +108,23 @@ const formatMicAudio = (value: unknown): string | null => {
   return "Unknown";
 };
 
+const formatRestartIssueType = (value?: string | null): string | null => {
+  switch (value) {
+    case "cant_be_heard":
+      return "Assistant cannot hear participant";
+    case "cant_hear_assistant":
+      return "Participant cannot hear assistant";
+    case "stuck_connecting":
+      return "Call stuck connecting";
+    case "ended_unexpectedly":
+      return "Call ended unexpectedly";
+    case "other":
+      return "Other";
+    default:
+      return null;
+  }
+};
+
 const isCallIssueEvent = (event: NavigationEvent): boolean => {
   if (event.event_type === "call_start_failed" || event.event_type === "call_error") return true;
   if (event.event_type === "call_end") {
@@ -185,6 +202,8 @@ export const ParticipantJourneyModal = ({
       callIssueCount: number;
       lastCallIssue?: string | null;
       lastCallEndReason?: string | null;
+      restartFeedbackCount?: number;
+      lastRestartFeedback?: string | null;
     }> = {};
 
     events.forEach((event) => {
@@ -207,6 +226,22 @@ export const ParticipantJourneyModal = ({
         if (event.metadata?.endedReason || !pageDiag.lastCallEndReason) {
           pageDiag.lastCallEndReason = reason;
         }
+      }
+
+      if (event.event_type === "restart_feedback_submitted") {
+        pageDiag.restartFeedbackCount = (pageDiag.restartFeedbackCount || 0) + 1;
+        const formattedIssue = formatRestartIssueType(event.metadata?.issueType as string | null);
+        const notes = (event.metadata?.notes as string | null) || null;
+        const nextAction = event.metadata?.nextAction === "return_to_mic_test"
+          ? "return to mic test"
+          : "restart";
+        pageDiag.lastRestartFeedback = [
+          formattedIssue ? `Issue: ${formattedIssue}` : null,
+          notes ? `Notes: ${notes}` : null,
+          `Next action: ${nextAction}`,
+        ]
+          .filter(Boolean)
+          .join(" | ");
       }
 
       if (isCallIssueEvent(event)) {
@@ -233,6 +268,8 @@ export const ParticipantJourneyModal = ({
       callIssueCount?: number;
       lastCallIssue?: string | null;
       lastCallEndReason?: string | null;
+      restartFeedbackCount?: number;
+      lastRestartFeedback?: string | null;
     }[] = [];
 
     // Process events to create timeline entries
@@ -255,6 +292,8 @@ export const ParticipantJourneyModal = ({
           callIssueCount: pageDiagnostics.callIssueCount,
           lastCallIssue: pageDiagnostics.lastCallIssue,
           lastCallEndReason: pageDiagnostics.lastCallEndReason,
+          restartFeedbackCount: pageDiagnostics.restartFeedbackCount,
+          lastRestartFeedback: pageDiagnostics.lastRestartFeedback,
         });
       } else if (event.event_type === 'back_button_click') {
         // Find the last timeline entry for this page and mark it
@@ -394,7 +433,7 @@ export const ParticipantJourneyModal = ({
                         <div>
                           Time spent: {formatTime(event.timeSpent)}
                         </div>
-                        {(event.micPermission || event.micAudio || (event.callIssueCount && event.callIssueCount > 0)) && (
+                        {(event.micPermission || event.micAudio || (event.callIssueCount && event.callIssueCount > 0) || (event.restartFeedbackCount && event.restartFeedbackCount > 0)) && (
                           <div className="flex flex-wrap gap-2 pt-1">
                             {event.micPermission && (
                               <Badge variant="outline">Mic: {event.micPermission}</Badge>
@@ -404,6 +443,9 @@ export const ParticipantJourneyModal = ({
                             )}
                             {event.callIssueCount && event.callIssueCount > 0 && (
                               <Badge variant="destructive">Call issues: {event.callIssueCount}</Badge>
+                            )}
+                            {event.restartFeedbackCount && event.restartFeedbackCount > 0 && (
+                              <Badge variant="secondary">Feedback reports: {event.restartFeedbackCount}</Badge>
                             )}
                           </div>
                         )}
@@ -415,6 +457,11 @@ export const ParticipantJourneyModal = ({
                         {event.lastCallEndReason && (
                           <div className="text-xs text-muted-foreground">
                             Ended: {event.lastCallEndReason}
+                          </div>
+                        )}
+                        {event.lastRestartFeedback && (
+                          <div className="text-xs text-muted-foreground">
+                            Participant feedback: {event.lastRestartFeedback}
                           </div>
                         )}
                       </div>

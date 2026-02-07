@@ -10,9 +10,19 @@ import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
 import { supabase } from '@/integrations/supabase/client';
 import { usePageTracking } from '@/hooks/usePageTracking';
-import { logNavigationEvent, runMicDiagnostics } from '@/lib/participant-telemetry';
+import {
+  collectClientContext,
+  generateCallAttemptId,
+  logNavigationEvent,
+  mapCallEndReasonToFailureCode,
+  mapMicErrorToReasonCode,
+  mapVapiErrorToReasonCode,
+  runMicDiagnostics,
+} from '@/lib/participant-telemetry';
 
 const PracticeConversation = () => {
+  const ASSISTANT_AUDIO_TIMEOUT_MS = 15000;
+
   const [searchParams] = useSearchParams();
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [isCallActive, setIsCallActive] = useState(false);
@@ -25,6 +35,10 @@ const PracticeConversation = () => {
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   const vapiRef = useRef<Vapi | null>(null);
   const callIdRef = useRef<string | null>(null);
+  const callAttemptIdRef = useRef<string | null>(null);
+  const attemptStartMsRef = useRef<number | null>(null);
+  const firstAssistantSpeechLoggedRef = useRef(false);
+  const assistantSpeechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isResearcherMode } = useResearcherMode();
@@ -39,6 +53,25 @@ const PracticeConversation = () => {
       metadata,
     });
   }, [prolificId]);
+
+  const logAttemptEvent = useCallback((eventType: string, metadata: Record<string, unknown> = {}) => {
+    logEvent(eventType, {
+      callAttemptId: callAttemptIdRef.current,
+      ...metadata,
+    });
+  }, [logEvent]);
+
+  const getAttemptLatencyMs = () => {
+    if (attemptStartMsRef.current === null) return null;
+    return Math.round(performance.now() - attemptStartMsRef.current);
+  };
+
+  const clearAssistantSpeechTimeout = useCallback(() => {
+    if (assistantSpeechTimeoutRef.current) {
+      clearTimeout(assistantSpeechTimeoutRef.current);
+      assistantSpeechTimeoutRef.current = null;
+    }
+  }, []);
 
   usePageTracking({
     pageName,
@@ -127,15 +160,33 @@ const PracticeConversation = () => {
       console.log('[Vapi Debug] Event: call-start');
       setIsCallActive(true);
       setIsConnecting(false);
+      logAttemptEvent('call_connected', {
+        attemptLatencyMs: getAttemptLatencyMs(),
+      });
+      clearAssistantSpeechTimeout();
+      assistantSpeechTimeoutRef.current = setTimeout(() => {
+        logAttemptEvent('assistant_audio_timeout', {
+          reasonCode: 'unknown',
+          timeoutMs: ASSISTANT_AUDIO_TIMEOUT_MS,
+        });
+      }, ASSISTANT_AUDIO_TIMEOUT_MS);
     });
     vapi.on('call-end', () => {
       console.log('[Vapi Debug] Event: call-end');
       setIsCallActive(false);
       setShowAudioConfirmModal(true);
-      logEvent('call_end', { reason: 'call-end' });
+      clearAssistantSpeechTimeout();
+      logAttemptEvent('call_end', { reason: 'call-end', attemptLatencyMs: getAttemptLatencyMs() });
     });
     vapi.on('speech-start', () => {
       setIsSpeaking(true);
+      if (!firstAssistantSpeechLoggedRef.current) {
+        firstAssistantSpeechLoggedRef.current = true;
+        clearAssistantSpeechTimeout();
+        logAttemptEvent('first_assistant_audio', {
+          attemptLatencyMs: getAttemptLatencyMs(),
+        });
+      }
     });
     vapi.on('speech-end', () => {
       setIsSpeaking(false);
@@ -151,15 +202,17 @@ const PracticeConversation = () => {
       }
       if (message.type === 'end-of-call-report') {
         const endedReason = message.endedReason;
-        const isError = endedReason === 'assistant-error' || endedReason === 'pipeline-error';
-        logEvent('call_end', { endedReason, isError });
+        const reasonCode = mapCallEndReasonToFailureCode(endedReason);
+        const isError = reasonCode !== 'none';
+        logAttemptEvent('call_end_report', { endedReason, isError, reasonCode });
       }
     });
     vapi.on('error', error => {
       console.error('[Vapi Debug] Event: error', error);
-      logEvent('call_error', {
+      logAttemptEvent('call_error', {
         errorName: error?.name,
         errorMessage: error?.message,
+        reasonCode: mapVapiErrorToReasonCode(error?.name, error?.message),
       });
       // Check if it's a timeout-related error (meeting ended due to time limit)
       const errorMessage = error?.message?.toLowerCase() || '';
@@ -187,40 +240,60 @@ const PracticeConversation = () => {
     return () => {
       console.log('[Vapi Debug] Cleanup: stopping call');
       vapi.stop();
+      clearAssistantSpeechTimeout();
     };
-  }, [prolificId, toast]);
+  }, [prolificId, toast, logAttemptEvent, clearAssistantSpeechTimeout]);
   const handleStartCallClick = () => {
     setShowPreCallModal(true);
   };
   const startCall = async () => {
     if (!vapiRef.current || !prolificId) {
       console.log('[PracticeConversation] startCall: Missing vapiRef or prolificId');
-      logEvent('call_start_failed', { reason: 'missing_vapi_or_prolific' });
+      logEvent('call_start_failed', { reason: 'missing_vapi_or_prolific', reasonCode: 'unknown' });
       return;
     }
     setShowPreCallModal(false);
     setIsConnecting(true);
+
+    const callAttemptId = generateCallAttemptId();
+    callAttemptIdRef.current = callAttemptId;
+    attemptStartMsRef.current = performance.now();
+    firstAssistantSpeechLoggedRef.current = false;
+    clearAssistantSpeechTimeout();
+
+    const clientContext = await collectClientContext();
+    logAttemptEvent('call_attempt_start', {
+      callAttemptId,
+      clientContext,
+    });
     
     // Check microphone permission first
     const micDiagnostics = await runMicDiagnostics();
-    logEvent('mic_permission', {
+    logAttemptEvent('call_preflight_result', {
       state: micDiagnostics.permissionState,
       source: micDiagnostics.permissionSource,
+      reasonCode: micDiagnostics.reasonCode || 'none',
+      getUserMediaDurationMs: micDiagnostics.getUserMediaDurationMs,
+      inputDeviceCount: micDiagnostics.inputDeviceCount,
+      trackEnabled: micDiagnostics.trackEnabled,
+      trackMuted: micDiagnostics.trackMuted,
+      trackReadyState: micDiagnostics.trackReadyState,
       errorName: micDiagnostics.errorName,
       errorMessage: micDiagnostics.errorMessage,
     });
     if (micDiagnostics.audioDetected !== 'unknown') {
-      logEvent('mic_audio_check', {
+      logAttemptEvent('mic_audio_check', {
         detected: micDiagnostics.audioDetected,
         peakRms: micDiagnostics.peakRms,
         sampleMs: micDiagnostics.sampleMs,
+        reasonCode: micDiagnostics.reasonCode || 'none',
       });
     }
 
     if (micDiagnostics.permissionState === 'denied') {
       setIsConnecting(false);
       setShowPermissionDeniedModal(true);
-      logEvent('call_start_failed', { reason: 'mic_permission_denied' });
+      logAttemptEvent('call_start_failed', { reason: 'mic_permission_denied', reasonCode: 'mic_permission_denied' });
       return;
     }
     if (micDiagnostics.permissionState === 'error') {
@@ -230,18 +303,27 @@ const PracticeConversation = () => {
         description: "Could not access microphone. Please check your device.",
         variant: "destructive"
       });
-      logEvent('call_start_failed', {
+      logAttemptEvent('call_start_failed', {
         reason: 'mic_access_error',
+        reasonCode: mapMicErrorToReasonCode(micDiagnostics.errorName, micDiagnostics.permissionState),
         errorName: micDiagnostics.errorName,
         errorMessage: micDiagnostics.errorMessage,
       });
       return;
     }
+
+    if (micDiagnostics.audioDetected === 'not_detected') {
+      logAttemptEvent('call_quality_warning', {
+        reason: 'no_mic_audio_detected_during_preflight',
+        reasonCode: 'no_mic_audio_detected',
+        peakRms: micDiagnostics.peakRms,
+      });
+    }
     
     try {
       if (!practiceAssistantId) {
         console.error('[PracticeConversation] startCall: No practiceAssistantId available');
-        logEvent('call_start_failed', { reason: 'missing_practice_assistant_id' });
+        logAttemptEvent('call_start_failed', { reason: 'missing_practice_assistant_id', reasonCode: 'unknown' });
         toast({
           title: "Configuration Error",
           description: "Practice assistant not configured. Please try again.",
@@ -263,10 +345,11 @@ const PracticeConversation = () => {
         },
       });
       callIdRef.current = call?.id || null;
-      logEvent('call_start', {
+      logAttemptEvent('call_start', {
         assistantId: practiceAssistantId,
         isResearcherMode,
         callId: call?.id || null,
+        attemptLatencyMs: getAttemptLatencyMs(),
       });
       console.log('[PracticeConversation] Call started successfully');
       toast({
@@ -276,8 +359,13 @@ const PracticeConversation = () => {
     } catch (error) {
       console.error('[PracticeConversation] Failed to start call:', error);
       setIsConnecting(false);
-      logEvent('call_start_failed', {
+      logAttemptEvent('call_start_failed', {
         reason: 'vapi_start_error',
+        reasonCode: mapVapiErrorToReasonCode(
+          (error as { name?: string })?.name,
+          (error as { message?: string })?.message
+        ),
+        errorName: (error as { name?: string })?.name,
         errorMessage: (error as { message?: string })?.message,
       });
       toast({
