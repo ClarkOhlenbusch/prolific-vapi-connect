@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
-  FlaskConical, 
   LogOut, 
   BarChart3, 
   Archive,
@@ -69,8 +68,12 @@ const ResearcherDashboard = () => {
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <FlaskConical className="h-5 w-5 text-primary" />
+            <div className="h-10 w-10 flex items-center justify-center">
+              <img
+                src="/ProlificFavicon.png"
+                alt="Prolific Voice"
+                className="h-10 w-10 object-contain"
+              />
             </div>
             <div>
               <h1 className="text-xl font-semibold">Research Dashboard</h1>

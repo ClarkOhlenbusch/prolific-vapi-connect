@@ -100,16 +100,12 @@ const ProlificId = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <Card className="w-full max-w-md shadow-xl border-border">
         <CardHeader className="space-y-3">
-          <div className="w-16 h-16 mx-auto bg-primary rounded-full flex items-center justify-center">
-            <svg 
-              className="w-8 h-8 text-primary-foreground" 
-              fill="none" 
-              strokeWidth="2" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
+          <div className="w-20 h-20 mx-auto flex items-center justify-center">
+            <img
+              src="/ProlificFavicon.png"
+              alt="Prolific Voice"
+              className="h-20 w-20 object-contain"
+            />
           </div>
           <CardTitle className="text-2xl text-center">Research Study</CardTitle>
           <CardDescription className="text-center">
