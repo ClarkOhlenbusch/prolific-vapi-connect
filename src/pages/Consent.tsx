@@ -113,8 +113,11 @@ const Consent = () => {
                 <p className="mb-2">
                   We will collect age group, gender, ethnicity or racial background, language background, audio recordings of your interaction, and questionnaire responses.
                 </p>
-                <p>
+                <p className="mb-2">
                   Your data will be pseudonymized and stored on a secure server of Utrecht University. Data will be kept for 10 years. Deidentified data may be shared with other researchers after the study. Audio recordings will be stored long term unless deletion is requested before data analysis.
+                </p>
+                <p>
+                  We also use Hotjar session analytics to understand navigation patterns and improve study usability. Hotjar may collect interaction metadata such as clicks, scrolling, and page flow.
                 </p>
               </div>
 

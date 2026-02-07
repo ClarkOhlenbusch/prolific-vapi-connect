@@ -11,6 +11,7 @@ import { ResearcherProtectedRoute } from "@/components/researcher/ResearcherProt
 import PageSkeleton from "@/components/PageSkeleton";
 import { useSessionValidation } from "@/hooks/useSessionValidation";
 import { useRoutePreload } from "@/hooks/useRoutePreload";
+import { useHotjarTracking } from "@/hooks/useHotjarTracking";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
@@ -53,6 +54,12 @@ const SessionValidator = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const HotjarTracker = () => {
+  const location = useLocation();
+  useHotjarTracking(location.pathname);
+  return null;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ResearcherModeProvider>
@@ -61,6 +68,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <HotjarTracker />
             <ResearcherModeToggle />
             <Suspense fallback={<PageSkeleton />}>
               <Routes>
