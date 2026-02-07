@@ -43,9 +43,6 @@ export const GlobalSourceFilter = ({ value, onChange }: GlobalSourceFilterProps)
           All
         </ToggleGroupItem>
       </ToggleGroup>
-      <span className="text-xs text-muted-foreground ml-2">
-        (Affects Summary, Responses, Time, No Consent, and Statistics)
-      </span>
     </div>
   );
 };
