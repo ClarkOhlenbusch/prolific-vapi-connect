@@ -32,6 +32,7 @@ import { ParticipantJourneyModal } from '@/components/researcher/ParticipantJour
 
 type Demographics = Tables<'demographics'>;
 type NavigationEvent = Tables<'navigation_events'>;
+type ParticipantCall = Tables<'participant_calls'>;
 
 interface ExperimentResponseWithDemographics extends Tables<'experiment_responses'> {
   demographics?: Demographics | null;
@@ -209,6 +210,7 @@ const ResponseDetails = () => {
   const [data, setData] = useState<ExperimentResponseWithDemographics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isPendingRecord, setIsPendingRecord] = useState(false);
   const [formalityCalcId, setFormalityCalcId] = useState<string | null>(null);
   const [journeyModalOpen, setJourneyModalOpen] = useState(false);
   const [journeyDiagnostics, setJourneyDiagnostics] = useState<{
@@ -224,15 +226,50 @@ const ResponseDetails = () => {
       setIsLoading(true);
       setJourneyDiagnostics(null);
       try {
-        // Fetch experiment response
-        const { data: response, error: responseError } = await supabase
+        setIsPendingRecord(false);
+
+        // Try normal completed response lookup first
+        const { data: completedResponse, error: completedResponseError } = await supabase
           .from('experiment_responses')
           .select('*')
           .eq('id', id)
-          .single();
+          .maybeSingle();
 
-        if (responseError) throw responseError;
-        if (!response) throw new Error('Response not found');
+        if (completedResponseError) throw completedResponseError;
+
+        let response: ExperimentResponseWithDemographics | null = completedResponse;
+
+        // Fallback for pending records: route id corresponds to participant_calls.id
+        if (!response) {
+          const { data: pendingCall, error: pendingCallError } = await supabase
+            .from('participant_calls')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
+
+          if (pendingCallError) throw pendingCallError;
+          if (!pendingCall) throw new Error('Response not found');
+
+          setIsPendingRecord(true);
+          response = {
+            id: pendingCall.id,
+            prolific_id: pendingCall.prolific_id,
+            call_id: pendingCall.call_id,
+            created_at: pendingCall.created_at,
+            call_attempt_number: null as unknown as number,
+            assistant_type: null,
+            batch_label: null,
+            pets_total: null as unknown as number,
+            pets_er: null as unknown as number,
+            pets_ut: null as unknown as number,
+            formality: null as unknown as number,
+            intention_1: null as unknown as number,
+            intention_2: null as unknown as number,
+            voice_assistant_feedback: '',
+            communication_style_feedback: '',
+            experiment_feedback: '',
+          } as ExperimentResponseWithDemographics;
+        }
 
         // Fetch demographics
         const { data: demographics } = await supabase
@@ -362,6 +399,9 @@ const ResponseDetails = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {isPendingRecord && (
+                <Badge variant="secondary">Pending</Badge>
+              )}
               {data.assistant_type && (
                 <Badge variant={data.assistant_type === 'formal' ? 'default' : 'secondary'}>
                   {data.assistant_type}
@@ -415,7 +455,7 @@ const ResponseDetails = () => {
               </div>
               <div>
                 <label className="text-sm text-muted-foreground">Call Attempt</label>
-                <p className="text-sm">{data.call_attempt_number}</p>
+                <p className="text-sm">{data.call_attempt_number ?? '-'}</p>
               </div>
               <div>
                 <label className="text-sm text-muted-foreground">PETS Total</label>
@@ -490,7 +530,7 @@ const ResponseDetails = () => {
                         : String(data.demographics.ethnicity)}
                     </p>
                   </div>
-                  {data.demographics.voice_assistant_familiarity !== null && (
+                  {data.demographics.voice_assistant_familiarity != null && (
                     <div>
                       <label className="text-sm text-muted-foreground">Voice Assistant Familiarity</label>
                       <p className="font-medium">
@@ -498,7 +538,7 @@ const ResponseDetails = () => {
                       </p>
                     </div>
                   )}
-                  {data.demographics.voice_assistant_usage_frequency !== null && (
+                  {data.demographics.voice_assistant_usage_frequency != null && (
                     <div>
                       <label className="text-sm text-muted-foreground">Voice Assistant Usage Frequency</label>
                       <p className="font-medium">
@@ -526,7 +566,7 @@ const ResponseDetails = () => {
             <CardContent>
               <div className="space-y-4">
                 {/* PETS Attention Check */}
-                {data.attention_check_1 !== null && (
+                {data.attention_check_1 != null && (
                   <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
                     <span className="font-medium">PETS Attention Check</span>
                     <div className="flex-1" />
@@ -541,7 +581,7 @@ const ResponseDetails = () => {
                 )}
 
                 {/* TIAS Attention Check */}
-                {data.tias_attention_check_1 !== null && (
+                {data.tias_attention_check_1 != null && (
                   <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
                     <span className="font-medium">TIAS Attention Check</span>
                     <div className="flex-1" />
@@ -556,7 +596,7 @@ const ResponseDetails = () => {
                 )}
 
                 {/* Godspeed Attention Check */}
-                {data.godspeed_attention_check_1 !== null && (
+                {data.godspeed_attention_check_1 != null && (
                   <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
                     <span className="font-medium">Godspeed Attention Check</span>
                     <div className="flex-1" />
@@ -571,7 +611,7 @@ const ResponseDetails = () => {
                 )}
 
                 {/* TIPI Attention Check */}
-                {data.tipi_attention_check_1 !== null && (
+                {data.tipi_attention_check_1 != null && (
                   <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
                     <span className="font-medium">TIPI Attention Check</span>
                     <div className="flex-1" />
@@ -585,7 +625,7 @@ const ResponseDetails = () => {
                   </div>
                 )}
 
-                {data.attention_check_1 === null && data.tias_attention_check_1 === null && data.godspeed_attention_check_1 === null && data.tipi_attention_check_1 === null && (
+                {data.attention_check_1 == null && data.tias_attention_check_1 == null && data.godspeed_attention_check_1 == null && data.tipi_attention_check_1 == null && (
                   <p className="text-muted-foreground italic">No attention check data available</p>
                 )}
               </div>
@@ -630,7 +670,7 @@ const ResponseDetails = () => {
               {/* AI F-Score */}
               <div>
                 <h4 className="font-medium mb-3">AI-Calculated Formality Score</h4>
-                {data.ai_formality_score !== null ? (
+                {data.ai_formality_score != null ? (
                   <div className="flex items-center gap-4">
                     <div className="text-3xl font-bold">{formatNumber(data.ai_formality_score)}</div>
                     {data.ai_formality_interpretation && (
@@ -700,7 +740,7 @@ const ResponseDetails = () => {
                         </div>
                         <span className="font-mono text-sm w-12 text-right">{value ?? 'N/A'}</span>
                       </div>
-                      {position !== null && (
+                      {position != null && (
                         <span className="text-xs text-muted-foreground w-12">Pos: {position}</span>
                       )}
                     </div>
@@ -756,7 +796,7 @@ const ResponseDetails = () => {
                           ))}
                         </div>
                       </div>
-                      {position !== null && (
+                      {position != null && (
                         <span className="text-xs text-muted-foreground w-12">Pos: {position}</span>
                       )}
                     </div>
@@ -818,7 +858,7 @@ const ResponseDetails = () => {
                           ))}
                         </div>
                         <span className="text-sm text-muted-foreground w-24">{item.rightLabel}</span>
-                        {position !== null && (
+                        {position != null && (
                           <span className="text-xs text-muted-foreground">Pos: {position}</span>
                         )}
                       </div>
@@ -854,7 +894,7 @@ const ResponseDetails = () => {
                           ))}
                         </div>
                         <span className="text-sm text-muted-foreground w-24">{item.rightLabel}</span>
-                        {position !== null && (
+                        {position != null && (
                           <span className="text-xs text-muted-foreground">Pos: {position}</span>
                         )}
                       </div>
@@ -890,7 +930,7 @@ const ResponseDetails = () => {
                           ))}
                         </div>
                         <span className="text-sm text-muted-foreground w-24">{item.rightLabel}</span>
-                        {position !== null && (
+                        {position != null && (
                           <span className="text-xs text-muted-foreground">Pos: {position}</span>
                         )}
                       </div>
@@ -955,7 +995,7 @@ const ResponseDetails = () => {
                           </div>
                         ))}
                       </div>
-                      {position !== null && (
+                      {position != null && (
                         <span className="text-xs text-muted-foreground w-12">Pos: {position}</span>
                       )}
                     </div>

@@ -4,6 +4,9 @@ import Vapi from '@vapi-ai/web';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Textarea } from '@/components/ui/textarea';
 import { Mic, Phone } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
@@ -13,24 +16,32 @@ import { usePageTracking } from '@/hooks/usePageTracking';
 import {
   collectClientContext,
   generateCallAttemptId,
+  getCallErrorGuidance,
+  getCurrentMicPermissionState,
+  getMicIssueGuidance,
   logNavigationEvent,
   mapCallEndReasonToFailureCode,
-  mapMicErrorToReasonCode,
   mapVapiErrorToReasonCode,
+  type TroubleshootingGuidance,
   runMicDiagnostics,
 } from '@/lib/participant-telemetry';
 
 const PracticeConversation = () => {
   const ASSISTANT_AUDIO_TIMEOUT_MS = 15000;
+  const MIC_AUDIO_MONITOR_SAMPLE_MS = 45000;
 
   const [searchParams] = useSearchParams();
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [isCallActive, setIsCallActive] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isAwaitingMicPermission, setIsAwaitingMicPermission] = useState(false);
   const [showPreCallModal, setShowPreCallModal] = useState(false);
   const [showAudioConfirmModal, setShowAudioConfirmModal] = useState(false);
-  const [showPermissionDeniedModal, setShowPermissionDeniedModal] = useState(false);
+  const [showAudioIssueFeedbackModal, setShowAudioIssueFeedbackModal] = useState(false);
+  const [micIssueGuidance, setMicIssueGuidance] = useState<TroubleshootingGuidance | null>(null);
+  const [audioIssueType, setAudioIssueType] = useState('');
+  const [audioIssueNotes, setAudioIssueNotes] = useState('');
   const [practiceAssistantId, setPracticeAssistantId] = useState<string | null>(null);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   const vapiRef = useRef<Vapi | null>(null);
@@ -39,6 +50,7 @@ const PracticeConversation = () => {
   const attemptStartMsRef = useRef<number | null>(null);
   const firstAssistantSpeechLoggedRef = useRef(false);
   const assistantSpeechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isCallActiveRef = useRef(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isResearcherMode } = useResearcherMode();
@@ -72,6 +84,68 @@ const PracticeConversation = () => {
       assistantSpeechTimeoutRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    isCallActiveRef.current = isCallActive;
+  }, [isCallActive]);
+
+  const runInCallMicMonitor = useCallback((callAttemptId: string | null) => {
+    if (!callAttemptId) return;
+    void runMicDiagnostics({ sampleMs: MIC_AUDIO_MONITOR_SAMPLE_MS })
+      .then((micDiagnostics) => {
+        logEvent('call_preflight_result', {
+          callAttemptId,
+          phase: 'in_call_monitor',
+          state: micDiagnostics.permissionState,
+          source: micDiagnostics.permissionSource,
+          reasonCode: micDiagnostics.reasonCode || 'none',
+          getUserMediaDurationMs: micDiagnostics.getUserMediaDurationMs,
+          inputDeviceCount: micDiagnostics.inputDeviceCount,
+          trackEnabled: micDiagnostics.trackEnabled,
+          trackMuted: micDiagnostics.trackMuted,
+          trackReadyState: micDiagnostics.trackReadyState,
+          errorName: micDiagnostics.errorName,
+          errorMessage: micDiagnostics.errorMessage,
+        });
+        if (micDiagnostics.audioDetected !== 'unknown') {
+          logEvent('mic_audio_check', {
+            callAttemptId,
+            phase: 'in_call_monitor',
+            detected: micDiagnostics.audioDetected,
+            peakRms: micDiagnostics.peakRms,
+            sampleMs: micDiagnostics.sampleMs,
+            reasonCode: micDiagnostics.reasonCode || 'none',
+          });
+        }
+        if (callAttemptIdRef.current !== callAttemptId || !isCallActiveRef.current) {
+          return;
+        }
+        if (micDiagnostics.audioDetected === 'not_detected') {
+          const guidance = getMicIssueGuidance('no_mic_audio_detected');
+          toast({
+            title: guidance.title,
+            description: guidance.description,
+            variant: 'destructive',
+          });
+          logEvent('call_quality_warning', {
+            callAttemptId,
+            reason: 'no_mic_audio_detected_during_call_monitor',
+            reasonCode: 'no_mic_audio_detected',
+            peakRms: micDiagnostics.peakRms,
+            sampleMs: micDiagnostics.sampleMs,
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        const err = error as { name?: string; message?: string };
+        logEvent('mic_audio_check_error', {
+          callAttemptId,
+          phase: 'in_call_monitor',
+          errorName: err?.name,
+          errorMessage: err?.message,
+        });
+      });
+  }, [MIC_AUDIO_MONITOR_SAMPLE_MS, logEvent, toast]);
 
   usePageTracking({
     pageName,
@@ -160,6 +234,7 @@ const PracticeConversation = () => {
       console.log('[Vapi Debug] Event: call-start');
       setIsCallActive(true);
       setIsConnecting(false);
+      setIsAwaitingMicPermission(false);
       logAttemptEvent('call_connected', {
         attemptLatencyMs: getAttemptLatencyMs(),
       });
@@ -170,6 +245,7 @@ const PracticeConversation = () => {
           timeoutMs: ASSISTANT_AUDIO_TIMEOUT_MS,
         });
       }, ASSISTANT_AUDIO_TIMEOUT_MS);
+      runInCallMicMonitor(callAttemptIdRef.current);
     });
     vapi.on('call-end', () => {
       console.log('[Vapi Debug] Event: call-end');
@@ -209,10 +285,12 @@ const PracticeConversation = () => {
     });
     vapi.on('error', error => {
       console.error('[Vapi Debug] Event: error', error);
+      const reasonCode = mapVapiErrorToReasonCode(error?.name, error?.message);
+      const guidance = getCallErrorGuidance(reasonCode);
       logAttemptEvent('call_error', {
         errorName: error?.name,
         errorMessage: error?.message,
-        reasonCode: mapVapiErrorToReasonCode(error?.name, error?.message),
+        reasonCode,
       });
       // Check if it's a timeout-related error (meeting ended due to time limit)
       const errorMessage = error?.message?.toLowerCase() || '';
@@ -230,19 +308,20 @@ const PracticeConversation = () => {
         });
       } else {
         toast({
-          title: "Connection Error",
-          description: error?.message || "An error occurred. Please try again.",
+          title: guidance.title,
+          description: guidance.description,
           variant: "destructive"
         });
       }
       setIsConnecting(false);
+      setIsAwaitingMicPermission(false);
     });
     return () => {
       console.log('[Vapi Debug] Cleanup: stopping call');
       vapi.stop();
       clearAssistantSpeechTimeout();
     };
-  }, [prolificId, toast, logAttemptEvent, clearAssistantSpeechTimeout]);
+  }, [prolificId, toast, logAttemptEvent, clearAssistantSpeechTimeout, runInCallMicMonitor]);
   const handleStartCallClick = () => {
     setShowPreCallModal(true);
   };
@@ -253,6 +332,15 @@ const PracticeConversation = () => {
       return;
     }
     setShowPreCallModal(false);
+    const initialPermissionState = await getCurrentMicPermissionState();
+    if (initialPermissionState === 'denied') {
+      setIsConnecting(false);
+      setIsAwaitingMicPermission(false);
+      setMicIssueGuidance(getMicIssueGuidance('mic_permission_denied'));
+      logEvent('call_start_failed', { reason: 'mic_permission_denied_precheck', reasonCode: 'mic_permission_denied' });
+      return;
+    }
+    setIsAwaitingMicPermission(initialPermissionState === 'prompt');
     setIsConnecting(true);
 
     const callAttemptId = generateCallAttemptId();
@@ -267,59 +355,6 @@ const PracticeConversation = () => {
       clientContext,
     });
     
-    // Check microphone permission first
-    const micDiagnostics = await runMicDiagnostics();
-    logAttemptEvent('call_preflight_result', {
-      state: micDiagnostics.permissionState,
-      source: micDiagnostics.permissionSource,
-      reasonCode: micDiagnostics.reasonCode || 'none',
-      getUserMediaDurationMs: micDiagnostics.getUserMediaDurationMs,
-      inputDeviceCount: micDiagnostics.inputDeviceCount,
-      trackEnabled: micDiagnostics.trackEnabled,
-      trackMuted: micDiagnostics.trackMuted,
-      trackReadyState: micDiagnostics.trackReadyState,
-      errorName: micDiagnostics.errorName,
-      errorMessage: micDiagnostics.errorMessage,
-    });
-    if (micDiagnostics.audioDetected !== 'unknown') {
-      logAttemptEvent('mic_audio_check', {
-        detected: micDiagnostics.audioDetected,
-        peakRms: micDiagnostics.peakRms,
-        sampleMs: micDiagnostics.sampleMs,
-        reasonCode: micDiagnostics.reasonCode || 'none',
-      });
-    }
-
-    if (micDiagnostics.permissionState === 'denied') {
-      setIsConnecting(false);
-      setShowPermissionDeniedModal(true);
-      logAttemptEvent('call_start_failed', { reason: 'mic_permission_denied', reasonCode: 'mic_permission_denied' });
-      return;
-    }
-    if (micDiagnostics.permissionState === 'error') {
-      setIsConnecting(false);
-      toast({
-        title: "Microphone Error",
-        description: "Could not access microphone. Please check your device.",
-        variant: "destructive"
-      });
-      logAttemptEvent('call_start_failed', {
-        reason: 'mic_access_error',
-        reasonCode: mapMicErrorToReasonCode(micDiagnostics.errorName, micDiagnostics.permissionState),
-        errorName: micDiagnostics.errorName,
-        errorMessage: micDiagnostics.errorMessage,
-      });
-      return;
-    }
-
-    if (micDiagnostics.audioDetected === 'not_detected') {
-      logAttemptEvent('call_quality_warning', {
-        reason: 'no_mic_audio_detected_during_preflight',
-        reasonCode: 'no_mic_audio_detected',
-        peakRms: micDiagnostics.peakRms,
-      });
-    }
-    
     try {
       if (!practiceAssistantId) {
         console.error('[PracticeConversation] startCall: No practiceAssistantId available');
@@ -330,6 +365,7 @@ const PracticeConversation = () => {
           variant: "destructive"
         });
         setIsConnecting(false);
+        setIsAwaitingMicPermission(false);
         return;
       }
 
@@ -359,18 +395,21 @@ const PracticeConversation = () => {
     } catch (error) {
       console.error('[PracticeConversation] Failed to start call:', error);
       setIsConnecting(false);
+      setIsAwaitingMicPermission(false);
+      const reasonCode = mapVapiErrorToReasonCode(
+        (error as { name?: string })?.name,
+        (error as { message?: string })?.message
+      );
+      const guidance = getCallErrorGuidance(reasonCode);
       logAttemptEvent('call_start_failed', {
         reason: 'vapi_start_error',
-        reasonCode: mapVapiErrorToReasonCode(
-          (error as { name?: string })?.name,
-          (error as { message?: string })?.message
-        ),
+        reasonCode,
         errorName: (error as { name?: string })?.name,
         errorMessage: (error as { message?: string })?.message,
       });
       toast({
-        title: "Failed to Start",
-        description: "Please check your microphone permissions and try again.",
+        title: guidance.title,
+        description: guidance.description,
         variant: "destructive"
       });
     }
@@ -391,6 +430,28 @@ const PracticeConversation = () => {
   const handleAudioNotWorking = () => {
     logEvent('audio_confirm', { heardAssistant: false });
     setShowAudioConfirmModal(false);
+    setAudioIssueType('');
+    setAudioIssueNotes('');
+    setShowAudioIssueFeedbackModal(true);
+  };
+  const handleSubmitAudioIssueFeedback = () => {
+    if (!audioIssueType) {
+      toast({
+        title: "Please select an issue",
+        description: "Choose the issue you experienced before continuing.",
+        variant: "destructive",
+      });
+      return;
+    }
+    logEvent('restart_feedback_submitted', {
+      issueType: audioIssueType,
+      notes: audioIssueNotes.trim() || null,
+      nextAction: 'restart',
+      context: 'practice_audio_confirm_no',
+    });
+    setShowAudioIssueFeedbackModal(false);
+    setAudioIssueType('');
+    setAudioIssueNotes('');
   };
   if (!prolificId) {
     return null;
@@ -472,7 +533,9 @@ const PracticeConversation = () => {
                 </Button>
               </div> : isConnecting ? <div className="flex flex-col items-center gap-3">
                 <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-muted-foreground">Connecting...</p>
+                <p className="text-sm text-muted-foreground">
+                  {isAwaitingMicPermission ? 'Waiting for microphone permission...' : 'Connecting...'}
+                </p>
               </div> : <div className="flex flex-col items-center gap-4">
                 <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 text-center min-w-[200px]">
                   <div className="flex items-center justify-center gap-2">
@@ -547,31 +610,92 @@ const PracticeConversation = () => {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={showPermissionDeniedModal} onOpenChange={setShowPermissionDeniedModal}>
+          <Dialog
+            open={showAudioIssueFeedbackModal}
+            onOpenChange={(open) => {
+              if (open) setShowAudioIssueFeedbackModal(true);
+            }}
+          >
+            <DialogContent className="sm:max-w-[540px]">
+              <DialogHeader>
+                <DialogTitle className="text-xl">Quick Issue Report</DialogTitle>
+                <DialogDescription>
+                  Help us diagnose audio issues before you retry the practice call.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">What issue did you face? (Required)</Label>
+                  <RadioGroup value={audioIssueType} onValueChange={setAudioIssueType}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="cant_hear_assistant" id="practice-issue-cant-hear-assistant" />
+                      <Label htmlFor="practice-issue-cant-hear-assistant">I could not hear the assistant</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="cant_be_heard" id="practice-issue-cant-be-heard" />
+                      <Label htmlFor="practice-issue-cant-be-heard">The assistant could not hear me</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="stuck_connecting" id="practice-issue-stuck-connecting" />
+                      <Label htmlFor="practice-issue-stuck-connecting">Call got stuck connecting</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="other" id="practice-issue-other" />
+                      <Label htmlFor="practice-issue-other">Other</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="practice-issue-notes" className="text-sm font-medium">
+                    Additional details (optional)
+                  </Label>
+                  <Textarea
+                    id="practice-issue-notes"
+                    placeholder="Example: Assistant voice never played even though call connected."
+                    value={audioIssueNotes}
+                    onChange={(event) => setAudioIssueNotes(event.target.value)}
+                    maxLength={300}
+                  />
+                  <p className="text-xs text-muted-foreground text-right">{audioIssueNotes.length}/300</p>
+                </div>
+              </div>
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button onClick={handleSubmitAudioIssueFeedback} disabled={!audioIssueType}>
+                  Submit & Try Again
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={Boolean(micIssueGuidance)} onOpenChange={(open) => {
+            if (!open) setMicIssueGuidance(null);
+          }}>
             <DialogContent className="sm:max-w-[550px]">
               <DialogHeader>
                 <DialogTitle className="text-xl text-center text-destructive">
-                  Microphone Permission Blocked
+                  {micIssueGuidance?.title || 'Microphone Issue'}
                 </DialogTitle>
                 <DialogDescription className="space-y-4 text-left pt-4">
-                  <p>Your browser has blocked microphone access. This usually happens if you previously clicked "Block" or "Deny" when asked for permission.</p>
+                  <p>{micIssueGuidance?.description}</p>
                   
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
-                    <p className="font-semibold text-amber-800">To fix this:</p>
+                    <p className="font-semibold text-amber-800">Try these steps:</p>
                     <ol className="list-decimal list-inside space-y-2 text-sm text-amber-700">
-                      <li>Click the <strong>lock/info icon</strong> in your browser's address bar (left of the URL)</li>
-                      <li>Find <strong>"Microphone"</strong> in the permissions list</li>
-                      <li>Change it from "Block" to <strong>"Allow"</strong></li>
-                      <li>Refresh this page and try again</li>
+                      {(micIssueGuidance?.steps || []).map((step, index) => (
+                        <li key={index}>{step}</li>
+                      ))}
                     </ol>
                   </div>
 
                   <p className="text-xs text-muted-foreground">
-                    Alternatively, you can try using a different browser or an incognito/private window.
+                    If it still fails, try a different browser or a private/incognito window.
                   </p>
                 </DialogDescription>
               </DialogHeader>
-              <DialogFooter className="pt-4">
+              <DialogFooter className="pt-4 gap-2">
+                <Button variant="outline" onClick={() => setMicIssueGuidance(null)}>
+                  Close
+                </Button>
                 <Button onClick={() => window.location.reload()}>
                   Refresh Page
                 </Button>

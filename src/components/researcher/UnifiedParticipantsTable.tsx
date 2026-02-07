@@ -344,6 +344,16 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     }
   };
 
+  const handleOpenRow = (participant: UnifiedParticipant) => {
+    if (participant.response_id) {
+      handleViewDetails(participant);
+      return;
+    }
+    // Pending rows don't have experiment_responses records yet.
+    // Open response details using participant_calls.id as a fallback identifier.
+    navigate(`/researcher/response/${participant.id}`);
+  };
+
   const handleViewJourney = (participant: UnifiedParticipant) => {
     setJourneyModal({
       open: true,
@@ -517,8 +527,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
               paginatedData.map((row) => (
                 <TableRow 
                   key={row.id} 
-                  className={`${selectedIds.has(row.id) ? 'bg-muted/50' : ''} ${row.status === 'Completed' ? 'cursor-pointer hover:bg-muted/30' : ''}`}
-                  onClick={() => row.status === 'Completed' && handleViewDetails(row)}
+                  className={`${selectedIds.has(row.id) ? 'bg-muted/50' : ''} cursor-pointer hover:bg-muted/30`}
+                  onClick={() => handleOpenRow(row)}
                 >
                   {isSuperAdmin && (
                     <TableCell onClick={(e) => e.stopPropagation()}>

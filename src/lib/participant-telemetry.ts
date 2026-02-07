@@ -37,6 +37,12 @@ export interface ClientTelemetryContext {
   inputDeviceCount?: number;
 }
 
+export interface TroubleshootingGuidance {
+  title: string;
+  description: string;
+  steps: string[];
+}
+
 export interface MicDiagnosticsResult {
   permissionState: MicPermissionState;
   permissionSource: MicPermissionSource;
@@ -189,6 +195,132 @@ export const mapCallEndReasonToFailureCode = (endedReason?: string): CallFailure
   }
 };
 
+export const getCurrentMicPermissionState = async (): Promise<MicPermissionState> => {
+  if (typeof navigator === "undefined") return "unknown";
+  if (!navigator.permissions?.query) return "unknown";
+  try {
+    const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
+    return status.state as MicPermissionState;
+  } catch {
+    return "unknown";
+  }
+};
+
+export const getMicIssueGuidance = (
+  reasonCode?: CallFailureReasonCode
+): TroubleshootingGuidance => {
+  switch (reasonCode) {
+    case "mic_permission_denied":
+      return {
+        title: "Microphone Permission Blocked",
+        description: "Your browser is blocking microphone access, so the assistant cannot hear you.",
+        steps: [
+          "Click the lock/info icon next to the website URL.",
+          "Set Microphone permission to Allow.",
+          "Refresh the page and try again.",
+        ],
+      };
+    case "mic_not_found":
+      return {
+        title: "No Microphone Detected",
+        description: "We could not find an available microphone on your device.",
+        steps: [
+          "Connect a microphone or headset.",
+          "Check your system input device settings.",
+          "Refresh the page and retry the call.",
+        ],
+      };
+    case "mic_in_use":
+      return {
+        title: "Microphone Is Busy",
+        description: "Another app may be using your microphone right now.",
+        steps: [
+          "Close apps like Zoom, Teams, Meet, or voice recorders.",
+          "Return to this page and retry the call.",
+          "If needed, refresh the page.",
+        ],
+      };
+    case "mic_constraints_failed":
+      return {
+        title: "Microphone Setup Issue",
+        description: "Your browser could not apply microphone settings for this call.",
+        steps: [
+          "Switch to your default microphone in system settings.",
+          "Disconnect and reconnect your headset if using one.",
+          "Refresh the page and try again.",
+        ],
+      };
+    case "no_mic_audio_detected":
+      return {
+        title: "No Audio Detected",
+        description: "Microphone access worked, but no sound signal was detected.",
+        steps: [
+          "Check that your microphone is not muted.",
+          "Speak closer to the microphone and increase input volume.",
+          "Confirm the correct input device is selected.",
+        ],
+      };
+    default:
+      return {
+        title: "Microphone Access Problem",
+        description: "We could not access your microphone for this call.",
+        steps: [
+          "Check browser microphone permission for this site.",
+          "Check your system microphone input settings.",
+          "Refresh the page and try again.",
+        ],
+      };
+  }
+};
+
+export const getCallErrorGuidance = (
+  reasonCode?: CallFailureReasonCode
+): TroubleshootingGuidance => {
+  switch (reasonCode) {
+    case "network_error":
+      return {
+        title: "Network Connection Issue",
+        description: "The call could not connect reliably to the voice service.",
+        steps: [
+          "Check that your internet connection is stable.",
+          "Disable VPN/proxy temporarily if enabled.",
+          "Retry the call or refresh the page.",
+        ],
+      };
+    case "assistant_pipeline_error":
+    case "assistant_error":
+      return {
+        title: "Assistant Service Error",
+        description: "The voice assistant encountered a temporary backend issue.",
+        steps: [
+          "Wait a moment and retry the call.",
+          "If it happens repeatedly, refresh the page and try again.",
+          "Use the issue report option so researchers can diagnose it.",
+        ],
+      };
+    case "call_timeout":
+      return {
+        title: "Call Timed Out",
+        description: "The session reached a time or connection limit.",
+        steps: [
+          "Retry the call from this page.",
+          "Ensure your internet is stable.",
+          "Refresh the page if the issue continues.",
+        ],
+      };
+    default:
+      return {
+        title: "Call Connection Error",
+        description: "Something interrupted the call startup.",
+        steps: [
+          "Check microphone permissions and internet connection.",
+          "Retry the call.",
+          "Refresh the page if needed.",
+        ],
+      };
+  }
+};
+
 const getAudioContext = (): AudioContext | null => {
   if (typeof window === "undefined") return null;
   const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -218,6 +350,7 @@ const measureStreamAudio = async (stream: MediaStream, sampleMs: number, rmsThre
   }
 
   const startTime = performance.now();
+  const minDetectionWindowMs = 300;
   const result = await new Promise<{ detected: boolean; peakRms: number }>((resolve) => {
     const tick = () => {
       analyser.getByteTimeDomainData(data);
@@ -229,6 +362,11 @@ const measureStreamAudio = async (stream: MediaStream, sampleMs: number, rmsThre
       const rms = Math.sqrt(sum / data.length);
       if (rms > peakRms) {
         peakRms = rms;
+      }
+      // Exit early once we have enough confidence that audio is present.
+      if (peakRms >= rmsThreshold && performance.now() - startTime >= minDetectionWindowMs) {
+        resolve({ detected: true, peakRms });
+        return;
       }
       if (performance.now() - startTime >= sampleMs) {
         resolve({ detected: peakRms >= rmsThreshold, peakRms });

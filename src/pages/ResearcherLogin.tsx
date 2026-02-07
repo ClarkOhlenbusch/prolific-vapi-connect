@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FlaskConical, Loader2, AlertCircle, CheckCircle2, Eye } from 'lucide-react';
+import { FlaskConical, Loader2, AlertCircle, CheckCircle2, Eye, User } from 'lucide-react';
 
 const ACTIVATION_KEY = 'kN&B981$%ZSK';
 
@@ -288,6 +288,15 @@ const ResearcherLogin = () => {
                 >
                   <Eye className="mr-2 h-4 w-4" />
                   View as Guest
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => navigate('/')}
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  View as Participant
                 </Button>
                 <p className="text-xs text-muted-foreground text-center mt-2">
                   Explore the dashboard with sample data
