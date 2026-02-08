@@ -81,6 +81,16 @@ const FEEDBACK_FIELD_LABELS: Record<FeedbackFieldKey, string> = {
   experiment_feedback: "Experiment Feedback",
 };
 
+const LEGACY_RESEARCHER_DRAFT_PLACEHOLDER = "researcher mode draft session";
+
+const isMissingFeedbackValue = (value: string | null | undefined): boolean => {
+  if (!value) return true;
+  const normalized = value.trim();
+  if (!normalized) return true;
+  const lowered = normalized.toLowerCase();
+  return lowered === "not provided" || lowered === LEGACY_RESEARCHER_DRAFT_PLACEHOLDER;
+};
+
 const createEmptyFeedbackInputSourceState = (): FeedbackInputSourceState => ({
   voice_assistant_feedback: { typed: false, dictated: false },
   communication_style_feedback: { typed: false, dictated: false },
@@ -988,10 +998,20 @@ const ResponseDetails = () => {
           if (dictationError) {
             console.warn('Unable to load dictation recordings:', dictationError.message);
           } else if (Array.isArray(dictationRows)) {
+            console.info('[DictationAudio][Replay] Loaded dictation rows', {
+              prolificId: response.prolific_id,
+              callId: response.call_id,
+              rowCount: dictationRows.length,
+            });
             const filteredRows = dictationRows.filter((row: Record<string, unknown>) => {
               if (!response.call_id) return true;
               const rowCallId = typeof row.call_id === 'string' ? row.call_id : null;
               return rowCallId === null || rowCallId === response.call_id;
+            });
+            console.info('[DictationAudio][Replay] Filtered dictation rows by call', {
+              prolificId: response.prolific_id,
+              callId: response.call_id,
+              rowCount: filteredRows.length,
             });
 
             const resolvedRows = await Promise.all(filteredRows.map(async (row: Record<string, unknown>) => {
@@ -1010,6 +1030,13 @@ const ResponseDetails = () => {
                   .createSignedUrl(storagePath, 60 * 60);
                 if (!signedError) {
                   playbackUrl = signedData?.signedUrl || null;
+                } else {
+                  console.warn('[DictationAudio][Replay] Signed URL failed', {
+                    field,
+                    storageBucket,
+                    storagePath,
+                    message: signedError.message,
+                  });
                 }
               }
 
@@ -1036,6 +1063,20 @@ const ResponseDetails = () => {
             const { data: signedData, error: signedError } = await supabase.storage
               .from(snapshot.storageBucket)
               .createSignedUrl(snapshot.storagePath, 60 * 60);
+            if (signedError) {
+              console.warn('[DictationAudio][Replay] Snapshot signed URL failed', {
+                field,
+                storageBucket: snapshot.storageBucket,
+                storagePath: snapshot.storagePath,
+                message: signedError.message,
+              });
+            } else {
+              console.info('[DictationAudio][Replay] Using snapshot fallback audio', {
+                field,
+                storageBucket: snapshot.storageBucket,
+                storagePath: snapshot.storagePath,
+              });
+            }
             nextRecordings[field].push({
               id: `${field}-${snapshot.createdAt}-snapshot`,
               field,
@@ -1046,6 +1087,11 @@ const ResponseDetails = () => {
             });
           }
 
+          console.info('[DictationAudio][Replay] Final audio recordings by field', {
+            voice_assistant_feedback: nextRecordings.voice_assistant_feedback.length,
+            communication_style_feedback: nextRecordings.communication_style_feedback.length,
+            experiment_feedback: nextRecordings.experiment_feedback.length,
+          });
           setDictationRecordingsByField(nextRecordings);
         } catch (dictationLoadError) {
           console.warn('Unexpected error loading dictation recordings:', dictationLoadError);
@@ -1055,11 +1101,15 @@ const ResponseDetails = () => {
         const mergedResponse = { ...response } as ExperimentResponseWithDemographics;
         (Object.keys(FEEDBACK_FIELD_LABELS) as FeedbackFieldKey[]).forEach((field) => {
           const existingValue = mergedResponse[field];
-          const isMissing = !existingValue || existingValue === 'Not provided';
+          const isMissing = isMissingFeedbackValue(existingValue);
           const draftValue = latestFeedbackDraft[field];
           if (isMissing && typeof draftValue === 'string' && draftValue.trim()) {
             mergedResponse[field] = draftValue as ExperimentResponseWithDemographics[typeof field];
             nextFeedbackDraftUsage[field] = true;
+            return;
+          }
+          if (isMissing) {
+            mergedResponse[field] = '' as ExperimentResponseWithDemographics[typeof field];
           }
         });
         setFeedbackDraftUsage(nextFeedbackDraftUsage);

@@ -39,9 +39,9 @@ const buildDraftExperimentResponse = (prolificId: string, callId: string) => ({
   intention_1: 4,
   intention_2: 4,
   formality: 4,
-  voice_assistant_feedback: 'Researcher mode draft session',
-  communication_style_feedback: 'Researcher mode draft session',
-  experiment_feedback: 'Researcher mode draft session',
+  voice_assistant_feedback: '',
+  communication_style_feedback: '',
+  experiment_feedback: '',
 });
 
 Deno.serve(async (req) => {

@@ -271,6 +271,10 @@ const FeedbackQuestionnaire = () => {
   const ensureDictationRecorder = useCallback(async (field: FeedbackField) => {
     const recorderState = dictationRecordersRef.current[field];
     if (recorderState.recorder) {
+      console.info("[DictationAudio] Reusing existing recorder", {
+        field,
+        recorderState: recorderState.recorder.state,
+      });
       return recorderState;
     }
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
@@ -287,6 +291,11 @@ const FeedbackQuestionnaire = () => {
     }
 
     try {
+      console.info("[DictationAudio] Creating MediaRecorder", {
+        field,
+        prolificId,
+        callId,
+      });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const supportedMimeType = getSupportedAudioMimeType();
       const recorder = supportedMimeType
@@ -298,6 +307,10 @@ const FeedbackQuestionnaire = () => {
       recorderState.mimeType = supportedMimeType || recorder.mimeType || "audio/webm";
       recorderState.chunks = [];
       recorderState.persisted = false;
+      console.info("[DictationAudio] Recorder created", {
+        field,
+        mimeType: recorderState.mimeType,
+      });
       updateDictationDebug(field, {
         recorderState: "idle",
         lastError: null,
@@ -309,6 +322,12 @@ const FeedbackQuestionnaire = () => {
         if (event.data && event.data.size > 0) {
           recorderState.chunks.push(event.data);
           const totalBytes = recorderState.chunks.reduce((sum, chunk) => sum + chunk.size, 0);
+          console.info("[DictationAudio] Chunk captured", {
+            field,
+            chunkSizeBytes: event.data.size,
+            chunkCount: recorderState.chunks.length,
+            totalBytes,
+          });
           updateDictationDebug(field, {
             chunkCount: recorderState.chunks.length,
             bytesCaptured: totalBytes,
@@ -319,6 +338,10 @@ const FeedbackQuestionnaire = () => {
       recorder.onstart = () => {
         recorderState.attemptCount += 1;
         recorderState.activeStartMs = Date.now();
+        console.info("[DictationAudio] Recording started", {
+          field,
+          attemptCount: recorderState.attemptCount,
+        });
         updateDictationDebug(field, {
           recorderState: "recording",
           attemptCount: recorderState.attemptCount,
@@ -328,6 +351,7 @@ const FeedbackQuestionnaire = () => {
 
       recorder.onresume = () => {
         recorderState.activeStartMs = Date.now();
+        console.info("[DictationAudio] Recording resumed", { field });
         updateDictationDebug(field, {
           recorderState: "recording",
           lastError: null,
@@ -339,6 +363,10 @@ const FeedbackQuestionnaire = () => {
           recorderState.activeDurationMs += Date.now() - recorderState.activeStartMs;
           recorderState.activeStartMs = null;
         }
+        console.info("[DictationAudio] Recording paused", {
+          field,
+          durationMs: Math.max(0, Math.round(recorderState.activeDurationMs)),
+        });
         updateDictationDebug(field, {
           recorderState: "paused",
         });
@@ -349,6 +377,11 @@ const FeedbackQuestionnaire = () => {
           recorderState.activeDurationMs += Date.now() - recorderState.activeStartMs;
           recorderState.activeStartMs = null;
         }
+        console.info("[DictationAudio] Recording stopped", {
+          field,
+          durationMs: Math.max(0, Math.round(recorderState.activeDurationMs)),
+          chunkCount: recorderState.chunks.length,
+        });
         recorderState.resolveStop?.();
         recorderState.resolveStop = null;
         recorderState.stopPromise = null;
@@ -358,6 +391,7 @@ const FeedbackQuestionnaire = () => {
       };
 
       recorder.onerror = () => {
+        console.error("[DictationAudio] MediaRecorder runtime error", { field });
         updateDictationDebug(field, {
           lastUploadStatus: "error",
           lastError: "MediaRecorder runtime error.",
@@ -371,6 +405,10 @@ const FeedbackQuestionnaire = () => {
 
       return recorderState;
     } catch (error) {
+      console.error("[DictationAudio] Failed to create recorder", {
+        field,
+        message: error instanceof Error ? error.message : String(error),
+      });
       updateDictationDebug(field, {
         lastUploadStatus: "error",
         lastError: error instanceof Error ? error.message : String(error),
@@ -383,11 +421,10 @@ const FeedbackQuestionnaire = () => {
       });
       return null;
     }
-  }, [logFeedbackEvent, updateDictationDebug]);
+  }, [callId, logFeedbackEvent, prolificId, updateDictationDebug]);
 
   const startOrResumeDictationRecording = useCallback(async (field: FeedbackField) => {
-    if (isResearcherMode) return;
-
+    console.info("[DictationAudio] Start/resume requested", { field, isResearcherMode });
     const recorderState = await ensureDictationRecorder(field);
     if (!recorderState?.recorder) return;
 
@@ -428,6 +465,12 @@ const FeedbackQuestionnaire = () => {
     field: FeedbackField,
     options: { finalizeRow?: boolean } = {}
   ) => {
+    console.info("[DictationAudio] Upload snapshot requested", {
+      field,
+      finalizeRow: Boolean(options.finalizeRow),
+      prolificId,
+      callId,
+    });
     if (!prolificId) {
       updateDictationDebug(field, {
         lastUploadStatus: "error",
@@ -452,6 +495,10 @@ const FeedbackQuestionnaire = () => {
     }
 
     if (!recorderState.chunks.length && recorderState.attemptCount === 0) {
+      console.info("[DictationAudio] Skipping upload because no chunks were captured", {
+        field,
+        attemptCount: recorderState.attemptCount,
+      });
       updateDictationDebug(field, {
         lastUploadStatus: "idle",
       });
@@ -463,6 +510,13 @@ const FeedbackQuestionnaire = () => {
     if (!recorderState.storagePath) {
       recorderState.storagePath = buildRecordingStoragePath(field, mimeType);
     }
+    console.info("[DictationAudio] Uploading audio blob", {
+      field,
+      storagePath: recorderState.storagePath,
+      mimeType,
+      sizeBytes: blob.size,
+      chunkCount: recorderState.chunks.length,
+    });
 
     const { error: uploadError } = await supabase.storage
       .from(DICTATION_AUDIO_BUCKET)
@@ -472,6 +526,11 @@ const FeedbackQuestionnaire = () => {
       });
 
     if (uploadError) {
+      console.error("[DictationAudio] Storage upload failed", {
+        field,
+        storagePath: recorderState.storagePath,
+        message: uploadError.message,
+      });
       updateDictationDebug(field, {
         lastUploadStatus: "error",
         lastError: uploadError.message,
@@ -486,6 +545,13 @@ const FeedbackQuestionnaire = () => {
     }
 
     const durationMs = Math.max(0, Math.round(recorderState.activeDurationMs));
+    console.info("[DictationAudio] Storage upload succeeded", {
+      field,
+      storagePath: recorderState.storagePath,
+      sizeBytes: blob.size,
+      durationMs,
+      attemptCount: recorderState.attemptCount,
+    });
     updateDictationDebug(field, {
       lastUploadStatus: "uploaded",
       lastUploadAt: new Date().toISOString(),
@@ -509,6 +575,12 @@ const FeedbackQuestionnaire = () => {
 
     if (!options.finalizeRow || recorderState.persisted) return;
 
+    console.info("[DictationAudio] Inserting dictation metadata row", {
+      field,
+      prolificId,
+      callId,
+      storagePath: recorderState.storagePath,
+    });
     const { error: insertError } = await (supabase.from("dictation_recordings") as ReturnType<typeof supabase.from>).insert({
       prolific_id: prolificId,
       call_id: callId || null,
@@ -523,6 +595,10 @@ const FeedbackQuestionnaire = () => {
     } as Record<string, unknown>);
 
     if (insertError) {
+      console.error("[DictationAudio] Metadata insert failed", {
+        field,
+        message: insertError.message,
+      });
       updateDictationDebug(field, {
         lastUploadStatus: "error",
         lastError: `Metadata insert failed: ${insertError.message}`,
@@ -537,6 +613,10 @@ const FeedbackQuestionnaire = () => {
     }
 
     recorderState.persisted = true;
+    console.info("[DictationAudio] Metadata row inserted", {
+      field,
+      storagePath: recorderState.storagePath,
+    });
     updateDictationDebug(field, {
       persisted: true,
       lastError: null,
@@ -580,13 +660,19 @@ const FeedbackQuestionnaire = () => {
   const persistDictationRecordings = useCallback(async () => {
     if (!prolificId) return;
 
+    console.info("[DictationAudio] Persisting dictation recordings", { prolificId, callId });
     for (const field of FEEDBACK_FIELDS) {
       const recorderState = dictationRecordersRef.current[field];
       if (recorderState.persisted) continue;
+      console.info("[DictationAudio] Finalizing field", {
+        field,
+        chunkCount: recorderState.chunks.length,
+        attemptCount: recorderState.attemptCount,
+      });
       await finalizeDictationRecording(field);
       await uploadDictationSnapshot(field, { finalizeRow: true });
     }
-  }, [finalizeDictationRecording, uploadDictationSnapshot, prolificId]);
+  }, [callId, finalizeDictationRecording, uploadDictationSnapshot, prolificId]);
 
   const markFeedbackInputMode = useCallback((field: FeedbackField, mode: FeedbackInputMode) => {
     feedbackInputModesRef.current[field][mode] = true;
