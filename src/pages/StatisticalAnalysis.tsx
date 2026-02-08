@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import {
   welchTTest,
   mannWhitneyU,
@@ -136,9 +137,50 @@ interface HypothesisResult {
   summary: string;
 }
 
+interface ExperimentResponse {
+  assistant_type: string | null;
+  prolific_id: string;
+  batch_label: string | null;
+  created_at: string | null;
+  [key: string]: unknown;
+}
+
+interface ProgressionPoint {
+  batchLabel: string;
+  batchStep: number;
+  stepLabel: string;
+  batchParticipants: number;
+  cumulativeParticipants: number;
+  formalN: number;
+  informalN: number;
+  pValue: number | null;
+  significant: boolean | null;
+  cohensD: number | null;
+}
+
+interface MeasureProgression {
+  dv: DependentVariable;
+  points: ProgressionPoint[];
+}
+
 // Helper to detect researcher IDs (Prolific IDs are exactly 24 characters)
 const isResearcherId = (prolificId: string): boolean => {
   return prolificId.length !== 24;
+};
+
+const getBatchLabel = (value: unknown): string => {
+  if (typeof value !== 'string') return 'No Batch';
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : 'No Batch';
+};
+
+const toFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 };
 
 type SourceFilterValue = 'all' | 'participant' | 'researcher';
@@ -146,7 +188,7 @@ type SourceFilterValue = 'all' | 'participant' | 'researcher';
 const StatisticalAnalysis = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
-  const [responses, setResponses] = useState<any[]>([]);
+  const [responses, setResponses] = useState<ExperimentResponse[]>([]);
   const [activeTab, setActiveTab] = useState('hypotheses');
   
   // Read source filter from sessionStorage (set by dashboard)
@@ -180,17 +222,17 @@ const StatisticalAnalysis = () => {
     fetchData();
   }, [sourceFilter]);
 
-  const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults } = useMemo(() => {
+  const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults, progressionResults } = useMemo(() => {
     const formal = responses.filter(r => r.assistant_type === 'formal');
     const informal = responses.filter(r => r.assistant_type === 'informal');
 
     const computeResult = (dv: DependentVariable): Omit<AnalysisResult, 'adjustedP' | 'significant'> => {
       const formalData = formal
-        .map(r => r[dv.key])
-        .filter((v): v is number => v !== null && v !== undefined);
+        .map((r) => toFiniteNumber(r[dv.key]))
+        .filter((v): v is number => v !== null);
       const informalData = informal
-        .map(r => r[dv.key])
-        .filter((v): v is number => v !== null && v !== undefined);
+        .map((r) => toFiniteNumber(r[dv.key]))
+        .filter((v): v is number => v !== null);
 
       return {
         dv,
@@ -275,6 +317,84 @@ const StatisticalAnalysis = () => {
       .map(dv => results.find(r => r.dv.key === dv.key))
       .filter((r): r is AnalysisResult => r !== undefined);
 
+    const conditionResponses = responses.filter(
+      (r) => r.assistant_type === 'formal' || r.assistant_type === 'informal'
+    );
+
+    const batchEarliestTimestamp = new Map<string, number>();
+    const responsesByBatch = new Map<string, typeof conditionResponses>();
+    for (const row of conditionResponses) {
+      const batchLabel = getBatchLabel(row.batch_label);
+      const existingBatchRows = responsesByBatch.get(batchLabel);
+      if (existingBatchRows) {
+        existingBatchRows.push(row);
+      } else {
+        responsesByBatch.set(batchLabel, [row]);
+      }
+
+      const parsedTimestamp = Date.parse(String(row.created_at || ''));
+      const ts = Number.isFinite(parsedTimestamp) ? parsedTimestamp : Number.MAX_SAFE_INTEGER;
+      const existingTs = batchEarliestTimestamp.get(batchLabel);
+      if (existingTs === undefined || ts < existingTs) {
+        batchEarliestTimestamp.set(batchLabel, ts);
+      }
+    }
+
+    const orderedBatches = Array.from(responsesByBatch.keys()).sort((a, b) => {
+      const tsA = batchEarliestTimestamp.get(a) ?? Number.MAX_SAFE_INTEGER;
+      const tsB = batchEarliestTimestamp.get(b) ?? Number.MAX_SAFE_INTEGER;
+      if (tsA !== tsB) return tsA - tsB;
+      return a.localeCompare(b);
+    });
+
+    const progressionByMeasure: MeasureProgression[] = ALL_DVS.map((dv) => {
+      const points: ProgressionPoint[] = [];
+      const cumulativeFormalValues: number[] = [];
+      const cumulativeInformalValues: number[] = [];
+
+      for (let index = 0; index < orderedBatches.length; index += 1) {
+        const batchLabel = orderedBatches[index];
+        const batchRows = responsesByBatch.get(batchLabel) || [];
+
+        const formalBatchValues = batchRows
+          .filter((row) => row.assistant_type === 'formal')
+          .map((row) => toFiniteNumber(row[dv.key]))
+          .filter((value): value is number => value !== null);
+        const informalBatchValues = batchRows
+          .filter((row) => row.assistant_type === 'informal')
+          .map((row) => toFiniteNumber(row[dv.key]))
+          .filter((value): value is number => value !== null);
+
+        cumulativeFormalValues.push(...formalBatchValues);
+        cumulativeInformalValues.push(...informalBatchValues);
+
+        let pValue: number | null = null;
+        let significant: boolean | null = null;
+        let cohensD: number | null = null;
+        if (cumulativeFormalValues.length >= 2 && cumulativeInformalValues.length >= 2) {
+          const test = welchTTest(cumulativeFormalValues, cumulativeInformalValues);
+          pValue = test.pValue;
+          significant = pValue < 0.05;
+          cohensD = test.cohensD;
+        }
+
+        points.push({
+          batchLabel,
+          batchStep: index + 1,
+          stepLabel: `B${index + 1}`,
+          batchParticipants: formalBatchValues.length + informalBatchValues.length,
+          cumulativeParticipants: cumulativeFormalValues.length + cumulativeInformalValues.length,
+          formalN: cumulativeFormalValues.length,
+          informalN: cumulativeInformalValues.length,
+          pValue,
+          significant,
+          cohensD,
+        });
+      }
+
+      return { dv, points };
+    });
+
     return {
       formalResponses: formal,
       informalResponses: informal,
@@ -282,6 +402,7 @@ const StatisticalAnalysis = () => {
       hypothesisResults: hypResults,
       manipulationResults: manipResults,
       exploratoryResults: expResults,
+      progressionResults: progressionByMeasure,
     };
   }, [responses]);
 
@@ -829,10 +950,11 @@ run_moderation_analysis <- function(df) {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
             <TabsTrigger value="manipulation">Manipulation Check</TabsTrigger>
             <TabsTrigger value="exploratory">Exploratory</TabsTrigger>
+            <TabsTrigger value="progression">Progression</TabsTrigger>
             <TabsTrigger value="descriptive">Descriptive</TabsTrigger>
             <TabsTrigger value="assumptions">Assumptions</TabsTrigger>
           </TabsList>
@@ -1081,6 +1203,129 @@ run_moderation_analysis <- function(df) {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Progression Tab */}
+          <TabsContent value="progression" className="space-y-6">
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>Significance Progression by Batch</AlertTitle>
+              <AlertDescription>
+                Each chart shows how the p-value changes as batches are added cumulatively, alongside cumulative participant count.
+                The dashed line marks α = .05 (below line indicates significance).
+              </AlertDescription>
+            </Alert>
+
+            <div className="grid gap-6">
+              {progressionResults.map((measureProgression) => {
+                const lastPoint = measureProgression.points[measureProgression.points.length - 1];
+                const firstSignificant = measureProgression.points.find((point) => point.significant === true);
+                return (
+                  <Card key={measureProgression.dv.key}>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        {measureProgression.dv.label}
+                        <Badge variant="outline" className="text-xs">{measureProgression.dv.scale}</Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        {measureProgression.dv.description}
+                        {firstSignificant
+                          ? ` First reached significance at ${firstSignificant.batchLabel} (N=${firstSignificant.cumulativeParticipants}).`
+                          : ' No significant cumulative batch point yet.'}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {measureProgression.points.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No batch data available.</p>
+                      ) : (
+                        <div className="h-72 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart
+                              data={measureProgression.points}
+                              margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                              <XAxis dataKey="stepLabel" tickLine={false} axisLine={false} />
+                              <YAxis
+                                yAxisId="p"
+                                domain={[0, 1]}
+                                tickFormatter={(value) => Number(value).toFixed(2)}
+                                tickLine={false}
+                                axisLine={false}
+                                label={{ value: 'p-value', angle: -90, position: 'insideLeft' }}
+                              />
+                              <YAxis
+                                yAxisId="n"
+                                orientation="right"
+                                allowDecimals={false}
+                                tickLine={false}
+                                axisLine={false}
+                                label={{ value: 'Cumulative N', angle: 90, position: 'insideRight' }}
+                              />
+                              <RechartsTooltip
+                                labelFormatter={(_, payload) => {
+                                  const point = payload?.[0]?.payload as ProgressionPoint | undefined;
+                                  if (!point) return '';
+                                  return `${point.batchLabel} (step ${point.batchStep})`;
+                                }}
+                                formatter={(value, name) => {
+                                  if (name === 'p-value' && typeof value === 'number') {
+                                    return [formatP(value), 'p-value'];
+                                  }
+                                  if (name === 'Cumulative N') {
+                                    return [String(value), 'Cumulative N'];
+                                  }
+                                  return [String(value), String(name)];
+                                }}
+                                contentStyle={{ borderRadius: 8 }}
+                              />
+                              <Legend />
+                              <ReferenceLine
+                                yAxisId="p"
+                                y={0.05}
+                                stroke="#ef4444"
+                                strokeDasharray="4 4"
+                                label={{ value: 'α=.05', position: 'insideTopRight' }}
+                              />
+                              <Line
+                                yAxisId="p"
+                                type="monotone"
+                                dataKey="pValue"
+                                name="p-value"
+                                stroke="#2563eb"
+                                strokeWidth={2}
+                                connectNulls={false}
+                                dot={{ r: 3 }}
+                              />
+                              <Line
+                                yAxisId="n"
+                                type="monotone"
+                                dataKey="cumulativeParticipants"
+                                name="Cumulative N"
+                                stroke="#0f766e"
+                                strokeWidth={2}
+                                dot={{ r: 2 }}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+
+                      {lastPoint && (
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <Badge variant="secondary">Latest batch: {lastPoint.batchLabel}</Badge>
+                          <Badge variant="secondary">N={lastPoint.cumulativeParticipants}</Badge>
+                          <Badge variant={lastPoint.significant ? 'default' : 'outline'}>
+                            {lastPoint.significant ? 'Significant' : 'Not significant'}
+                          </Badge>
+                          {lastPoint.pValue !== null && <Badge variant="outline">p={formatP(lastPoint.pValue)}</Badge>}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           </TabsContent>
 
           {/* Descriptive Tab */}
