@@ -11,6 +11,74 @@ import { usePageTracking } from "@/hooks/usePageTracking";
 import { FeedbackProgressBar } from "@/components/FeedbackProgressBar";
 import { ExperimentProgress } from "@/components/ExperimentProgress";
 import { VoiceDictation, VoiceDictationRef } from "@/components/VoiceDictation";
+import { logNavigationEvent, runMicDiagnostics } from "@/lib/participant-telemetry";
+
+type FeedbackField = "voice_assistant_feedback" | "communication_style_feedback" | "experiment_feedback";
+type FeedbackInputMode = "typed" | "dictated";
+
+const FEEDBACK_FIELD_LABELS: Record<FeedbackField, string> = {
+  voice_assistant_feedback: "Voice Assistant Feedback",
+  communication_style_feedback: "Communication Style Feedback",
+  experiment_feedback: "Experiment Feedback",
+};
+
+const FEEDBACK_FIELDS: FeedbackField[] = [
+  "voice_assistant_feedback",
+  "communication_style_feedback",
+  "experiment_feedback",
+];
+
+const DICTATION_AUDIO_BUCKET = "dictation-audio";
+
+interface DictationRecorderState {
+  recorder: MediaRecorder | null;
+  stream: MediaStream | null;
+  chunks: Blob[];
+  mimeType: string;
+  attemptCount: number;
+  activeStartMs: number | null;
+  activeDurationMs: number;
+  uploaded: boolean;
+  stopPromise: Promise<void> | null;
+  resolveStop: (() => void) | null;
+}
+
+const createDictationRecorderState = (): DictationRecorderState => ({
+  recorder: null,
+  stream: null,
+  chunks: [],
+  mimeType: "audio/webm",
+  attemptCount: 0,
+  activeStartMs: null,
+  activeDurationMs: 0,
+  uploaded: false,
+  stopPromise: null,
+  resolveStop: null,
+});
+
+const createDictationRecorderStateMap = (): Record<FeedbackField, DictationRecorderState> => ({
+  voice_assistant_feedback: createDictationRecorderState(),
+  communication_style_feedback: createDictationRecorderState(),
+  experiment_feedback: createDictationRecorderState(),
+});
+
+const getSupportedAudioMimeType = () => {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return "";
+  }
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+  ];
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "";
+};
+
+const fileExtensionForMimeType = (mimeType: string) => {
+  if (mimeType.includes("mp4")) return "m4a";
+  if (mimeType.includes("ogg")) return "ogg";
+  return "webm";
+};
 
 const FeedbackQuestionnaire = () => {
   const navigate = useNavigate();
@@ -28,6 +96,8 @@ const FeedbackQuestionnaire = () => {
   const [interimExperience, setInterimExperience] = useState("");
   const [interimStyle, setInterimStyle] = useState("");
   const [interimExperiment, setInterimExperiment] = useState("");
+  const loggedInputModesRef = useRef<Set<string>>(new Set());
+  const dictationRecordersRef = useRef<Record<FeedbackField, DictationRecorderState>>(createDictationRecorderStateMap());
   
   // Refs to stop dictation when clicking on another field
   const experienceDictationRef = useRef<VoiceDictationRef>(null);
@@ -48,6 +118,328 @@ const FeedbackQuestionnaire = () => {
     styleDictationRef.current?.stopListening();
     experimentDictationRef.current?.stopListening();
   }, []);
+
+  const logFeedbackEvent = useCallback((eventType: string, metadata: Record<string, unknown> = {}) => {
+    if (!prolificId) return;
+    void logNavigationEvent({
+      prolificId,
+      callId,
+      pageName: "feedback",
+      eventType,
+      metadata,
+    });
+  }, [prolificId, callId]);
+
+  const buildRecordingStoragePath = useCallback((field: FeedbackField, mimeType: string) => {
+    const safeProlificId = prolificId || "unknown-prolific";
+    const safeCallId = callId || "unknown-call";
+    const ext = fileExtensionForMimeType(mimeType);
+    const randomSuffix = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    return `${safeProlificId}/${safeCallId}/${field}/${Date.now()}-${randomSuffix}.${ext}`;
+  }, [prolificId, callId]);
+
+  const ensureDictationRecorder = useCallback(async (field: FeedbackField) => {
+    const recorderState = dictationRecordersRef.current[field];
+    if (recorderState.recorder) {
+      return recorderState;
+    }
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      logFeedbackEvent("dictation_recording_error", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        errorCode: "media_recorder_unsupported",
+      });
+      return null;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const supportedMimeType = getSupportedAudioMimeType();
+      const recorder = supportedMimeType
+        ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+        : new MediaRecorder(stream);
+
+      recorderState.stream = stream;
+      recorderState.recorder = recorder;
+      recorderState.mimeType = supportedMimeType || recorder.mimeType || "audio/webm";
+      recorderState.chunks = [];
+      recorderState.uploaded = false;
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data && event.data.size > 0) {
+          recorderState.chunks.push(event.data);
+        }
+      };
+
+      recorder.onstart = () => {
+        recorderState.attemptCount += 1;
+        recorderState.activeStartMs = Date.now();
+      };
+
+      recorder.onresume = () => {
+        recorderState.activeStartMs = Date.now();
+      };
+
+      recorder.onpause = () => {
+        if (recorderState.activeStartMs) {
+          recorderState.activeDurationMs += Date.now() - recorderState.activeStartMs;
+          recorderState.activeStartMs = null;
+        }
+      };
+
+      recorder.onstop = () => {
+        if (recorderState.activeStartMs) {
+          recorderState.activeDurationMs += Date.now() - recorderState.activeStartMs;
+          recorderState.activeStartMs = null;
+        }
+        recorderState.resolveStop?.();
+        recorderState.resolveStop = null;
+        recorderState.stopPromise = null;
+      };
+
+      recorder.onerror = () => {
+        logFeedbackEvent("dictation_recording_error", {
+          field,
+          fieldLabel: FEEDBACK_FIELD_LABELS[field],
+          errorCode: "media_recorder_runtime_error",
+        });
+      };
+
+      return recorderState;
+    } catch (error) {
+      logFeedbackEvent("dictation_recording_error", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        errorCode: "media_recorder_setup_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }, [logFeedbackEvent]);
+
+  const startOrResumeDictationRecording = useCallback(async (field: FeedbackField) => {
+    if (isResearcherMode) return;
+
+    const recorderState = await ensureDictationRecorder(field);
+    if (!recorderState?.recorder) return;
+
+    const recorder = recorderState.recorder;
+    if (recorder.state === "inactive") {
+      recorder.start(1000);
+      return;
+    }
+    if (recorder.state === "paused") {
+      recorder.resume();
+    }
+  }, [ensureDictationRecorder, isResearcherMode]);
+
+  const pauseDictationRecording = useCallback((field: FeedbackField) => {
+    const recorder = dictationRecordersRef.current[field].recorder;
+    if (!recorder) return;
+    if (recorder.state === "recording") {
+      recorder.pause();
+    }
+  }, []);
+
+  const pauseOtherDictationRecordings = useCallback((activeField: FeedbackField) => {
+    FEEDBACK_FIELDS.forEach((field) => {
+      if (field !== activeField) {
+        pauseDictationRecording(field);
+      }
+    });
+  }, [pauseDictationRecording]);
+
+  const finalizeDictationRecording = useCallback(async (field: FeedbackField) => {
+    const recorderState = dictationRecordersRef.current[field];
+    const recorder = recorderState.recorder;
+
+    if (recorder && recorder.state !== "inactive") {
+      if (!recorderState.stopPromise) {
+        recorderState.stopPromise = new Promise<void>((resolve) => {
+          recorderState.resolveStop = resolve;
+        });
+      }
+      recorder.stop();
+      await recorderState.stopPromise;
+    }
+
+    if (recorderState.stream) {
+      recorderState.stream.getTracks().forEach((track) => track.stop());
+      recorderState.stream = null;
+    }
+
+    recorderState.recorder = null;
+
+    if (!recorderState.chunks.length && recorderState.attemptCount === 0) {
+      return null;
+    }
+
+    const blob = new Blob(recorderState.chunks, { type: recorderState.mimeType || "audio/webm" });
+    return {
+      blob,
+      mimeType: recorderState.mimeType || "audio/webm",
+      attemptCount: recorderState.attemptCount,
+      durationMs: Math.max(0, Math.round(recorderState.activeDurationMs)),
+    };
+  }, []);
+
+  const persistDictationRecordings = useCallback(async () => {
+    if (!prolificId) return;
+
+    for (const field of FEEDBACK_FIELDS) {
+      const recorderState = dictationRecordersRef.current[field];
+      if (recorderState.uploaded) continue;
+
+      const finalized = await finalizeDictationRecording(field);
+      if (!finalized) continue;
+
+      const { blob, mimeType, attemptCount, durationMs } = finalized;
+      const storagePath = buildRecordingStoragePath(field, mimeType);
+      const { error: uploadError } = await supabase.storage
+        .from(DICTATION_AUDIO_BUCKET)
+        .upload(storagePath, blob, {
+          contentType: mimeType,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        logFeedbackEvent("dictation_recording_upload_error", {
+          field,
+          fieldLabel: FEEDBACK_FIELD_LABELS[field],
+          message: uploadError.message,
+        });
+        continue;
+      }
+
+      const { error: insertError } = await supabase.from("dictation_recordings" as never).insert({
+        prolific_id: prolificId,
+        call_id: callId || null,
+        page_name: "feedback",
+        field,
+        mime_type: mimeType,
+        storage_bucket: DICTATION_AUDIO_BUCKET,
+        storage_path: storagePath,
+        file_size_bytes: blob.size,
+        duration_ms: durationMs,
+        attempt_count: attemptCount,
+      });
+
+      if (insertError) {
+        logFeedbackEvent("dictation_recording_upload_error", {
+          field,
+          fieldLabel: FEEDBACK_FIELD_LABELS[field],
+          message: insertError.message,
+          stage: "metadata_insert",
+        });
+        continue;
+      }
+
+      recorderState.uploaded = true;
+      logFeedbackEvent("dictation_recording_uploaded", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        attemptCount,
+        fileSizeBytes: blob.size,
+        durationMs,
+      });
+    }
+  }, [buildRecordingStoragePath, callId, finalizeDictationRecording, logFeedbackEvent, prolificId]);
+
+  const markFeedbackInputMode = useCallback((field: FeedbackField, mode: FeedbackInputMode) => {
+    const dedupeKey = `${field}:${mode}`;
+    if (loggedInputModesRef.current.has(dedupeKey)) return;
+    loggedInputModesRef.current.add(dedupeKey);
+    logFeedbackEvent("feedback_input_mode", {
+      field,
+      fieldLabel: FEEDBACK_FIELD_LABELS[field],
+      mode,
+    });
+  }, [logFeedbackEvent]);
+
+  const runDictationMicPrecheck = useCallback(async (field: FeedbackField) => {
+    if (isResearcherMode) return true;
+
+    const micDiagnostics = await runMicDiagnostics({ sampleMs: 900 });
+    logFeedbackEvent("mic_permission", {
+      context: "dictation",
+      field,
+      fieldLabel: FEEDBACK_FIELD_LABELS[field],
+      state: micDiagnostics.permissionState,
+      source: micDiagnostics.permissionSource,
+      reasonCode: micDiagnostics.reasonCode || "none",
+      getUserMediaDurationMs: micDiagnostics.getUserMediaDurationMs,
+      inputDeviceCount: micDiagnostics.inputDeviceCount,
+      trackEnabled: micDiagnostics.trackEnabled,
+      trackMuted: micDiagnostics.trackMuted,
+      trackReadyState: micDiagnostics.trackReadyState,
+      errorName: micDiagnostics.errorName,
+      errorMessage: micDiagnostics.errorMessage,
+    });
+
+    if (micDiagnostics.audioDetected !== "unknown") {
+      logFeedbackEvent("mic_audio_check", {
+        context: "dictation",
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        detected: micDiagnostics.audioDetected,
+        peakRms: micDiagnostics.peakRms,
+        sampleMs: micDiagnostics.sampleMs,
+        reasonCode: micDiagnostics.reasonCode || "none",
+      });
+    }
+
+    const isPermissionBlocked = micDiagnostics.permissionState === "denied";
+    const isMicAccessError = micDiagnostics.permissionState === "error" || micDiagnostics.permissionState === "unsupported";
+    if (isPermissionBlocked || isMicAccessError) {
+      logFeedbackEvent("dictation_start_blocked", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        reasonCode: micDiagnostics.reasonCode || "mic_access_error",
+        permissionState: micDiagnostics.permissionState,
+      });
+      toast({
+        title: "Microphone Access Needed",
+        description: "Please allow microphone access in your browser to use dictation.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    return true;
+  }, [isResearcherMode, logFeedbackEvent, toast]);
+
+  const handleDictationListeningChange = useCallback((field: FeedbackField, isListeningNow: boolean, reason?: string) => {
+    logFeedbackEvent(isListeningNow ? "dictation_started" : "dictation_stopped", {
+      field,
+      fieldLabel: FEEDBACK_FIELD_LABELS[field],
+      reason: reason || null,
+    });
+    if (isListeningNow) {
+      markFeedbackInputMode(field, "dictated");
+      pauseOtherDictationRecordings(field);
+      void startOrResumeDictationRecording(field);
+      return;
+    }
+    pauseDictationRecording(field);
+  }, [
+    logFeedbackEvent,
+    markFeedbackInputMode,
+    pauseDictationRecording,
+    pauseOtherDictationRecordings,
+    startOrResumeDictationRecording,
+  ]);
+
+  const handleDictationError = useCallback((field: FeedbackField, errorCode: string, message?: string) => {
+    logFeedbackEvent("dictation_error", {
+      field,
+      fieldLabel: FEEDBACK_FIELD_LABELS[field],
+      errorCode,
+      message: message || null,
+    });
+    pauseDictationRecording(field);
+  }, [logFeedbackEvent, pauseDictationRecording]);
 
   const { trackBackButtonClick } = usePageTracking({
     pageName: "feedback",
@@ -172,7 +564,41 @@ const FeedbackQuestionnaire = () => {
     checkAccess();
   }, [navigate, location, toast, isResearcherMode]);
 
+  useEffect(() => {
+    loggedInputModesRef.current.clear();
+    FEEDBACK_FIELDS.forEach((field) => {
+      const state = dictationRecordersRef.current[field];
+      try {
+        if (state.recorder && state.recorder.state !== "inactive") {
+          state.recorder.stop();
+        }
+      } catch {
+        // ignore reset cleanup errors
+      }
+      state.stream?.getTracks().forEach((track) => track.stop());
+    });
+    dictationRecordersRef.current = createDictationRecorderStateMap();
+  }, [prolificId, callId]);
+
+  useEffect(() => {
+    return () => {
+      FEEDBACK_FIELDS.forEach((field) => {
+        const state = dictationRecordersRef.current[field];
+        try {
+          if (state.recorder && state.recorder.state !== "inactive") {
+            state.recorder.stop();
+          }
+        } catch {
+          // ignore stop errors during unmount cleanup
+        }
+        state.stream?.getTracks().forEach((track) => track.stop());
+      });
+    };
+  }, []);
+
   const handleBackClick = async () => {
+    stopAllDictation();
+    await persistDictationRecordings();
     await trackBackButtonClick({
       voiceAssistantExperienceWordCount: countWords(voiceAssistantExperience),
       communicationStyleWordCount: countWords(communicationStyleFeedback),
@@ -312,6 +738,8 @@ const FeedbackQuestionnaire = () => {
         return;
       }
 
+      await persistDictationRecordings();
+
       sessionStorage.removeItem("petsData");
       sessionStorage.removeItem("tiasData");
       sessionStorage.removeItem("formalityData");
@@ -401,6 +829,7 @@ const FeedbackQuestionnaire = () => {
                     // Only update if not currently showing interim text
                     if (!interimExperience && e.target.value.length <= MAX_CHARS) {
                       setVoiceAssistantExperience(e.target.value);
+                      markFeedbackInputMode("voice_assistant_feedback", "typed");
                     }
                   }}
                   onFocus={() => {
@@ -420,6 +849,7 @@ const FeedbackQuestionnaire = () => {
                   <VoiceDictation
                     ref={experienceDictationRef}
                     onTranscript={(text) => {
+                      markFeedbackInputMode("voice_assistant_feedback", "dictated");
                       setVoiceAssistantExperience((prev) => {
                         const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
                         return newValue.length <= MAX_CHARS ? newValue : prev;
@@ -433,6 +863,9 @@ const FeedbackQuestionnaire = () => {
                         setInterimExperience("");
                       }
                     }}
+                    onBeforeStart={() => runDictationMicPrecheck("voice_assistant_feedback")}
+                    onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("voice_assistant_feedback", isListeningNow, reason)}
+                    onDictationError={(errorCode, message) => handleDictationError("voice_assistant_feedback", errorCode, message)}
                     disabled={isSubmitting}
                   />
                 </div>
@@ -471,6 +904,7 @@ const FeedbackQuestionnaire = () => {
                   onChange={(e) => {
                     if (!interimStyle && e.target.value.length <= MAX_CHARS) {
                       setCommunicationStyleFeedback(e.target.value);
+                      markFeedbackInputMode("communication_style_feedback", "typed");
                     }
                   }}
                   onFocus={() => {
@@ -489,6 +923,7 @@ const FeedbackQuestionnaire = () => {
                   <VoiceDictation
                     ref={styleDictationRef}
                     onTranscript={(text) => {
+                      markFeedbackInputMode("communication_style_feedback", "dictated");
                       setCommunicationStyleFeedback((prev) => {
                         const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
                         return newValue.length <= MAX_CHARS ? newValue : prev;
@@ -502,6 +937,9 @@ const FeedbackQuestionnaire = () => {
                         setInterimStyle("");
                       }
                     }}
+                    onBeforeStart={() => runDictationMicPrecheck("communication_style_feedback")}
+                    onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("communication_style_feedback", isListeningNow, reason)}
+                    onDictationError={(errorCode, message) => handleDictationError("communication_style_feedback", errorCode, message)}
                     disabled={isSubmitting}
                   />
                 </div>
@@ -541,6 +979,7 @@ const FeedbackQuestionnaire = () => {
                   onChange={(e) => {
                     if (!interimExperiment && e.target.value.length <= MAX_CHARS) {
                       setExperimentFeedback(e.target.value);
+                      markFeedbackInputMode("experiment_feedback", "typed");
                     }
                   }}
                   onFocus={() => {
@@ -559,6 +998,7 @@ const FeedbackQuestionnaire = () => {
                   <VoiceDictation
                     ref={experimentDictationRef}
                     onTranscript={(text) => {
+                      markFeedbackInputMode("experiment_feedback", "dictated");
                       setExperimentFeedback((prev) => {
                         const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
                         return newValue.length <= MAX_CHARS ? newValue : prev;
@@ -572,6 +1012,9 @@ const FeedbackQuestionnaire = () => {
                         setInterimExperiment("");
                       }
                     }}
+                    onBeforeStart={() => runDictationMicPrecheck("experiment_feedback")}
+                    onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("experiment_feedback", isListeningNow, reason)}
+                    onDictationError={(errorCode, message) => handleDictationError("experiment_feedback", errorCode, message)}
                     disabled={isSubmitting}
                   />
                 </div>

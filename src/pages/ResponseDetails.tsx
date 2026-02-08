@@ -53,6 +53,37 @@ interface ReplayMarker {
   tone: MarkerTone;
 }
 
+type FeedbackFieldKey = "voice_assistant_feedback" | "communication_style_feedback" | "experiment_feedback";
+type FeedbackInputSourceState = Record<FeedbackFieldKey, { typed: boolean; dictated: boolean }>;
+type DictationRecordingsByField = Record<FeedbackFieldKey, DictationRecording[]>;
+
+interface DictationRecording {
+  id: string;
+  field: FeedbackFieldKey;
+  createdAt: string;
+  attemptCount: number;
+  durationMs: number | null;
+  playbackUrl: string | null;
+}
+
+const FEEDBACK_FIELD_LABELS: Record<FeedbackFieldKey, string> = {
+  voice_assistant_feedback: "Voice Assistant Feedback",
+  communication_style_feedback: "Communication Style Feedback",
+  experiment_feedback: "Experiment Feedback",
+};
+
+const createEmptyFeedbackInputSourceState = (): FeedbackInputSourceState => ({
+  voice_assistant_feedback: { typed: false, dictated: false },
+  communication_style_feedback: { typed: false, dictated: false },
+  experiment_feedback: { typed: false, dictated: false },
+});
+
+const createEmptyDictationRecordingsByField = (): DictationRecordingsByField => ({
+  voice_assistant_feedback: [],
+  communication_style_feedback: [],
+  experiment_feedback: [],
+});
+
 interface ExperimentResponseWithDemographics extends Tables<'experiment_responses'> {
   demographics?: Demographics | null;
 }
@@ -213,6 +244,18 @@ const formatDuration = (ms: number): string => {
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const isFeedbackField = (value: unknown): value is FeedbackFieldKey => (
+  typeof value === "string"
+  && value in FEEDBACK_FIELD_LABELS
+);
+
+const formatFeedbackInputSource = (typed: boolean, dictated: boolean): string => {
+  if (typed && dictated) return "Typed + Dictated";
+  if (typed) return "Typed";
+  if (dictated) return "Dictated";
+  return "Not captured";
 };
 
 const SessionReplayPanel = ({
@@ -600,7 +643,10 @@ const ResponseDetails = () => {
   const [journeyDiagnostics, setJourneyDiagnostics] = useState<{
     practice: { micPermission?: string | null; micAudio?: string | null };
     main: { micPermission?: string | null; micAudio?: string | null };
+    feedback: { micPermission?: string | null; micAudio?: string | null };
   } | null>(null);
+  const [feedbackInputSources, setFeedbackInputSources] = useState<FeedbackInputSourceState>(createEmptyFeedbackInputSourceState());
+  const [dictationRecordingsByField, setDictationRecordingsByField] = useState<DictationRecordingsByField>(createEmptyDictationRecordingsByField());
   const [replayEvents, setReplayEvents] = useState<ReplayEvent[]>([]);
   const [replayMarkers, setReplayMarkers] = useState<ReplayMarker[]>([]);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
@@ -611,6 +657,8 @@ const ResponseDetails = () => {
       
       setIsLoading(true);
       setJourneyDiagnostics(null);
+      setFeedbackInputSources(createEmptyFeedbackInputSourceState());
+      setDictationRecordingsByField(createEmptyDictationRecordingsByField());
       setReplayEvents([]);
       setReplayMarkers([]);
       try {
@@ -684,6 +732,12 @@ const ResponseDetails = () => {
               'call_quality_warning',
               'call_error',
               'assistant_audio_timeout',
+              'dictation_started',
+              'dictation_stopped',
+              'dictation_error',
+              'dictation_start_blocked',
+              'dictation_recording_uploaded',
+              'feedback_input_mode',
             ])
             .order('created_at', { ascending: true }),
           supabase
@@ -725,10 +779,17 @@ const ResponseDetails = () => {
           const diagnostics = {
             practice: { micPermission: null, micAudio: null },
             main: { micPermission: null, micAudio: null },
+            feedback: { micPermission: null, micAudio: null },
           };
+          const nextFeedbackInputSources = createEmptyFeedbackInputSourceState();
           const markers: ReplayMarker[] = [];
 
-          const pageLabel = (pageName: string) => pageName === 'practice-conversation' ? 'Practice' : 'Main';
+          const pageLabel = (pageName: string) => {
+            if (pageName === 'practice-conversation') return 'Practice';
+            if (pageName === 'voice-conversation') return 'Main';
+            if (pageName === 'feedback') return 'Feedback';
+            return pageName;
+          };
 
           navigationEvents.forEach((event: NavigationEvent, index: number) => {
             const pageKey = event.page_name === 'practice-conversation'
@@ -736,14 +797,29 @@ const ResponseDetails = () => {
               : event.page_name === 'voice-conversation'
                 ? 'main'
                 : null;
-            if (!pageKey) return;
             const metadata = (event.metadata || {}) as Record<string, unknown>;
 
-            if (event.event_type === 'mic_permission') {
+            const isFeedbackDictationEvent = event.page_name === 'feedback' && metadata.context === 'dictation';
+
+            if (pageKey && event.event_type === 'mic_permission') {
               diagnostics[pageKey].micPermission = formatMicPermission(metadata.state as string | null);
             }
-            if (event.event_type === 'mic_audio_check') {
+            if (pageKey && event.event_type === 'mic_audio_check') {
               diagnostics[pageKey].micAudio = formatMicAudio(metadata.detected);
+            }
+            if (isFeedbackDictationEvent && event.event_type === 'mic_permission') {
+              diagnostics.feedback.micPermission = formatMicPermission(metadata.state as string | null);
+            }
+            if (isFeedbackDictationEvent && event.event_type === 'mic_audio_check') {
+              diagnostics.feedback.micAudio = formatMicAudio(metadata.detected);
+            }
+
+            if (event.event_type === 'feedback_input_mode') {
+              const mode = metadata.mode;
+              const field = metadata.field;
+              if (isFeedbackField(field) && (mode === 'typed' || mode === 'dictated')) {
+                nextFeedbackInputSources[field][mode] = true;
+              }
             }
 
             if (!replayStartTimestamp) return;
@@ -754,16 +830,23 @@ const ResponseDetails = () => {
             const timeMs = Math.max(0, replayDurationMs > 0 ? Math.min(replayDurationMs, timeMsRaw) : timeMsRaw);
 
             const labelPrefix = pageLabel(event.page_name);
+            const feedbackFieldLabel = isFeedbackField(metadata.field) ? FEEDBACK_FIELD_LABELS[metadata.field] : 'Feedback';
             let label: string | null = null;
             let tone: MarkerTone = 'info';
 
             if (event.event_type === 'mic_permission') {
               const state = formatMicPermission(metadata.state as string | null) || 'Unknown';
-              label = `${labelPrefix}: Mic permission ${state}`;
+              const isDictationContext = event.page_name === 'feedback' || metadata.context === 'dictation';
+              label = isDictationContext
+                ? `${labelPrefix}: ${feedbackFieldLabel} dictation mic permission ${state}`
+                : `${labelPrefix}: Mic permission ${state}`;
               tone = state === 'Denied' ? 'error' : state === 'Granted' ? 'success' : 'info';
             } else if (event.event_type === 'mic_audio_check') {
               const detected = formatMicAudio(metadata.detected) || 'Unknown';
-              label = `${labelPrefix}: Mic audio ${detected}`;
+              const isDictationContext = event.page_name === 'feedback' || metadata.context === 'dictation';
+              label = isDictationContext
+                ? `${labelPrefix}: ${feedbackFieldLabel} dictation audio ${detected}`
+                : `${labelPrefix}: Mic audio ${detected}`;
               tone = detected === 'Not detected' || detected === 'Error' ? 'warning' : 'success';
             } else if (event.event_type === 'call_connected') {
               label = `${labelPrefix}: Call connected`;
@@ -780,6 +863,25 @@ const ResponseDetails = () => {
             } else if (event.event_type === 'assistant_audio_timeout') {
               label = `${labelPrefix}: Assistant audio timeout`;
               tone = 'warning';
+            } else if (event.event_type === 'dictation_started') {
+              label = `${labelPrefix}: ${feedbackFieldLabel} dictation started`;
+              tone = 'info';
+            } else if (event.event_type === 'dictation_stopped') {
+              label = `${labelPrefix}: ${feedbackFieldLabel} dictation stopped`;
+              tone = 'info';
+            } else if (event.event_type === 'dictation_error' || event.event_type === 'dictation_start_blocked') {
+              label = `${labelPrefix}: ${feedbackFieldLabel} dictation issue`;
+              tone = 'warning';
+            } else if (event.event_type === 'dictation_recording_uploaded') {
+              label = `${labelPrefix}: ${feedbackFieldLabel} dictation audio saved`;
+              tone = 'success';
+            } else if (event.event_type === 'feedback_input_mode') {
+              if (metadata.mode === 'typed') {
+                label = `${labelPrefix}: ${feedbackFieldLabel} typed`;
+              } else if (metadata.mode === 'dictated') {
+                label = `${labelPrefix}: ${feedbackFieldLabel} dictated`;
+              }
+              tone = 'info';
             }
 
             if (label) {
@@ -793,7 +895,64 @@ const ResponseDetails = () => {
           });
 
           setJourneyDiagnostics(diagnostics);
+          setFeedbackInputSources(nextFeedbackInputSources);
           setReplayMarkers(markers.slice(0, 80));
+        }
+
+        try {
+          const { data: dictationRows, error: dictationError } = await supabase
+            .from('dictation_recordings' as never)
+            .select('id, prolific_id, call_id, field, storage_bucket, storage_path, mime_type, duration_ms, attempt_count, created_at')
+            .eq('prolific_id', response.prolific_id)
+            .order('created_at', { ascending: true });
+
+          if (dictationError) {
+            console.warn('Unable to load dictation recordings:', dictationError.message);
+          } else if (Array.isArray(dictationRows)) {
+            const nextRecordings = createEmptyDictationRecordingsByField();
+            const filteredRows = dictationRows.filter((row: Record<string, unknown>) => {
+              if (!response.call_id) return true;
+              const rowCallId = typeof row.call_id === 'string' ? row.call_id : null;
+              return rowCallId === null || rowCallId === response.call_id;
+            });
+
+            const resolvedRows = await Promise.all(filteredRows.map(async (row: Record<string, unknown>) => {
+              const field = row.field;
+              if (!isFeedbackField(field)) return null;
+
+              const storageBucket = typeof row.storage_bucket === 'string' && row.storage_bucket
+                ? row.storage_bucket
+                : 'dictation-audio';
+              const storagePath = typeof row.storage_path === 'string' ? row.storage_path : '';
+
+              let playbackUrl: string | null = null;
+              if (storagePath) {
+                const { data: signedData, error: signedError } = await supabase.storage
+                  .from(storageBucket)
+                  .createSignedUrl(storagePath, 60 * 60);
+                if (!signedError) {
+                  playbackUrl = signedData?.signedUrl || null;
+                }
+              }
+
+              return {
+                id: typeof row.id === 'string' ? row.id : `${field}-${row.created_at}`,
+                field,
+                createdAt: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+                attemptCount: typeof row.attempt_count === 'number' ? row.attempt_count : 1,
+                durationMs: typeof row.duration_ms === 'number' ? row.duration_ms : null,
+                playbackUrl,
+              } as DictationRecording;
+            }));
+
+            resolvedRows.forEach((recording) => {
+              if (!recording) return;
+              nextRecordings[recording.field].push(recording);
+            });
+            setDictationRecordingsByField(nextRecordings);
+          }
+        } catch (dictationLoadError) {
+          console.warn('Unexpected error loading dictation recordings:', dictationLoadError);
         }
 
         setData({ ...response, demographics });
@@ -827,6 +986,32 @@ const ResponseDetails = () => {
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  };
+
+  const renderDictationRecordings = (field: FeedbackFieldKey) => {
+    const recordings = dictationRecordingsByField[field];
+    if (!recordings.length) {
+      return <p className="mt-2 text-xs italic text-muted-foreground">No dictation audio recorded.</p>;
+    }
+    return (
+      <div className="mt-2 space-y-2">
+        {recordings.map((recording, idx) => (
+          <div key={recording.id} className="rounded border bg-background p-2">
+            <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>Recording {idx + 1}</span>
+              <span>Segments: {recording.attemptCount}</span>
+              <span>Duration: {recording.durationMs != null ? formatDuration(recording.durationMs) : "Unknown"}</span>
+              <span>{new Date(recording.createdAt).toLocaleString()}</span>
+            </div>
+            {recording.playbackUrl ? (
+              <audio controls preload="none" src={recording.playbackUrl} className="w-full" />
+            ) : (
+              <p className="text-xs italic text-muted-foreground">Audio file exists, but URL could not be resolved.</p>
+            )}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -950,6 +1135,14 @@ const ResponseDetails = () => {
                 <p className="text-sm">
                   {formatMicSummary(journeyDiagnostics?.practice?.micAudio, journeyDiagnostics?.main?.micAudio)}
                 </p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Feedback Dictation Mic</label>
+                <p className="text-sm">{journeyDiagnostics?.feedback?.micPermission || "Unknown"}</p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Feedback Dictation Audio</label>
+                <p className="text-sm">{journeyDiagnostics?.feedback?.micAudio || "Unknown"}</p>
               </div>
             </div>
           </CardContent>
@@ -1553,22 +1746,49 @@ const ResponseDetails = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Voice Assistant Feedback</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium text-muted-foreground">Voice Assistant Feedback</label>
+                  <Badge variant="outline">
+                    Input: {formatFeedbackInputSource(
+                      feedbackInputSources.voice_assistant_feedback.typed,
+                      feedbackInputSources.voice_assistant_feedback.dictated
+                    )}
+                  </Badge>
+                </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
                   {data.voice_assistant_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}
                 </p>
+                {renderDictationRecordings("voice_assistant_feedback")}
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Communication Style Feedback</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium text-muted-foreground">Communication Style Feedback</label>
+                  <Badge variant="outline">
+                    Input: {formatFeedbackInputSource(
+                      feedbackInputSources.communication_style_feedback.typed,
+                      feedbackInputSources.communication_style_feedback.dictated
+                    )}
+                  </Badge>
+                </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
                   {data.communication_style_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}
                 </p>
+                {renderDictationRecordings("communication_style_feedback")}
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Experiment Feedback</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium text-muted-foreground">Experiment Feedback</label>
+                  <Badge variant="outline">
+                    Input: {formatFeedbackInputSource(
+                      feedbackInputSources.experiment_feedback.typed,
+                      feedbackInputSources.experiment_feedback.dictated
+                    )}
+                  </Badge>
+                </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
                   {data.experiment_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}
                 </p>
+                {renderDictationRecordings("experiment_feedback")}
               </div>
             </CardContent>
           </Card>
