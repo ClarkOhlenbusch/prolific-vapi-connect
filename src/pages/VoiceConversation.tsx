@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Vapi from "@vapi-ai/web";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -77,7 +78,7 @@ const VoiceConversation = () => {
       callId: callIdRef.current,
       pageName,
       eventType,
-      metadata,
+      metadata: metadata as Json,
     });
   }, [prolificId]);
 

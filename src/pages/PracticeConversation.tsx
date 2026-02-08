@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import {
   collectClientContext,
@@ -62,7 +63,7 @@ const PracticeConversation = () => {
       callId: callIdRef.current,
       pageName,
       eventType,
-      metadata,
+      metadata: metadata as Json,
     });
   }, [prolificId]);
 

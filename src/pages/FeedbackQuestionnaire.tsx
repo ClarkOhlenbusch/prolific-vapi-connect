@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -126,7 +127,7 @@ const FeedbackQuestionnaire = () => {
       callId,
       pageName: "feedback",
       eventType,
-      metadata,
+      metadata: metadata as Json,
     });
   }, [prolificId, callId]);
 
@@ -324,7 +325,7 @@ const FeedbackQuestionnaire = () => {
         file_size_bytes: blob.size,
         duration_ms: durationMs,
         attempt_count: attemptCount,
-      });
+      } as never);
 
       if (insertError) {
         logFeedbackEvent("dictation_recording_upload_error", {
