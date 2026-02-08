@@ -1,130 +1,128 @@
 
-## Guest Mode for Researcher Dashboard
+# Plan: Dictation Audio Storage & Build Error Fixes
 
-This plan adds a "View as Guest" option on the researcher login page that allows anyone to explore the dashboard with realistic dummy data - no credentials required.
+## Summary
+This plan addresses two interconnected issues:
+1. **Build errors** caused by TypeScript type mismatches with the `Json` type
+2. **New database infrastructure** for storing dictation audio recordings
 
-### Overview
+The build errors exist because the code already references a `dictation_recordings` table and `dictation-audio` storage bucket that don't exist yet in the database, and there are TypeScript type casting issues with the `metadata` field.
 
-| Aspect | Description |
-|--------|-------------|
-| Entry Point | New "View as Guest" button on login page |
-| Authentication | No real auth - uses local state to flag guest mode |
-| Data Source | Static dummy data instead of database queries |
-| Permissions | Read-only viewer experience (no downloads, no admin features) |
+---
 
-### User Experience
+## Technical Details
 
-1. **Login Page**: Add a prominent "View as Guest" button below the sign-in form
-2. **Dashboard Header**: Show "Guest" badge instead of email, with "Exit Guest Mode" button
-3. **Data Display**: All tabs show realistic dummy data matching the real data structure
-4. **Restricted Actions**: Downloads, archiving, and admin features are hidden/disabled
+### Part 1: Database Migration
 
-### Architecture
+Create the `dictation_recordings` table and `dictation-audio` storage bucket with appropriate RLS policies.
 
-```text
-+------------------+     +-----------------------+
-| ResearcherLogin  |     | ResearcherAuthContext |
-|                  |     |                       |
-| [View as Guest]--+---->| isGuestMode: boolean  |
-|                  |     | enterGuestMode()      |
-+------------------+     | exitGuestMode()       |
-                         +-----------------------+
-                                    |
-                    +---------------+---------------+
-                    |               |               |
-              DataSummary   UnifiedTable    TimeAnalysis
-                    |               |               |
-              +-----+-----+   +-----+-----+   +-----+-----+
-              | if guest: |   | if guest: |   | if guest: |
-              | use dummy |   | use dummy |   | use dummy |
-              +-----------+   +-----------+   +-----------+
+**SQL Migration:**
+
+```sql
+-- 1. Create the dictation_recordings table
+CREATE TABLE public.dictation_recordings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  prolific_id text NOT NULL,
+  call_id text NULL,
+  page_name text NOT NULL,
+  field text NOT NULL,
+  mime_type text NOT NULL,
+  storage_bucket text NOT NULL DEFAULT 'dictation-audio',
+  storage_path text NOT NULL,
+  file_size_bytes integer NULL,
+  duration_ms integer NULL,
+  attempt_count integer NOT NULL DEFAULT 1
+);
+
+-- 2. Create indexes for efficient querying
+CREATE INDEX idx_dictation_recordings_prolific_created 
+  ON public.dictation_recordings (prolific_id, created_at DESC);
+CREATE INDEX idx_dictation_recordings_call_id 
+  ON public.dictation_recordings (call_id);
+
+-- 3. Enable Row Level Security
+ALTER TABLE public.dictation_recordings ENABLE ROW LEVEL SECURITY;
+
+-- 4. RLS policies (same pattern as navigation_events)
+CREATE POLICY "Anyone can insert dictation recordings"
+  ON public.dictation_recordings FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY "Researchers can view dictation recordings"
+  ON public.dictation_recordings FOR SELECT
+  USING (is_researcher(auth.uid()));
+
+CREATE POLICY "No deletes allowed on dictation recordings"
+  ON public.dictation_recordings FOR DELETE
+  USING (false);
+
+CREATE POLICY "No updates allowed on dictation recordings"
+  ON public.dictation_recordings FOR UPDATE
+  USING (false);
+
+-- 5. Create storage bucket
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('dictation-audio', 'dictation-audio', false);
+
+-- 6. Storage policies for dictation-audio bucket
+CREATE POLICY "Anyone can upload dictation audio"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'dictation-audio');
+
+CREATE POLICY "Anyone can read dictation audio"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'dictation-audio');
 ```
 
-### Dummy Data Samples
+### Part 2: TypeScript Fixes
 
-The guest mode will display:
-- **42 responses** (24 formal, 18 informal)
-- **3 batches**: "Pilot Study", "Main Collection", "Follow-up"
-- **Realistic scores**: PETS ~45-55, TIAS ~50-65, Formality ~3.5-5.5
-- **Time data**: 15 pages with realistic durations (e.g., Demographics: 45s, Voice Conversation: 180s)
-- **5 no-consent feedback** entries with sample reasons
+Fix the type casting issues in four files where `Record<string, unknown>` or complex types are passed where `Json` is expected.
 
-### Implementation Details
+**File 1: `src/hooks/useSessionReplayTracking.ts` (line 209)**
+- Issue: `rrwebEvents: chunk` is `eventWithTime[]` which isn't assignable to `Json`
+- Fix: Cast `chunk` as `unknown as Json[]` to satisfy the type checker
 
-#### 1. Auth Context Changes
-Add guest mode state and methods to `ResearcherAuthContext`:
-- `isGuestMode` boolean flag
-- `enterGuestMode()` function (sets flag, navigates to dashboard)
-- `exitGuestMode()` function (clears flag, navigates to login)
-- Modify `isAuthenticated` to return true when guest mode is active
+**File 2: `src/pages/FeedbackQuestionnaire.tsx` (line 129)**
+- Issue: `metadata: Record<string, unknown>` isn't directly assignable to `Json`
+- Fix: Cast `metadata as Json` in the function call
 
-#### 2. Login Page Updates
-Add "View as Guest" button in `ResearcherLogin.tsx`:
-- Styled as a secondary/outline button below the main form
-- Descriptive text: "Explore the dashboard with sample data"
-- Calls `enterGuestMode()` on click
+**File 3: `src/pages/FeedbackQuestionnaire.tsx` (line 317)**
+- Issue: Inserting into `dictation_recordings` which doesn't exist in types yet
+- Fix: The table will exist after migration; keep the `as never` cast until types regenerate
 
-#### 3. Protected Route Adjustment
-Modify `ResearcherProtectedRoute` to allow guest access:
-- Check `isGuestMode` alongside `isAuthenticated`
-- Block admin-only routes for guests (user management, settings)
+**File 4: `src/pages/PracticeConversation.tsx` (line 65)**
+- Issue: `metadata: Record<string, unknown>` passed to `logNavigationEvent`
+- Fix: Cast `metadata as Json`
 
-#### 4. Dashboard Header Updates
-Update `ResearcherDashboard` header for guest mode:
-- Show "Guest • Demo Mode" instead of email
-- Replace logout button with "Exit Demo" button
-- Hide admin-specific navigation buttons
+**File 5: `src/pages/VoiceConversation.tsx` (line 80)**
+- Issue: Same `Record<string, unknown>` to `Json` mismatch
+- Fix: Cast `metadata as Json`
 
-#### 5. Create Dummy Data Provider
-New file `src/lib/guest-dummy-data.ts` containing:
-- Realistic participant responses (42 entries)
-- Batch configurations (3 batches)
-- Time analysis data (15 pages)
-- No-consent feedback (5 entries)
-- Activity logs (10 sample entries)
-- Formality calculations (sample scores)
+---
 
-#### 6. Component Updates
-Each dashboard component checks `isGuestMode` and uses dummy data:
+## Implementation Steps
 
-| Component | Changes |
-|-----------|---------|
-| `DataSummary` | Return dummy stats instead of fetching |
-| `UnifiedParticipantsTable` | Use dummy participants array |
-| `TimeAnalysis` | Use dummy navigation events |
-| `FormalityCalculator` | Show sample calculations |
-| `PromptLab` | Display sample prompts (read-only) |
-| `NoConsentFeedbackTable` | Use dummy feedback array |
-| `ActivityLogsTable` | Show sample activity (hidden for guests anyway) |
+1. **Run the database migration** to create:
+   - `dictation_recordings` table with indexes
+   - RLS policies matching `navigation_events` pattern
+   - `dictation-audio` storage bucket
+   - Storage object policies for upload and read
 
-#### 7. Restricted Features for Guests
-- Download/Export buttons: Hidden
-- Archive functionality: Hidden
-- Batch management: Read-only (no starring, creating)
-- User management: Route blocked
-- Experiment settings: Route blocked
-- Activity logs: Tab hidden
+2. **Fix TypeScript errors** in the four affected files by adding explicit type casts
 
-### Files to Create/Modify
+3. **Verify the build** compiles without errors
 
-| File | Action |
+4. **Test the dictation flow** in FeedbackQuestionnaire to confirm audio uploads work
+
+---
+
+## Files to Modify
+
+| File | Change |
 |------|--------|
-| `src/lib/guest-dummy-data.ts` | **Create** - All dummy data generators |
-| `src/contexts/ResearcherAuthContext.tsx` | **Modify** - Add guest mode state/methods |
-| `src/pages/ResearcherLogin.tsx` | **Modify** - Add "View as Guest" button |
-| `src/components/researcher/ResearcherProtectedRoute.tsx` | **Modify** - Allow guest access |
-| `src/pages/ResearcherDashboard.tsx` | **Modify** - Guest header, hide admin tabs |
-| `src/components/researcher/DataSummary.tsx` | **Modify** - Use dummy data in guest mode |
-| `src/components/researcher/UnifiedParticipantsTable.tsx` | **Modify** - Use dummy data in guest mode |
-| `src/components/researcher/TimeAnalysis.tsx` | **Modify** - Use dummy data in guest mode |
-| `src/components/researcher/NoConsentFeedbackTable.tsx` | **Modify** - Use dummy data in guest mode |
-| `src/components/researcher/BatchManager.tsx` | **Modify** - Read-only for guests |
-| `src/components/researcher/FormalityCalculator.tsx` | **Modify** - Sample data for guests |
-| `src/components/researcher/PromptLab.tsx` | **Modify** - Read-only samples for guests |
-
-### Security Notes
-
-- Guest mode uses only client-side state (no database involvement)
-- No real data is ever exposed to guests
-- RLS policies remain intact - guests never make authenticated requests
-- Session storage used to persist guest mode across page refreshes
+| Database | New table, indexes, RLS, bucket, storage policies |
+| `src/hooks/useSessionReplayTracking.ts` | Cast `rrwebEvents` to `unknown as Json[]` |
+| `src/pages/FeedbackQuestionnaire.tsx` | Cast metadata objects to `Json` |
+| `src/pages/PracticeConversation.tsx` | Cast metadata to `Json` |
+| `src/pages/VoiceConversation.tsx` | Cast metadata to `Json` |
