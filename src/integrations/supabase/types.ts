@@ -868,27 +868,27 @@ export type Database = {
           created_at: string
           expires_at: string
           id: string
+          is_completed: boolean
           prolific_id: string
           session_token: string
-          is_completed: boolean
         }
         Insert: {
           call_id: string
           created_at?: string
           expires_at: string
           id?: string
+          is_completed?: boolean
           prolific_id: string
           session_token?: string
-          is_completed?: boolean
         }
         Update: {
           call_id?: string
           created_at?: string
           expires_at?: string
           id?: string
+          is_completed?: boolean
           prolific_id?: string
           session_token?: string
-          is_completed?: boolean
         }
         Relationships: []
       }
