@@ -1,8 +1,8 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.76.0';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.76.0";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 interface MarkSessionCompleteRequest {
@@ -17,7 +17,7 @@ const validateUUID = (uuid: string): boolean => {
 };
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
@@ -25,70 +25,70 @@ Deno.serve(async (req) => {
     const body = (await req.json()) as MarkSessionCompleteRequest;
     const { sessionToken, prolificId, callId } = body;
 
-    if (!sessionToken || typeof sessionToken !== 'string' || !validateUUID(sessionToken)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid session token format' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+    if (!sessionToken || typeof sessionToken !== "string" || !validateUUID(sessionToken)) {
+      return new Response(JSON.stringify({ error: "Invalid session token format" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !supabaseServiceKey) {
-      return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      return new Response(JSON.stringify({ error: "Server configuration error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     let sessionLookup = supabase
-      .from('participant_calls')
-      .select('id, session_token, prolific_id, call_id, token_used')
-      .eq('session_token', sessionToken);
+      .from("participant_calls")
+      .select("id, session_token, prolific_id, call_id, is_completed")
+      .eq("session_token", sessionToken);
 
     if (prolificId) {
-      sessionLookup = sessionLookup.eq('prolific_id', prolificId);
+      sessionLookup = sessionLookup.eq("prolific_id", prolificId);
     }
     if (callId) {
-      sessionLookup = sessionLookup.eq('call_id', callId);
+      sessionLookup = sessionLookup.eq("call_id", callId);
     }
 
     const { data: sessionRow, error: sessionError } = await sessionLookup.maybeSingle();
     if (sessionError || !sessionRow) {
-      console.error('Session lookup failed for mark-session-complete:', sessionError);
-      return new Response(
-        JSON.stringify({ error: 'Session not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      console.error("Session lookup failed for mark-session-complete:", sessionError);
+      return new Response(JSON.stringify({ error: "Session not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { error: updateError } = await supabase
-      .from('participant_calls')
-      .update({ token_used: true })
-      .eq('id', sessionRow.id);
+      .from("participant_calls")
+      .update({ is_completed: true })
+      .eq("id", sessionRow.id);
 
     if (updateError) {
-      console.error('Failed to mark session complete:', updateError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to mark session complete' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      console.error("Failed to mark session complete:", updateError);
+      return new Response(JSON.stringify({ error: "Failed to mark session complete" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        alreadyCompleted: sessionRow.token_used === true,
+        alreadyCompleted: sessionRow.is_completed === true,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
-    console.error('mark-session-complete error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    );
+    console.error("mark-session-complete error:", error);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
