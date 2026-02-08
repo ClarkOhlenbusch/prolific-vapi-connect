@@ -206,15 +206,15 @@ const flushReplayQueue = async () => {
 
       if (!chunk.length) break;
 
-      const metadata: Json = {
+      const metadata = {
         replayVersion: SESSION_REPLAY_VERSION,
         replayFormat: "rrweb",
         replaySessionId: getReplaySessionId(),
         sequence: sequence++,
         pathname: currentPathname,
         pageName: currentPageName,
-        rrwebEvents: chunk,
-      };
+        rrwebEvents: chunk as unknown as Json[],
+      } as Json;
 
       const { error } = await supabase.from("navigation_events" as any).insert({
         prolific_id: prolificId,

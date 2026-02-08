@@ -169,6 +169,51 @@ export type Database = {
         }
         Relationships: []
       }
+      dictation_recordings: {
+        Row: {
+          attempt_count: number
+          call_id: string | null
+          created_at: string
+          duration_ms: number | null
+          field: string
+          file_size_bytes: number
+          id: string
+          mime_type: string
+          page_name: string
+          prolific_id: string
+          storage_bucket: string
+          storage_path: string
+        }
+        Insert: {
+          attempt_count?: number
+          call_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          field: string
+          file_size_bytes?: number
+          id?: string
+          mime_type: string
+          page_name?: string
+          prolific_id: string
+          storage_bucket?: string
+          storage_path: string
+        }
+        Update: {
+          attempt_count?: number
+          call_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          field?: string
+          file_size_bytes?: number
+          id?: string
+          mime_type?: string
+          page_name?: string
+          prolific_id?: string
+          storage_bucket?: string
+          storage_path?: string
+        }
+        Relationships: []
+      }
       experiment_batches: {
         Row: {
           created_at: string
