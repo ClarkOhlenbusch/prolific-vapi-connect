@@ -319,20 +319,30 @@ const MIC_STATE_LABELS: Record<string, string> = {
 
 const formatMicPermission = (value?: string | null): string | null => {
   if (!value) return null;
-  return MIC_STATE_LABELS[value] || "Unknown";
+  const normalized = value.trim().toLowerCase();
+  return MIC_STATE_LABELS[normalized] || "Unknown";
 };
 
 const formatMicAudio = (value: unknown): string | null => {
   if (value === undefined || value === null) return null;
   if (typeof value === "string") {
-    if (value === "detected") return "Detected";
-    if (value === "not_detected") return "Not detected";
-    if (value === "error") return "Error";
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "detected") return "Detected";
+    if (normalized === "not_detected") return "Not detected";
+    if (normalized === "error") return "Error";
   }
   if (typeof value === "boolean") {
     return value ? "Detected" : "Not detected";
   }
   return "Unknown";
+};
+
+const shouldReplaceDiagnosticValue = (currentValue: string | null, nextValue: string | null): boolean => {
+  if (!nextValue) return false;
+  if (!currentValue) return true;
+  if (currentValue === "Unknown" && nextValue !== "Unknown") return true;
+  if (currentValue !== "Unknown" && nextValue === "Unknown") return false;
+  return true;
 };
 
 const formatMicSummary = (practice?: string | null, main?: string | null): string => {
@@ -1183,7 +1193,12 @@ const ResponseDetails = () => {
             const metadata = (event.metadata || {}) as Record<string, unknown>;
             const feedbackField = isFeedbackField(metadata.field) ? metadata.field : null;
 
-            const isFeedbackDictationEvent = event.page_name === 'feedback' && metadata.context === 'dictation';
+            const isFeedbackPageEvent = event.page_name === 'feedback';
+            const isFeedbackDictationEvent = isFeedbackPageEvent
+              && (
+                metadata.context === 'dictation'
+                || Boolean(feedbackField)
+              );
 
             if (feedbackField) {
               const fieldDiagnostics = nextDictationDiagnosticsByField[feedbackField];
@@ -1238,16 +1253,34 @@ const ResponseDetails = () => {
             }
 
             if (pageKey && event.event_type === 'mic_permission') {
-              diagnostics[pageKey].micPermission = formatMicPermission(metadata.state as string | null);
+              const permissionValue = formatMicPermission(metadata.state as string | null);
+              if (shouldReplaceDiagnosticValue(diagnostics[pageKey].micPermission, permissionValue)) {
+                diagnostics[pageKey].micPermission = permissionValue;
+              }
             }
             if (pageKey && event.event_type === 'mic_audio_check') {
-              diagnostics[pageKey].micAudio = formatMicAudio(metadata.detected);
+              const micAudioValue = formatMicAudio(metadata.detected);
+              if (shouldReplaceDiagnosticValue(diagnostics[pageKey].micAudio, micAudioValue)) {
+                diagnostics[pageKey].micAudio = micAudioValue;
+              }
             }
-            if (isFeedbackDictationEvent && event.event_type === 'mic_permission') {
-              diagnostics.feedback.micPermission = formatMicPermission(metadata.state as string | null);
+            if (isFeedbackPageEvent && event.event_type === 'mic_permission') {
+              const permissionValue = formatMicPermission(metadata.state as string | null);
+              if (shouldReplaceDiagnosticValue(diagnostics.feedback.micPermission, permissionValue)) {
+                diagnostics.feedback.micPermission = permissionValue;
+              }
             }
-            if (isFeedbackDictationEvent && event.event_type === 'mic_audio_check') {
-              diagnostics.feedback.micAudio = formatMicAudio(metadata.detected);
+            if (isFeedbackPageEvent && event.event_type === 'mic_audio_check') {
+              const micAudioValue = formatMicAudio(metadata.detected);
+              if (shouldReplaceDiagnosticValue(diagnostics.feedback.micAudio, micAudioValue)) {
+                diagnostics.feedback.micAudio = micAudioValue;
+              }
+            }
+            if (isFeedbackDictationEvent && event.event_type === 'dictation_start_blocked') {
+              const blockedPermissionValue = formatMicPermission(metadata.permissionState as string | null);
+              if (shouldReplaceDiagnosticValue(diagnostics.feedback.micPermission, blockedPermissionValue)) {
+                diagnostics.feedback.micPermission = blockedPermissionValue;
+              }
             }
 
             if (event.event_type === 'feedback_input_mode') {
@@ -1943,16 +1976,20 @@ const ResponseDetails = () => {
                 <p className="text-sm font-semibold">{formatNumber(data.pets_total)}</p>
               </div>
               <div>
-                <label className="text-sm text-muted-foreground">Mic Permission</label>
-                <p className="text-sm">
-                  {formatMicSummary(journeyDiagnostics?.practice?.micPermission, journeyDiagnostics?.main?.micPermission)}
-                </p>
+                <label className="text-sm text-muted-foreground">Practice Mic Permission</label>
+                <p className="text-sm">{journeyDiagnostics?.practice?.micPermission || "Unknown"}</p>
               </div>
               <div>
-                <label className="text-sm text-muted-foreground">Mic Audio Detected</label>
-                <p className="text-sm">
-                  {formatMicSummary(journeyDiagnostics?.practice?.micAudio, journeyDiagnostics?.main?.micAudio)}
-                </p>
+                <label className="text-sm text-muted-foreground">Practice Mic Audio</label>
+                <p className="text-sm">{journeyDiagnostics?.practice?.micAudio || "Unknown"}</p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Main Mic Permission</label>
+                <p className="text-sm">{journeyDiagnostics?.main?.micPermission || "Unknown"}</p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Main Mic Audio</label>
+                <p className="text-sm">{journeyDiagnostics?.main?.micAudio || "Unknown"}</p>
               </div>
               <div>
                 <label className="text-sm text-muted-foreground">Feedback Dictation Mic</label>
