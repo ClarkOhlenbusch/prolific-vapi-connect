@@ -111,6 +111,21 @@ const VoiceConversation = () => {
     isCallActiveRef.current = isCallActive;
   }, [isCallActive]);
 
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("session-replay-call-state", {
+        detail: { active: isCallActive, source: "voice-conversation" },
+      })
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("session-replay-call-state", {
+          detail: { active: false, source: "voice-conversation" },
+        })
+      );
+    };
+  }, [isCallActive]);
+
   const clearAssistantSpeechTimeout = useCallback(() => {
     if (assistantSpeechTimeoutRef.current) {
       clearTimeout(assistantSpeechTimeoutRef.current);

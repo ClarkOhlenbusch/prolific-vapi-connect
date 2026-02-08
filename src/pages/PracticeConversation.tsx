@@ -89,6 +89,21 @@ const PracticeConversation = () => {
     isCallActiveRef.current = isCallActive;
   }, [isCallActive]);
 
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("session-replay-call-state", {
+        detail: { active: isCallActive, source: "practice-conversation" },
+      })
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("session-replay-call-state", {
+          detail: { active: false, source: "practice-conversation" },
+        })
+      );
+    };
+  }, [isCallActive]);
+
   const runInCallMicMonitor = useCallback((callAttemptId: string | null) => {
     if (!callAttemptId) return;
     void runMicDiagnostics({ sampleMs: MIC_AUDIO_MONITOR_SAMPLE_MS })

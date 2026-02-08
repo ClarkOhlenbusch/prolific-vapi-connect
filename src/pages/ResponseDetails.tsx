@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,14 @@ import {
   CheckCircle,
   XCircle,
   ChevronDown,
-  Route
+  Route,
+  MousePointer2,
+  Play,
+  Pause,
+  RotateCcw,
+  Download,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import { cn } from '@/lib/utils';
@@ -29,10 +36,22 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { ParticipantJourneyModal } from '@/components/researcher/ParticipantJourneyModal';
+import { EventType, Replayer, ReplayerEvents } from 'rrweb';
+import type { eventWithTime } from '@rrweb/types';
+import 'rrweb/dist/rrweb.min.css';
 
 type Demographics = Tables<'demographics'>;
 type NavigationEvent = Tables<'navigation_events'>;
 type ParticipantCall = Tables<'participant_calls'>;
+type ReplayEvent = eventWithTime;
+type MarkerTone = 'info' | 'success' | 'warning' | 'error';
+
+interface ReplayMarker {
+  id: string;
+  timeMs: number;
+  label: string;
+  tone: MarkerTone;
+}
 
 interface ExperimentResponseWithDemographics extends Tables<'experiment_responses'> {
   demographics?: Demographics | null;
@@ -189,9 +208,374 @@ const formatMicSummary = (practice?: string | null, main?: string | null): strin
   return parts.length ? parts.join(" • ") : "Unknown";
 };
 
+const formatDuration = (ms: number): string => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const SessionReplayPanel = ({
+  events,
+  markers,
+}: {
+  events: ReplayEvent[];
+  markers: ReplayMarker[];
+}) => {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const playerRootRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const replayerRef = useRef<Replayer | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [speed, setSpeed] = useState<1 | 2 | 4>(2);
+  const [currentTimeMs, setCurrentTimeMs] = useState(0);
+  const [totalTimeMs, setTotalTimeMs] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const hasRenderableReplay = events.some((event) => event.type === EventType.FullSnapshot);
+
+  const fitReplayToViewport = useCallback(() => {
+    const root = playerRootRef.current;
+    const viewport = viewportRef.current;
+    if (!root || !viewport) return;
+
+    const wrapper = root.querySelector<HTMLElement>('.replayer-wrapper');
+    if (!wrapper) return;
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const rawWidth = wrapper.offsetWidth;
+    const rawHeight = wrapper.offsetHeight;
+    if (!viewportRect.width || !viewportRect.height || !rawWidth || !rawHeight) return;
+
+    const padding = 12;
+    const availableWidth = Math.max(1, viewportRect.width - padding * 2);
+    const availableHeight = Math.max(1, viewportRect.height - padding * 2);
+    const scale = Math.max(0.1, Math.min(availableWidth / rawWidth, availableHeight / rawHeight));
+    const scaledWidth = rawWidth * scale;
+    const scaledHeight = rawHeight * scale;
+    const left = Math.max(0, (viewportRect.width - scaledWidth) / 2);
+    const top = Math.max(0, (viewportRect.height - scaledHeight) / 2);
+
+    root.style.position = 'relative';
+    root.style.width = '100%';
+    root.style.height = '100%';
+    root.style.overflow = 'hidden';
+
+    wrapper.style.position = 'absolute';
+    wrapper.style.left = `${left}px`;
+    wrapper.style.top = `${top}px`;
+    wrapper.style.transformOrigin = 'top left';
+    wrapper.style.transform = `scale(${scale})`;
+    wrapper.style.margin = '0';
+  }, []);
+
+  useEffect(() => {
+    setIsPlaying(false);
+    setCurrentTimeMs(0);
+    setTotalTimeMs(0);
+
+    const root = playerRootRef.current;
+    const viewport = viewportRef.current;
+    if (!(root instanceof Element) || !(viewport instanceof Element)) return;
+    root.innerHTML = '';
+
+    if (!events.length || !hasRenderableReplay) {
+      if (replayerRef.current) {
+        replayerRef.current.destroy();
+        replayerRef.current = null;
+      }
+      return;
+    }
+
+    const replayer = new Replayer(events, {
+      root,
+      mouseTail: true,
+      skipInactive: false,
+      showWarning: false,
+      showDebug: false,
+    });
+
+    replayerRef.current = replayer;
+    replayer.setConfig({ speed });
+
+    const meta = replayer.getMetaData();
+    setTotalTimeMs(meta.totalTime || 0);
+
+    const handleFinish = () => {
+      const endTime = replayer.getMetaData().totalTime || 0;
+      setCurrentTimeMs(endTime);
+      setIsPlaying(false);
+    };
+    const handleSnapshotRebuild = () => {
+      fitReplayToViewport();
+    };
+    replayer.on(ReplayerEvents.Finish, handleFinish);
+    replayer.on(ReplayerEvents.FullsnapshotRebuilded, handleSnapshotRebuild);
+
+    const rafId = window.requestAnimationFrame(() => {
+      fitReplayToViewport();
+    });
+    const fitTimers = [
+      window.setTimeout(() => fitReplayToViewport(), 40),
+      window.setTimeout(() => fitReplayToViewport(), 180),
+      window.setTimeout(() => fitReplayToViewport(), 420),
+    ];
+    const resizeHandler = () => fitReplayToViewport();
+    window.addEventListener('resize', resizeHandler);
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => fitReplayToViewport())
+      : null;
+    if (resizeObserver) {
+      resizeObserver.observe(viewport);
+      resizeObserver.observe(root);
+    }
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      fitTimers.forEach((timer) => window.clearTimeout(timer));
+      window.removeEventListener('resize', resizeHandler);
+      resizeObserver?.disconnect();
+      replayer.off(ReplayerEvents.Finish, handleFinish);
+      replayer.off(ReplayerEvents.FullsnapshotRebuilded, handleSnapshotRebuild);
+      replayer.pause();
+      replayer.destroy();
+      if (replayerRef.current === replayer) {
+        replayerRef.current = null;
+      }
+    };
+  }, [events, hasRenderableReplay, fitReplayToViewport]);
+
+  useEffect(() => {
+    replayerRef.current?.setConfig({ speed });
+  }, [speed]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const timer = window.setInterval(() => {
+      const replayer = replayerRef.current;
+      if (!replayer) return;
+      setCurrentTimeMs(Math.max(0, replayer.getCurrentTime()));
+    }, 120);
+    return () => window.clearInterval(timer);
+  }, [isPlaying]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const active = document.fullscreenElement === panelRef.current;
+      setIsFullscreen(active);
+      fitReplayToViewport();
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, [fitReplayToViewport]);
+
+  if (!events.length) {
+    return (
+      <p className="text-sm text-muted-foreground italic">
+        No replay events captured for this participant yet.
+      </p>
+    );
+  }
+
+  if (!hasRenderableReplay) {
+    return (
+      <p className="text-sm text-muted-foreground italic">
+        Replay chunks exist, but no full snapshot was captured. Run a fresh session after this update.
+      </p>
+    );
+  }
+
+  const handlePlayPause = () => {
+    const replayer = replayerRef.current;
+    if (!replayer) return;
+
+    if (isPlaying) {
+      replayer.pause();
+      setCurrentTimeMs(Math.max(0, replayer.getCurrentTime()));
+      setIsPlaying(false);
+      return;
+    }
+
+    const endTime = replayer.getMetaData().totalTime || totalTimeMs;
+    const shouldRestart = currentTimeMs >= Math.max(0, endTime - 200);
+    const startAt = shouldRestart ? 0 : currentTimeMs;
+    replayer.play(startAt);
+    setCurrentTimeMs(startAt);
+    setIsPlaying(true);
+  };
+
+  const handleReset = () => {
+    const replayer = replayerRef.current;
+    if (!replayer) return;
+    replayer.pause(0);
+    setCurrentTimeMs(0);
+    setIsPlaying(false);
+  };
+
+  const handleSeek = (value: number) => {
+    const replayer = replayerRef.current;
+    if (!replayer) return;
+    replayer.pause(value);
+    setCurrentTimeMs(value);
+    setIsPlaying(false);
+  };
+
+  const handleMarkerClick = (timeMs: number) => {
+    handleSeek(timeMs);
+  };
+
+  const handleToggleFullscreen = async () => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    try {
+      if (document.fullscreenElement === panel) {
+        await document.exitFullscreen();
+      } else if (!document.fullscreenElement) {
+        await panel.requestFullscreen();
+      }
+    } catch (error) {
+      console.error('Unable to toggle fullscreen replay:', error);
+    }
+  };
+
+  const downloadReplayJson = () => {
+    const blob = new Blob([JSON.stringify(events, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'session-replay-events.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const markerColorClass: Record<MarkerTone, string> = {
+    info: 'bg-sky-500',
+    success: 'bg-emerald-500',
+    warning: 'bg-amber-500',
+    error: 'bg-rose-500',
+  };
+
+  return (
+    <div
+      ref={panelRef}
+      className={cn(
+        "space-y-4",
+        isFullscreen && "bg-background p-4 md:p-6"
+      )}
+    >
+      <div className={cn("flex flex-wrap items-center gap-2", isFullscreen && "sticky top-0 z-20 bg-background pb-2")}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handlePlayPause}
+        >
+          {isPlaying ? <Pause className="h-4 w-4 mr-1.5" /> : <Play className="h-4 w-4 mr-1.5" />}
+          {isPlaying ? 'Pause' : 'Play'}
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleReset}>
+          <RotateCcw className="h-4 w-4 mr-1.5" />
+          Reset
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleToggleFullscreen}>
+          {isFullscreen ? <Minimize2 className="h-4 w-4 mr-1.5" /> : <Maximize2 className="h-4 w-4 mr-1.5" />}
+          {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+        </Button>
+        <Button size="sm" variant="outline" onClick={downloadReplayJson}>
+          <Download className="h-4 w-4 mr-1.5" />
+          Download JSON
+        </Button>
+        <div className="ml-auto flex items-center gap-1">
+          {[1, 2, 4].map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={speed === value ? 'default' : 'outline'}
+              onClick={() => setSpeed(value as 1 | 2 | 4)}
+            >
+              {value}x
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="relative">
+          <input
+            type="range"
+            min={0}
+            max={Math.max(1, totalTimeMs)}
+            value={Math.min(currentTimeMs, Math.max(1, totalTimeMs))}
+            onChange={(event) => handleSeek(Number(event.target.value))}
+            className="relative z-10 w-full cursor-pointer accent-blue-500"
+          />
+          {totalTimeMs > 0 && markers.length > 0 && (
+            <div className="pointer-events-none absolute inset-x-0 top-1/2 z-20 -translate-y-1/2 h-4">
+              {markers.map((marker) => {
+                const left = Math.max(0, Math.min(100, (marker.timeMs / totalTimeMs) * 100));
+                return (
+                  <button
+                    type="button"
+                    key={marker.id}
+                    onClick={() => handleMarkerClick(marker.timeMs)}
+                    className={`pointer-events-auto absolute top-0 h-4 w-0.5 ${markerColorClass[marker.tone]} cursor-pointer`}
+                    style={{ left: `${left}%` }}
+                    title={`${marker.label} (${formatDuration(marker.timeMs)})`}
+                    aria-label={`Jump to ${marker.label}`}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>Events: {events.length}</span>
+          <span>Elapsed: {formatDuration(currentTimeMs)} / {formatDuration(totalTimeMs)}</span>
+          <span>Markers: {markers.length}</span>
+        </div>
+        {markers.length > 0 && (
+          <div className="flex flex-wrap gap-2 text-xs">
+            {markers.slice(-8).map((marker) => (
+              <span
+                key={`${marker.id}-legend`}
+                className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-muted-foreground cursor-pointer hover:bg-muted/40"
+                role="button"
+                tabIndex={0}
+                onClick={() => handleMarkerClick(marker.timeMs)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleMarkerClick(marker.timeMs);
+                  }
+                }}
+                title={`Jump to ${marker.label} (${formatDuration(marker.timeMs)})`}
+              >
+                <span className={`inline-block h-2 w-2 rounded-full ${markerColorClass[marker.tone]}`} />
+                {marker.label}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div
+        ref={viewportRef}
+        className={cn(
+          "relative w-full rounded-md border bg-black overflow-hidden",
+          isFullscreen ? "h-[calc(100vh-230px)]" : "h-[420px] md:h-[560px]"
+        )}
+      >
+        <div ref={playerRootRef} className="absolute inset-0" />
+      </div>
+    </div>
+  );
+};
+
 // Section navigation items - in experiment flow order
 const SECTIONS = [
   { id: 'journey', label: 'Journey', icon: Route },
+  { id: 'replay', label: 'Replay', icon: MousePointer2 },
   { id: 'demographics', label: 'Demographics', icon: User },
   { id: 'attention', label: 'Attention Checks', icon: AlertCircle },
   { id: 'formality', label: 'Formality', icon: Scale },
@@ -217,6 +601,8 @@ const ResponseDetails = () => {
     practice: { micPermission?: string | null; micAudio?: string | null };
     main: { micPermission?: string | null; micAudio?: string | null };
   } | null>(null);
+  const [replayEvents, setReplayEvents] = useState<ReplayEvent[]>([]);
+  const [replayMarkers, setReplayMarkers] = useState<ReplayMarker[]>([]);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
   useEffect(() => {
@@ -225,6 +611,8 @@ const ResponseDetails = () => {
       
       setIsLoading(true);
       setJourneyDiagnostics(null);
+      setReplayEvents([]);
+      setReplayMarkers([]);
       try {
         setIsPendingRecord(false);
 
@@ -278,7 +666,7 @@ const ResponseDetails = () => {
           .eq('prolific_id', response.prolific_id)
           .maybeSingle();
 
-        const [{ data: formalityCalc }, { data: navigationEvents }] = await Promise.all([
+        const [{ data: formalityCalc }, { data: navigationEvents }, { data: replayChunks }] = await Promise.all([
           supabase
             .from('formality_calculations')
             .select('id')
@@ -288,17 +676,61 @@ const ResponseDetails = () => {
             .from('navigation_events')
             .select('page_name, event_type, metadata, created_at')
             .eq('prolific_id', response.prolific_id)
-            .in('event_type', ['mic_permission', 'mic_audio_check'])
+            .in('event_type', [
+              'mic_permission',
+              'mic_audio_check',
+              'call_connected',
+              'call_start_failed',
+              'call_quality_warning',
+              'call_error',
+              'assistant_audio_timeout',
+            ])
             .order('created_at', { ascending: true }),
+          supabase
+            .from('navigation_events')
+            .select('metadata, created_at')
+            .eq('prolific_id', response.prolific_id)
+            .eq('event_type', 'session_replay_chunk')
+            .order('created_at', { ascending: true })
+            .limit(2000),
         ]);
+
+        let replayStartTimestamp: number | null = null;
+        let replayDurationMs = 0;
+        if (replayChunks) {
+          const flattenedEvents: ReplayEvent[] = [];
+          replayChunks.forEach((chunk: { metadata: unknown; created_at: string }) => {
+            const metadata = (chunk.metadata || {}) as Record<string, unknown>;
+            const chunkEvents = Array.isArray(metadata.rrwebEvents)
+              ? metadata.rrwebEvents
+              : Array.isArray(metadata.events)
+                ? metadata.events
+                : [];
+
+            chunkEvents.forEach((event) => {
+              const replayEvent = event as Record<string, unknown>;
+              if (typeof replayEvent.type !== 'number') return;
+              if (typeof replayEvent.timestamp !== 'number') return;
+              flattenedEvents.push(replayEvent as unknown as ReplayEvent);
+            });
+          });
+          flattenedEvents.sort((a, b) => a.timestamp - b.timestamp);
+          replayStartTimestamp = flattenedEvents[0]?.timestamp || null;
+          const replayEndTimestamp = flattenedEvents[flattenedEvents.length - 1]?.timestamp || replayStartTimestamp || 0;
+          replayDurationMs = Math.max(0, replayEndTimestamp - (replayStartTimestamp || replayEndTimestamp));
+          setReplayEvents(flattenedEvents);
+        }
 
         if (navigationEvents) {
           const diagnostics = {
             practice: { micPermission: null, micAudio: null },
             main: { micPermission: null, micAudio: null },
           };
+          const markers: ReplayMarker[] = [];
 
-          navigationEvents.forEach((event: NavigationEvent) => {
+          const pageLabel = (pageName: string) => pageName === 'practice-conversation' ? 'Practice' : 'Main';
+
+          navigationEvents.forEach((event: NavigationEvent, index: number) => {
             const pageKey = event.page_name === 'practice-conversation'
               ? 'practice'
               : event.page_name === 'voice-conversation'
@@ -313,9 +745,55 @@ const ResponseDetails = () => {
             if (event.event_type === 'mic_audio_check') {
               diagnostics[pageKey].micAudio = formatMicAudio(metadata.detected);
             }
+
+            if (!replayStartTimestamp) return;
+            const eventTimestamp = Date.parse(event.created_at);
+            if (Number.isNaN(eventTimestamp)) return;
+
+            const timeMsRaw = eventTimestamp - replayStartTimestamp;
+            const timeMs = Math.max(0, replayDurationMs > 0 ? Math.min(replayDurationMs, timeMsRaw) : timeMsRaw);
+
+            const labelPrefix = pageLabel(event.page_name);
+            let label: string | null = null;
+            let tone: MarkerTone = 'info';
+
+            if (event.event_type === 'mic_permission') {
+              const state = formatMicPermission(metadata.state as string | null) || 'Unknown';
+              label = `${labelPrefix}: Mic permission ${state}`;
+              tone = state === 'Denied' ? 'error' : state === 'Granted' ? 'success' : 'info';
+            } else if (event.event_type === 'mic_audio_check') {
+              const detected = formatMicAudio(metadata.detected) || 'Unknown';
+              label = `${labelPrefix}: Mic audio ${detected}`;
+              tone = detected === 'Not detected' || detected === 'Error' ? 'warning' : 'success';
+            } else if (event.event_type === 'call_connected') {
+              label = `${labelPrefix}: Call connected`;
+              tone = 'success';
+            } else if (event.event_type === 'call_start_failed') {
+              label = `${labelPrefix}: Call start failed`;
+              tone = 'error';
+            } else if (event.event_type === 'call_quality_warning') {
+              label = `${labelPrefix}: Audio quality warning`;
+              tone = 'warning';
+            } else if (event.event_type === 'call_error') {
+              label = `${labelPrefix}: Call error`;
+              tone = 'error';
+            } else if (event.event_type === 'assistant_audio_timeout') {
+              label = `${labelPrefix}: Assistant audio timeout`;
+              tone = 'warning';
+            }
+
+            if (label) {
+              markers.push({
+                id: `${event.event_type}-${event.created_at}-${index}`,
+                timeMs,
+                label,
+                tone,
+              });
+            }
           });
 
           setJourneyDiagnostics(diagnostics);
+          setReplayMarkers(markers.slice(0, 80));
         }
 
         setData({ ...response, demographics });
@@ -384,7 +862,7 @@ const ResponseDetails = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="border-b bg-card/50 sticky top-0 z-10">
+      <div className="border-b bg-card sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -494,6 +972,24 @@ const ResponseDetails = () => {
                 <Route className="h-4 w-4 mr-2" />
                 View Full Journey Timeline
               </Button>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Session Replay Section */}
+        <section ref={el => sectionRefs.current['replay'] = el} id="replay" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MousePointer2 className="h-5 w-5 text-sky-500" />
+                Session Replay
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                This replay is powered by rrweb event capture and includes DOM changes, cursor movement, clicks, and scrolling as they occurred during the participant session.
+              </p>
+              <SessionReplayPanel events={replayEvents} markers={replayMarkers} />
             </CardContent>
           </Card>
         </section>

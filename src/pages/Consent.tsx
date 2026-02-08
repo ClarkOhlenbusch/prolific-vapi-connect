@@ -117,7 +117,7 @@ const Consent = () => {
                   Your data will be pseudonymized and stored on a secure server of Utrecht University. Data will be kept for 10 years. Deidentified data may be shared with other researchers after the study. Audio recordings will be stored long term unless deletion is requested before data analysis.
                 </p>
                 <p>
-                  We also use Hotjar session analytics to understand navigation patterns and improve study usability. Hotjar may collect interaction metadata such as clicks, scrolling, and page flow.
+                  We also collect session interaction analytics (internal replay logs) to understand navigation patterns and improve study usability. These logs may include interaction metadata such as clicks, scrolling, page flow, and cursor movement.
                 </p>
               </div>
 
