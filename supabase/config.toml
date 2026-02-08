@@ -23,3 +23,15 @@ verify_jwt = false
 
 [functions.get-experiment-config]
 verify_jwt = false
+
+[functions.list-researchers]
+verify_jwt = false
+
+[functions.create-researcher]
+verify_jwt = false
+
+[functions.resolve-researcher-identifier]
+verify_jwt = false
+
+[functions.update-researcher-username]
+verify_jwt = false
