@@ -177,7 +177,7 @@ const PracticeConversation = () => {
       // Get prolificId from URL or storage
       const prolificIdFromUrl = searchParams.get('prolificId');
       const storedProlificId = sessionStorage.getItem('prolificId');
-      const currentProlificId = prolificIdFromUrl || storedProlificId;
+      const currentProlificId = storedProlificId || (prolificIdFromUrl === 'RESEARCHER_MODE' ? null : prolificIdFromUrl);
       
       try {
         // Pass prolificId to trigger atomic condition assignment
@@ -216,8 +216,11 @@ const PracticeConversation = () => {
     const prolificIdFromUrl = searchParams.get('prolificId');
     const sessionToken = searchParams.get('sessionToken');
     const storedProlificId = sessionStorage.getItem('prolificId');
-    const finalProlificId = prolificIdFromUrl || storedProlificId || 'RESEARCHER_MODE';
-    const finalSessionToken = sessionToken || localStorage.getItem('sessionToken') || '00000000-0000-0000-0000-000000000000';
+    const storedSessionToken = localStorage.getItem('sessionToken');
+    const safeProlificIdFromUrl = prolificIdFromUrl === 'RESEARCHER_MODE' ? null : prolificIdFromUrl;
+    const finalProlificId = storedProlificId || safeProlificIdFromUrl || 'RESEARCHER_MODE';
+    const safeSessionTokenFromUrl = sessionToken === '00000000-0000-0000-0000-000000000000' ? null : sessionToken;
+    const finalSessionToken = storedSessionToken || safeSessionTokenFromUrl || '00000000-0000-0000-0000-000000000000';
     setProlificId(finalProlificId);
     sessionStorage.setItem('prolificId', finalProlificId);
     localStorage.setItem('sessionToken', finalSessionToken);

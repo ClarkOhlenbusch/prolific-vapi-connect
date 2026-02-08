@@ -43,7 +43,7 @@ const FormalityQuestionnaire = () => {
       const stateCallId = location.state?.callId;
 
       const finalProlificId = storedId || "RESEARCHER_MODE";
-      const finalCallId = stateCallId || "researcher-call-id";
+      const finalCallId = stateCallId || sessionStorage.getItem("callId") || "researcher-call-id";
 
       setProlificId(finalProlificId);
       setCallId(finalCallId);

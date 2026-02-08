@@ -4,15 +4,13 @@ import { Button } from '@/components/ui/button';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { FlaskConical, LogIn } from 'lucide-react';
 
-const RESEARCHER_PREVIEW_SESSION_TOKEN = '00000000-0000-0000-0000-000000000000';
-
 const PARTICIPANT_PAGE_LINKS = [
   { label: 'Prolific ID', to: '/', match: '/' },
-  { label: 'Consent', to: `/consent?sessionToken=${RESEARCHER_PREVIEW_SESSION_TOKEN}&prolificId=RESEARCHER_MODE`, match: '/consent' },
+  { label: 'Consent', to: '/consent', match: '/consent', withSession: true },
   { label: 'No Consent', to: '/no-consent', match: '/no-consent' },
-  { label: 'Demographics', to: `/demographics?sessionToken=${RESEARCHER_PREVIEW_SESSION_TOKEN}&prolificId=RESEARCHER_MODE`, match: '/demographics' },
-  { label: 'Familiarity', to: `/voiceassistant-familiarity?sessionToken=${RESEARCHER_PREVIEW_SESSION_TOKEN}&prolificId=RESEARCHER_MODE`, match: '/voiceassistant-familiarity' },
-  { label: 'Practice', to: `/practice?sessionToken=${RESEARCHER_PREVIEW_SESSION_TOKEN}&prolificId=RESEARCHER_MODE`, match: '/practice' },
+  { label: 'Demographics', to: '/demographics', match: '/demographics', withSession: true },
+  { label: 'Familiarity', to: '/voiceassistant-familiarity', match: '/voiceassistant-familiarity', withSession: true },
+  { label: 'Practice', to: '/practice', match: '/practice', withSession: true },
   { label: 'Conversation', to: '/voice-conversation', match: '/voice-conversation' },
   { label: 'Formality', to: '/questionnaire/formality', match: '/questionnaire/formality' },
   { label: 'PETS', to: '/questionnaire/pets', match: '/questionnaire/pets' },
@@ -31,6 +29,16 @@ export const ResearcherModeToggle = () => {
   const { isResearcherMode, toggleResearcherMode } = useResearcherMode();
   const location = useLocation();
   const navigate = useNavigate();
+
+  const getPathWithSession = (path: string) => {
+    const sessionToken = localStorage.getItem('sessionToken');
+    const prolificId = sessionStorage.getItem('prolificId');
+    const params = new URLSearchParams();
+    if (sessionToken) params.set('sessionToken', sessionToken);
+    if (prolificId) params.set('prolificId', prolificId);
+    const query = params.toString();
+    return query ? `${path}?${query}` : path;
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -81,7 +89,7 @@ export const ResearcherModeToggle = () => {
             {PARTICIPANT_PAGE_LINKS.map((item) => (
               <Button
                 key={item.to}
-                onClick={() => navigate(item.to)}
+                onClick={() => navigate(item.withSession ? getPathWithSession(item.to) : item.to)}
                 variant={location.pathname === item.match ? 'secondary' : 'ghost'}
                 size="sm"
                 className="h-8 justify-start px-2 text-xs"

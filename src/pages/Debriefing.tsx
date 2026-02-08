@@ -15,11 +15,7 @@ const Debriefing = () => {
   useEffect(() => {
     // Load IDs from sessionStorage, no validation/redirects
     const storedId = sessionStorage.getItem('prolificId');
-    
-    if (!storedId) {
-      sessionStorage.setItem('prolificId', 'RESEARCHER_MODE');
-    }
-    setProlificId(storedId || 'RESEARCHER_MODE');
+    setProlificId(storedId);
     sessionStorage.setItem('flowStep', '5');
   }, []);
 

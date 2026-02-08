@@ -48,7 +48,7 @@ const IntentionQuestionnaire = () => {
     const intentionDataString = sessionStorage.getItem("intentionData");
 
     const finalProlificId = storedId || "RESEARCHER_MODE";
-    const finalCallId = stateCallId || "researcher-call-id";
+    const finalCallId = stateCallId || sessionStorage.getItem("callId") || "researcher-call-id";
 
     setProlificId(finalProlificId);
     setCallId(finalCallId);

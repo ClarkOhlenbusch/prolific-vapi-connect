@@ -731,7 +731,7 @@ const FeedbackQuestionnaire = () => {
       const formalityDataString = sessionStorage.getItem("formalityData");
 
       const finalProlificId = storedId || "RESEARCHER_MODE";
-      const finalCallId = stateCallId || "researcher-call-id";
+      const finalCallId = stateCallId || sessionStorage.getItem("callId") || "researcher-call-id";
 
       setProlificId(finalProlificId);
       setCallId(finalCallId);
@@ -961,11 +961,47 @@ const FeedbackQuestionnaire = () => {
     }
 
     if (isResearcherMode) {
+      let completionMarked = false;
+      const sessionToken = localStorage.getItem("sessionToken");
+      if (sessionToken) {
+        const { error: markCompleteError } = await supabase.functions.invoke("mark-session-complete", {
+          body: {
+            sessionToken,
+            prolificId,
+            callId,
+          },
+        });
+
+        if (markCompleteError) {
+          console.error("Failed to mark researcher session as complete via edge function:", markCompleteError);
+          const { error: fallbackUpdateError } = await supabase
+            .from("participant_calls")
+            .update({ token_used: true })
+            .eq("session_token", sessionToken)
+            .eq("token_used", false);
+
+          if (fallbackUpdateError) {
+            console.error("Fallback update failed while marking researcher session complete:", fallbackUpdateError);
+            toast({
+              title: "Warning",
+              description: "Could not mark this researcher session as completed.",
+              variant: "destructive",
+            });
+          } else {
+            completionMarked = true;
+          }
+        } else {
+          completionMarked = true;
+        }
+      }
+
       await persistDictationRecordings();
       sessionStorage.setItem("flowStep", "5");
       toast({
         title: "Researcher Preview Submitted",
-        description: "Skipping participant data checks in researcher mode.",
+        description: completionMarked
+          ? "Researcher session marked as completed."
+          : "Submitted, but completion status could not be updated.",
       });
       navigate("/debriefing");
       return;

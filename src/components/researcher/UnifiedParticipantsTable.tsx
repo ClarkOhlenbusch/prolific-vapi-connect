@@ -177,7 +177,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           formality: response?.formality,
           age: demo?.age,
           gender: demo?.gender,
-          status: response ? 'Completed' : 'Pending',
+          status: call.token_used ? 'Completed' : 'Pending',
         };
       });
 

@@ -42,9 +42,13 @@ const Consent = () => {
     e.preventDefault();
     
     if (consent === 'agree') {
-      const sessionToken = searchParams.get('sessionToken');
-      const prolificId = searchParams.get('prolificId');
-      navigate(`/demographics?sessionToken=${sessionToken}&prolificId=${prolificId}`);
+      const sessionToken = searchParams.get('sessionToken') || localStorage.getItem('sessionToken');
+      const nextProlificId = searchParams.get('prolificId') || sessionStorage.getItem('prolificId');
+      if (!sessionToken || !nextProlificId) {
+        navigate('/');
+        return;
+      }
+      navigate(`/demographics?sessionToken=${sessionToken}&prolificId=${nextProlificId}`);
     } else if (consent === 'disagree') {
       setShowConfirmDialog(true);
     }

@@ -204,7 +204,7 @@ const GodspeedQuestionnaire = () => {
       const petsDataString = sessionStorage.getItem("petsData");
 
       const finalProlificId = storedId || "RESEARCHER_MODE";
-      const finalCallId = stateCallId || "researcher-call-id";
+      const finalCallId = stateCallId || sessionStorage.getItem("callId") || "researcher-call-id";
 
       setProlificId(finalProlificId);
       setCallId(finalCallId);
@@ -228,7 +228,8 @@ const GodspeedQuestionnaire = () => {
         sessionStorage.setItem("petsData", JSON.stringify(defaultPetsData));
       }
 
-      if (!isResearcherMode && storedId) {
+      const isLikelyProlificParticipant = storedId?.length === 24;
+      if (!isResearcherMode && isLikelyProlificParticipant) {
         const { data: existingResponse, error } = await supabase
           .from("experiment_responses")
           .select("prolific_id")

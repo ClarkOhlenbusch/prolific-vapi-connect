@@ -19,8 +19,12 @@ const Demographics = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { isResearcherMode } = useResearcherMode();
   
-  const sessionToken = searchParams.get('sessionToken') || (isResearcherMode ? '00000000-0000-0000-0000-000000000000' : null);
-  const prolificId = searchParams.get('prolificId') || (isResearcherMode ? 'RESEARCHER_MODE' : null);
+  const sessionToken = searchParams.get('sessionToken')
+    || localStorage.getItem('sessionToken')
+    || (isResearcherMode ? '00000000-0000-0000-0000-000000000000' : null);
+  const prolificId = searchParams.get('prolificId')
+    || sessionStorage.getItem('prolificId')
+    || (isResearcherMode ? 'RESEARCHER_MODE' : null);
 
   usePageTracking({
     pageName: 'demographics',

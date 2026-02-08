@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Vapi from "@vapi-ai/web";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
@@ -68,6 +68,7 @@ const VoiceConversation = () => {
   const isRestartingRef = useRef(false);
   const isCallActiveRef = useRef(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { isResearcherMode } = useResearcherMode();
   const pageName = "voice-conversation";
@@ -195,15 +196,26 @@ const VoiceConversation = () => {
   useEffect(() => {
     // Load IDs from sessionStorage, no validation/redirects
     const storedId = sessionStorage.getItem("prolificId");
-    const finalProlificId = storedId || "RESEARCHER_MODE";
+    const prolificIdFromUrl = searchParams.get("prolificId");
+    const safeProlificIdFromUrl = prolificIdFromUrl === "RESEARCHER_MODE" ? null : prolificIdFromUrl;
+    const finalProlificId = storedId || safeProlificIdFromUrl;
+
+    if (!finalProlificId) {
+      setProlificId(null);
+      return;
+    }
 
     setProlificId(finalProlificId);
     sessionStorage.setItem("prolificId", finalProlificId);
     sessionStorage.setItem("flowStep", "2");
 
-    // Set default session token if missing
-    if (!localStorage.getItem("sessionToken")) {
-      localStorage.setItem("sessionToken", "00000000-0000-0000-0000-000000000000");
+    // Seed session token from URL if available, but avoid placeholder values.
+    const storedSessionToken = localStorage.getItem("sessionToken");
+    const sessionTokenFromUrl = searchParams.get("sessionToken");
+    const safeSessionTokenFromUrl =
+      sessionTokenFromUrl === "00000000-0000-0000-0000-000000000000" ? null : sessionTokenFromUrl;
+    if (!storedSessionToken && safeSessionTokenFromUrl) {
+      localStorage.setItem("sessionToken", safeSessionTokenFromUrl);
     }
 
     // Read the condition that was assigned during practice conversation
@@ -241,7 +253,7 @@ const VoiceConversation = () => {
       };
       fetchAssistantConfig();
     }
-  }, []);
+  }, [searchParams]);
 
   // Initialize Vapi SDK - only once when component mounts
   useEffect(() => {

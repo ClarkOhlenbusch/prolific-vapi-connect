@@ -127,14 +127,15 @@ const Questionnaire = () => {
       const stateCallId = location.state?.callId;
 
       const finalProlificId = storedId || "RESEARCHER_MODE";
-      const finalCallId = stateCallId || "researcher-call-id";
+      const finalCallId = stateCallId || sessionStorage.getItem("callId") || "researcher-call-id";
 
       setProlificId(finalProlificId);
       setCallId(finalCallId);
       sessionStorage.setItem("prolificId", finalProlificId);
       sessionStorage.setItem("flowStep", "3");
 
-      if (!isResearcherMode && storedId) {
+      const isLikelyProlificParticipant = storedId?.length === 24;
+      if (!isResearcherMode && isLikelyProlificParticipant) {
         const { data: existingResponse, error } = await supabase
           .from("experiment_responses")
           .select("prolific_id")
