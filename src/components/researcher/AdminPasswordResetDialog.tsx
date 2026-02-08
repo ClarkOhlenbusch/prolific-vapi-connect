@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,14 @@ export const AdminPasswordResetDialog = ({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setEmail(initialEmail || '');
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+  }, [open, initialEmail]);
 
   const handleReset = async () => {
     if (!email.trim()) {
