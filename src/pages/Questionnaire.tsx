@@ -134,25 +134,27 @@ const Questionnaire = () => {
       sessionStorage.setItem("prolificId", finalProlificId);
       sessionStorage.setItem("flowStep", "3");
 
-      const { data: existingResponse, error } = await supabase
-        .from("experiment_responses")
-        .select("prolific_id")
-        .eq("prolific_id", storedId)
-        .maybeSingle();
+      if (!isResearcherMode && storedId) {
+        const { data: existingResponse, error } = await supabase
+          .from("experiment_responses")
+          .select("prolific_id")
+          .eq("prolific_id", storedId)
+          .maybeSingle();
 
-      if (error && error.code !== "PGRST116") {
-        console.error("Error checking existing response:", error);
-      }
+        if (error && error.code !== "PGRST116") {
+          console.error("Error checking existing response:", error);
+        }
 
-      if (existingResponse) {
-        navigate("/complete");
-        return;
+        if (existingResponse) {
+          navigate("/complete");
+          return;
+        }
       }
       
       setIsLoading(false);
     };
     checkAccess();
-  }, [navigate, location, toast]);
+  }, [navigate, location, toast, isResearcherMode]);
 
   const handleSliderChange = (key: string, value: number[]) => {
     setResponses((prev) => ({ ...prev, [key]: value[0] }));

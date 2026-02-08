@@ -1,9 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { 
   FlaskConical, 
   LogOut, 
@@ -16,7 +27,8 @@ import {
   UserX,
   Activity,
   Users,
-  History
+  History,
+  Pencil
 } from 'lucide-react';
 import { UnifiedParticipantsTable } from '@/components/researcher/UnifiedParticipantsTable';
 import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponsesTable';
@@ -29,9 +41,11 @@ import { TimeAnalysis } from '@/components/researcher/TimeAnalysis';
 import { NoConsentFeedbackTable } from '@/components/researcher/NoConsentFeedbackTable';
 import { ActivityLogsTable } from '@/components/researcher/ActivityLogsTable';
 import { GlobalSourceFilter } from '@/components/researcher/GlobalSourceFilter';
+import { toast } from 'sonner';
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
+const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,32}$/;
 
 export type SourceFilterValue = 'all' | 'participant' | 'researcher';
 
@@ -49,6 +63,17 @@ const ResearcherDashboard = () => {
     if (saved === 'all' || saved === 'participant' || saved === 'researcher') return saved;
     return 'participant'; // Default to participants only
   });
+  const [changeUsernameOpen, setChangeUsernameOpen] = useState(false);
+  const [usernameInput, setUsernameInput] = useState('');
+  const [isUpdatingUsername, setIsUpdatingUsername] = useState(false);
+  const [displayUsername, setDisplayUsername] = useState('');
+
+  useEffect(() => {
+    const metadataUsername =
+      (typeof user?.user_metadata?.username === 'string' && user.user_metadata.username) ||
+      '';
+    setDisplayUsername(metadataUsername.trim());
+  }, [user]);
 
   useEffect(() => {
     sessionStorage.setItem(TAB_STORAGE_KEY, activeTab);
@@ -61,6 +86,41 @@ const ResearcherDashboard = () => {
   const handleLogout = async () => {
     await logout();
     navigate('/researcher');
+  };
+
+  const handleSaveOwnUsername = async () => {
+    const normalizedUsername = usernameInput.trim().toLowerCase();
+    if (!USERNAME_PATTERN.test(normalizedUsername)) {
+      toast.error('Username must be 3-32 chars: letters, numbers, dot, underscore, hyphen');
+      return;
+    }
+
+    setIsUpdatingUsername(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const response = await supabase.functions.invoke('update-researcher-username', {
+        body: { username: normalizedUsername },
+        headers: {
+          Authorization: `Bearer ${sessionData.session?.access_token}`,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to update username');
+      }
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      setDisplayUsername(normalizedUsername);
+      setChangeUsernameOpen(false);
+      toast.success('Username updated');
+    } catch (error) {
+      console.error('Error updating username:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update username');
+    } finally {
+      setIsUpdatingUsername(false);
+    }
   };
 
   return (
@@ -83,6 +143,7 @@ const ResearcherDashboard = () => {
                 ) : (
                   <>
                     {user?.email} • {role === 'super_admin' ? 'Super Admin' : 'Viewer'}
+                    {displayUsername ? ` • @${displayUsername}` : ''}
                   </>
                 )}
               </p>
@@ -115,6 +176,16 @@ const ResearcherDashboard = () => {
                     Manage Users
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setUsernameInput(displayUsername || '');
+                    setChangeUsernameOpen(true);
+                  }}
+                >
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Change Username
+                </Button>
               </>
             )}
             <Button variant={isGuestMode ? "default" : "ghost"} onClick={handleLogout}>
@@ -253,6 +324,46 @@ const ResearcherDashboard = () => {
           )}
         </Tabs>
       </main>
+
+      <Dialog
+        open={changeUsernameOpen}
+        onOpenChange={(open) => {
+          setChangeUsernameOpen(open);
+          if (!open) {
+            setUsernameInput(displayUsername || '');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change Username</DialogTitle>
+            <DialogDescription>
+              You can sign in with this username or your email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="self-username">Username</Label>
+            <Input
+              id="self-username"
+              type="text"
+              placeholder="e.g. ovroom"
+              value={usernameInput}
+              onChange={(e) => setUsernameInput(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              3-32 chars, letters/numbers/dot/underscore/hyphen.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChangeUsernameOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveOwnUsername} disabled={isUpdatingUsername}>
+              {isUpdatingUsername ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

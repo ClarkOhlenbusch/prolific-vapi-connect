@@ -56,6 +56,7 @@ interface ReplayMarker {
 type FeedbackFieldKey = "voice_assistant_feedback" | "communication_style_feedback" | "experiment_feedback";
 type FeedbackInputSourceState = Record<FeedbackFieldKey, { typed: boolean; dictated: boolean }>;
 type DictationRecordingsByField = Record<FeedbackFieldKey, DictationRecording[]>;
+type FeedbackDraftUsage = Record<FeedbackFieldKey, boolean>;
 
 interface DictationRecording {
   id: string;
@@ -64,6 +65,14 @@ interface DictationRecording {
   attemptCount: number;
   durationMs: number | null;
   playbackUrl: string | null;
+}
+
+interface DictationUploadSnapshot {
+  storageBucket: string;
+  storagePath: string;
+  createdAt: string;
+  attemptCount: number;
+  durationMs: number | null;
 }
 
 const FEEDBACK_FIELD_LABELS: Record<FeedbackFieldKey, string> = {
@@ -82,6 +91,12 @@ const createEmptyDictationRecordingsByField = (): DictationRecordingsByField => 
   voice_assistant_feedback: [],
   communication_style_feedback: [],
   experiment_feedback: [],
+});
+
+const createEmptyFeedbackDraftUsage = (): FeedbackDraftUsage => ({
+  voice_assistant_feedback: false,
+  communication_style_feedback: false,
+  experiment_feedback: false,
 });
 
 interface ExperimentResponseWithDemographics extends Tables<'experiment_responses'> {
@@ -646,6 +661,8 @@ const ResponseDetails = () => {
     feedback: { micPermission?: string | null; micAudio?: string | null };
   } | null>(null);
   const [feedbackInputSources, setFeedbackInputSources] = useState<FeedbackInputSourceState>(createEmptyFeedbackInputSourceState());
+  const [feedbackDraftUsage, setFeedbackDraftUsage] = useState<FeedbackDraftUsage>(createEmptyFeedbackDraftUsage());
+  const [feedbackDraftSavedAt, setFeedbackDraftSavedAt] = useState<string | null>(null);
   const [dictationRecordingsByField, setDictationRecordingsByField] = useState<DictationRecordingsByField>(createEmptyDictationRecordingsByField());
   const [replayEvents, setReplayEvents] = useState<ReplayEvent[]>([]);
   const [replayMarkers, setReplayMarkers] = useState<ReplayMarker[]>([]);
@@ -658,6 +675,8 @@ const ResponseDetails = () => {
       setIsLoading(true);
       setJourneyDiagnostics(null);
       setFeedbackInputSources(createEmptyFeedbackInputSourceState());
+      setFeedbackDraftUsage(createEmptyFeedbackDraftUsage());
+      setFeedbackDraftSavedAt(null);
       setDictationRecordingsByField(createEmptyDictationRecordingsByField());
       setReplayEvents([]);
       setReplayMarkers([]);
@@ -686,25 +705,43 @@ const ResponseDetails = () => {
           if (pendingCallError) throw pendingCallError;
           if (!pendingCall) throw new Error('Response not found');
 
-          setIsPendingRecord(true);
-          response = {
-            id: pendingCall.id,
-            prolific_id: pendingCall.prolific_id,
-            call_id: pendingCall.call_id,
-            created_at: pendingCall.created_at,
-            call_attempt_number: null as unknown as number,
-            assistant_type: null,
-            batch_label: null,
-            pets_total: null as unknown as number,
-            pets_er: null as unknown as number,
-            pets_ut: null as unknown as number,
-            formality: null as unknown as number,
-            intention_1: null as unknown as number,
-            intention_2: null as unknown as number,
-            voice_assistant_feedback: '',
-            communication_style_feedback: '',
-            experiment_feedback: '',
-          } as ExperimentResponseWithDemographics;
+          // If the route came from a pending row but a completed response now exists for the same call,
+          // load the completed response instead of showing pending placeholders.
+          const { data: completedByCall, error: completedByCallError } = await supabase
+            .from('experiment_responses')
+            .select('*')
+            .eq('prolific_id', pendingCall.prolific_id)
+            .eq('call_id', pendingCall.call_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (completedByCallError) throw completedByCallError;
+
+          if (completedByCall) {
+            response = completedByCall as ExperimentResponseWithDemographics;
+            setIsPendingRecord(false);
+          } else {
+            setIsPendingRecord(true);
+            response = {
+              id: pendingCall.id,
+              prolific_id: pendingCall.prolific_id,
+              call_id: pendingCall.call_id,
+              created_at: pendingCall.created_at,
+              call_attempt_number: null as unknown as number,
+              assistant_type: null,
+              batch_label: null,
+              pets_total: null as unknown as number,
+              pets_er: null as unknown as number,
+              pets_ut: null as unknown as number,
+              formality: null as unknown as number,
+              intention_1: null as unknown as number,
+              intention_2: null as unknown as number,
+              voice_assistant_feedback: '',
+              communication_style_feedback: '',
+              experiment_feedback: '',
+            } as ExperimentResponseWithDemographics;
+          }
         }
 
         // Fetch demographics
@@ -738,6 +775,7 @@ const ResponseDetails = () => {
               'dictation_start_blocked',
               'dictation_recording_uploaded',
               'feedback_input_mode',
+              'feedback_draft_autosave',
             ])
             .order('created_at', { ascending: true }),
           supabase
@@ -751,6 +789,9 @@ const ResponseDetails = () => {
 
         let replayStartTimestamp: number | null = null;
         let replayDurationMs = 0;
+        const latestDictationUploads: Partial<Record<FeedbackFieldKey, DictationUploadSnapshot>> = {};
+        const latestFeedbackDraft: Partial<Record<FeedbackFieldKey, string>> = {};
+        let latestFeedbackDraftSavedAt: string | null = null;
         if (replayChunks) {
           const flattenedEvents: ReplayEvent[] = [];
           replayChunks.forEach((chunk: { metadata: unknown; created_at: string }) => {
@@ -822,6 +863,27 @@ const ResponseDetails = () => {
               }
             }
 
+            if (event.event_type === 'feedback_draft_autosave') {
+              const responses = (metadata.responses || {}) as Record<string, unknown>;
+              (Object.keys(FEEDBACK_FIELD_LABELS) as FeedbackFieldKey[]).forEach((field) => {
+                const value = responses[field];
+                if (typeof value === 'string') {
+                  latestFeedbackDraft[field] = value;
+                }
+              });
+              const inputModes = (metadata.inputModes || {}) as Record<string, unknown>;
+              (Object.keys(FEEDBACK_FIELD_LABELS) as FeedbackFieldKey[]).forEach((field) => {
+                const fieldModes = (inputModes[field] || {}) as Record<string, unknown>;
+                if (fieldModes.typed === true) {
+                  nextFeedbackInputSources[field].typed = true;
+                }
+                if (fieldModes.dictated === true) {
+                  nextFeedbackInputSources[field].dictated = true;
+                }
+              });
+              latestFeedbackDraftSavedAt = event.created_at;
+            }
+
             if (!replayStartTimestamp) return;
             const eventTimestamp = Date.parse(event.created_at);
             if (Number.isNaN(eventTimestamp)) return;
@@ -875,6 +937,21 @@ const ResponseDetails = () => {
             } else if (event.event_type === 'dictation_recording_uploaded') {
               label = `${labelPrefix}: ${feedbackFieldLabel} dictation audio saved`;
               tone = 'success';
+              const storagePath = typeof metadata.storagePath === 'string' ? metadata.storagePath : '';
+              if (isFeedbackField(metadata.field) && storagePath) {
+                latestDictationUploads[metadata.field] = {
+                  storageBucket: typeof metadata.storageBucket === 'string' && metadata.storageBucket
+                    ? metadata.storageBucket
+                    : 'dictation-audio',
+                  storagePath,
+                  createdAt: event.created_at,
+                  attemptCount: typeof metadata.attemptCount === 'number' ? metadata.attemptCount : 1,
+                  durationMs: typeof metadata.durationMs === 'number' ? metadata.durationMs : null,
+                };
+              }
+            } else if (event.event_type === 'feedback_draft_autosave') {
+              label = `${labelPrefix}: Feedback draft autosaved`;
+              tone = 'info';
             } else if (event.event_type === 'feedback_input_mode') {
               if (metadata.mode === 'typed') {
                 label = `${labelPrefix}: ${feedbackFieldLabel} typed`;
@@ -896,10 +973,12 @@ const ResponseDetails = () => {
 
           setJourneyDiagnostics(diagnostics);
           setFeedbackInputSources(nextFeedbackInputSources);
+          setFeedbackDraftSavedAt(latestFeedbackDraftSavedAt);
           setReplayMarkers(markers.slice(0, 80));
         }
 
         try {
+          const nextRecordings = createEmptyDictationRecordingsByField();
           const { data: dictationRows, error: dictationError } = await supabase
             .from('dictation_recordings' as never)
             .select('id, prolific_id, call_id, field, storage_bucket, storage_path, mime_type, duration_ms, attempt_count, created_at')
@@ -909,7 +988,6 @@ const ResponseDetails = () => {
           if (dictationError) {
             console.warn('Unable to load dictation recordings:', dictationError.message);
           } else if (Array.isArray(dictationRows)) {
-            const nextRecordings = createEmptyDictationRecordingsByField();
             const filteredRows = dictationRows.filter((row: Record<string, unknown>) => {
               if (!response.call_id) return true;
               const rowCallId = typeof row.call_id === 'string' ? row.call_id : null;
@@ -949,13 +1027,44 @@ const ResponseDetails = () => {
               if (!recording) return;
               nextRecordings[recording.field].push(recording);
             });
-            setDictationRecordingsByField(nextRecordings);
           }
+
+          // Fallback for pending/in-progress sessions: use latest uploaded snapshot event if table rows are not present yet.
+          const latestSnapshots = Object.entries(latestDictationUploads) as [FeedbackFieldKey, DictationUploadSnapshot][];
+          for (const [field, snapshot] of latestSnapshots) {
+            if (nextRecordings[field].length > 0) continue;
+            const { data: signedData, error: signedError } = await supabase.storage
+              .from(snapshot.storageBucket)
+              .createSignedUrl(snapshot.storagePath, 60 * 60);
+            nextRecordings[field].push({
+              id: `${field}-${snapshot.createdAt}-snapshot`,
+              field,
+              createdAt: snapshot.createdAt,
+              attemptCount: snapshot.attemptCount,
+              durationMs: snapshot.durationMs,
+              playbackUrl: signedError ? null : (signedData?.signedUrl || null),
+            });
+          }
+
+          setDictationRecordingsByField(nextRecordings);
         } catch (dictationLoadError) {
           console.warn('Unexpected error loading dictation recordings:', dictationLoadError);
         }
 
-        setData({ ...response, demographics });
+        const nextFeedbackDraftUsage = createEmptyFeedbackDraftUsage();
+        const mergedResponse = { ...response } as ExperimentResponseWithDemographics;
+        (Object.keys(FEEDBACK_FIELD_LABELS) as FeedbackFieldKey[]).forEach((field) => {
+          const existingValue = mergedResponse[field];
+          const isMissing = !existingValue || existingValue === 'Not provided';
+          const draftValue = latestFeedbackDraft[field];
+          if (isMissing && typeof draftValue === 'string' && draftValue.trim()) {
+            mergedResponse[field] = draftValue as ExperimentResponseWithDemographics[typeof field];
+            nextFeedbackDraftUsage[field] = true;
+          }
+        });
+        setFeedbackDraftUsage(nextFeedbackDraftUsage);
+
+        setData({ ...mergedResponse, demographics });
         setFormalityCalcId(formalityCalc?.id || null);
       } catch (err) {
         console.error('Error fetching response details:', err);
@@ -1745,15 +1854,25 @@ const ResponseDetails = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {feedbackDraftSavedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Latest autosaved feedback draft: {new Date(feedbackDraftSavedAt).toLocaleString()}
+                </p>
+              )}
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-sm font-medium text-muted-foreground">Voice Assistant Feedback</label>
-                  <Badge variant="outline">
-                    Input: {formatFeedbackInputSource(
-                      feedbackInputSources.voice_assistant_feedback.typed,
-                      feedbackInputSources.voice_assistant_feedback.dictated
+                  <div className="flex items-center gap-2">
+                    {feedbackDraftUsage.voice_assistant_feedback && (
+                      <Badge variant="secondary">Draft (not submitted)</Badge>
                     )}
-                  </Badge>
+                    <Badge variant="outline">
+                      Input: {formatFeedbackInputSource(
+                        feedbackInputSources.voice_assistant_feedback.typed,
+                        feedbackInputSources.voice_assistant_feedback.dictated
+                      )}
+                    </Badge>
+                  </div>
                 </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
                   {data.voice_assistant_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}
@@ -1763,12 +1882,17 @@ const ResponseDetails = () => {
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-sm font-medium text-muted-foreground">Communication Style Feedback</label>
-                  <Badge variant="outline">
-                    Input: {formatFeedbackInputSource(
-                      feedbackInputSources.communication_style_feedback.typed,
-                      feedbackInputSources.communication_style_feedback.dictated
+                  <div className="flex items-center gap-2">
+                    {feedbackDraftUsage.communication_style_feedback && (
+                      <Badge variant="secondary">Draft (not submitted)</Badge>
                     )}
-                  </Badge>
+                    <Badge variant="outline">
+                      Input: {formatFeedbackInputSource(
+                        feedbackInputSources.communication_style_feedback.typed,
+                        feedbackInputSources.communication_style_feedback.dictated
+                      )}
+                    </Badge>
+                  </div>
                 </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
                   {data.communication_style_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}
@@ -1778,12 +1902,17 @@ const ResponseDetails = () => {
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-sm font-medium text-muted-foreground">Experiment Feedback</label>
-                  <Badge variant="outline">
-                    Input: {formatFeedbackInputSource(
-                      feedbackInputSources.experiment_feedback.typed,
-                      feedbackInputSources.experiment_feedback.dictated
+                  <div className="flex items-center gap-2">
+                    {feedbackDraftUsage.experiment_feedback && (
+                      <Badge variant="secondary">Draft (not submitted)</Badge>
                     )}
-                  </Badge>
+                    <Badge variant="outline">
+                      Input: {formatFeedbackInputSource(
+                        feedbackInputSources.experiment_feedback.typed,
+                        feedbackInputSources.experiment_feedback.dictated
+                      )}
+                    </Badge>
+                  </div>
                 </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
                   {data.experiment_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}

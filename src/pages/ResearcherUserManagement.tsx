@@ -33,9 +33,19 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, UserPlus, Trash2, Shield, Eye, KeyRound, Loader2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ArrowLeft, UserPlus, Trash2, Shield, Eye, KeyRound, Loader2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminPasswordResetDialog } from '@/components/researcher/AdminPasswordResetDialog';
+
+const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,32}$/;
 
 interface ResearcherUser {
   id: string;
@@ -43,6 +53,7 @@ interface ResearcherUser {
   role: 'super_admin' | 'viewer';
   created_at: string;
   email: string;
+  username?: string | null;
 }
 
 const ResearcherUserManagement = () => {
@@ -52,11 +63,17 @@ const ResearcherUserManagement = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserUsername, setNewUserUsername] = useState('');
   const [newUserRole, setNewUserRole] = useState<'super_admin' | 'viewer'>('viewer');
   const [isAdding, setIsAdding] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [resetPasswordEmail, setResetPasswordEmail] = useState<string | undefined>();
+  const [editUsernameOpen, setEditUsernameOpen] = useState(false);
+  const [editUsernameValue, setEditUsernameValue] = useState('');
+  const [editUsernameUserId, setEditUsernameUserId] = useState<string | null>(null);
+  const [editUsernameUserEmail, setEditUsernameUserEmail] = useState<string>('');
+  const [isUpdatingUsername, setIsUpdatingUsername] = useState(false);
 
   useEffect(() => {
     if (!isSuperAdmin) {
@@ -110,6 +127,12 @@ const ResearcherUserManagement = () => {
       return;
     }
 
+    const normalizedUsername = newUserUsername.trim().toLowerCase();
+    if (normalizedUsername && !USERNAME_PATTERN.test(normalizedUsername)) {
+      toast.error('Username must be 3-32 chars: letters, numbers, dot, underscore, hyphen');
+      return;
+    }
+
     setIsAdding(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -118,7 +141,8 @@ const ResearcherUserManagement = () => {
         body: { 
           email: newUserEmail, 
           password: newUserPassword,
-          role: newUserRole 
+          role: newUserRole,
+          username: normalizedUsername || undefined,
         },
         headers: {
           Authorization: `Bearer ${sessionData.session?.access_token}`,
@@ -136,6 +160,7 @@ const ResearcherUserManagement = () => {
       toast.success(response.data?.message || 'Researcher created successfully');
       setNewUserEmail('');
       setNewUserPassword('');
+      setNewUserUsername('');
       setNewUserRole('viewer');
       fetchUsers();
     } catch (error) {
@@ -196,6 +221,56 @@ const ResearcherUserManagement = () => {
     }
   };
 
+  const openEditUsernameDialog = (targetUser: ResearcherUser) => {
+    setEditUsernameUserId(targetUser.user_id);
+    setEditUsernameUserEmail(targetUser.email);
+    setEditUsernameValue((targetUser.username || '').trim());
+    setEditUsernameOpen(true);
+  };
+
+  const handleUpdateUsername = async () => {
+    if (!editUsernameUserId) return;
+
+    const normalizedUsername = editUsernameValue.trim().toLowerCase();
+    if (!USERNAME_PATTERN.test(normalizedUsername)) {
+      toast.error('Username must be 3-32 chars: letters, numbers, dot, underscore, hyphen');
+      return;
+    }
+
+    setIsUpdatingUsername(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const response = await supabase.functions.invoke('update-researcher-username', {
+        body: {
+          targetUserId: editUsernameUserId,
+          username: normalizedUsername,
+        },
+        headers: {
+          Authorization: `Bearer ${sessionData.session?.access_token}`,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to update username');
+      }
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      toast.success('Username updated');
+      setEditUsernameOpen(false);
+      setEditUsernameUserId(null);
+      setEditUsernameUserEmail('');
+      setEditUsernameValue('');
+      fetchUsers();
+    } catch (error) {
+      console.error('Error updating username:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update username');
+    } finally {
+      setIsUpdatingUsername(false);
+    }
+  };
+
   if (!isSuperAdmin) {
     return null;
   }
@@ -248,6 +323,16 @@ const ResearcherUserManagement = () => {
                     onChange={(e) => setNewUserPassword(e.target.value)}
                   />
                 </div>
+              </div>
+              <div className="space-y-2 max-w-sm">
+                <Label htmlFor="username">Username (Optional)</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="e.g. ovroom"
+                  value={newUserUsername}
+                  onChange={(e) => setNewUserUsername(e.target.value)}
+                />
               </div>
               <div className="flex gap-4 items-end">
                 <div className="w-40 space-y-2">
@@ -304,6 +389,7 @@ const ResearcherUserManagement = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Email</TableHead>
+                    <TableHead>Username</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Added</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -321,6 +407,9 @@ const ResearcherUserManagement = () => {
                         ) : (
                           researcherUser.email
                         )}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {researcherUser.username || <span className="text-muted-foreground/70">Not set</span>}
                       </TableCell>
                       <TableCell>
                         <Select
@@ -364,6 +453,14 @@ const ResearcherUserManagement = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEditUsernameDialog(researcherUser)}
+                            title="Edit Username"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -420,6 +517,55 @@ const ResearcherUserManagement = () => {
         onOpenChange={setResetPasswordOpen}
         targetEmail={resetPasswordEmail}
       />
+
+      <Dialog
+        open={editUsernameOpen}
+        onOpenChange={(open) => {
+          setEditUsernameOpen(open);
+          if (!open) {
+            setEditUsernameUserId(null);
+            setEditUsernameUserEmail('');
+            setEditUsernameValue('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Username</DialogTitle>
+            <DialogDescription>
+              Update username for {editUsernameUserEmail || 'researcher account'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="edit-username">Username</Label>
+            <Input
+              id="edit-username"
+              type="text"
+              placeholder="e.g. ovroom"
+              value={editUsernameValue}
+              onChange={(e) => setEditUsernameValue(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              3-32 chars, letters/numbers/dot/underscore/hyphen.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditUsernameOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateUsername} disabled={isUpdatingUsername}>
+              {isUpdatingUsername ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

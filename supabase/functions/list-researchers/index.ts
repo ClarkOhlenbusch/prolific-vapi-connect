@@ -86,9 +86,16 @@ Deno.serve(async (req) => {
     // Map emails to roles
     const usersWithEmails = roles?.map(role => {
       const authUser = authUsers.users.find(u => u.id === role.user_id);
+      const metadataUsername = authUser?.user_metadata?.username;
+      const rawMetadataUsername = authUser?.raw_user_meta_data?.username;
+      const usernameValue =
+        (typeof metadataUsername === 'string' && metadataUsername.trim()) ||
+        (typeof rawMetadataUsername === 'string' && rawMetadataUsername.trim()) ||
+        null;
       return {
         ...role,
         email: authUser?.email || 'Unknown',
+        username: usernameValue,
       };
     }) || [];
 

@@ -30,29 +30,68 @@ const FEEDBACK_FIELDS: FeedbackField[] = [
 ];
 
 const DICTATION_AUDIO_BUCKET = "dictation-audio";
+const FEEDBACK_AUTOSAVE_EVENT_TYPE = "feedback_draft_autosave";
+const FEEDBACK_AUTOSAVE_DEBOUNCE_MS = 2500;
+const FEEDBACK_AUTOSAVE_HEARTBEAT_MS = 15000;
 
 interface DictationRecorderState {
   recorder: MediaRecorder | null;
   stream: MediaStream | null;
   chunks: Blob[];
   mimeType: string;
+  storagePath: string | null;
   attemptCount: number;
   activeStartMs: number | null;
   activeDurationMs: number;
-  uploaded: boolean;
+  persisted: boolean;
   stopPromise: Promise<void> | null;
   resolveStop: (() => void) | null;
 }
+
+interface DictationDebugInfo {
+  recorderState: "idle" | "recording" | "paused" | "stopped" | "unsupported";
+  attemptCount: number;
+  chunkCount: number;
+  bytesCaptured: number;
+  lastUploadStatus: "idle" | "uploading" | "uploaded" | "error";
+  lastUploadAt: string | null;
+  lastUploadBytes: number | null;
+  storagePath: string | null;
+  lastError: string | null;
+  lastReason: string | null;
+  persisted: boolean;
+}
+
+const createDictationDebugInfo = (): DictationDebugInfo => ({
+  recorderState: "idle",
+  attemptCount: 0,
+  chunkCount: 0,
+  bytesCaptured: 0,
+  lastUploadStatus: "idle",
+  lastUploadAt: null,
+  lastUploadBytes: null,
+  storagePath: null,
+  lastError: null,
+  lastReason: null,
+  persisted: false,
+});
+
+const createDictationDebugInfoMap = (): Record<FeedbackField, DictationDebugInfo> => ({
+  voice_assistant_feedback: createDictationDebugInfo(),
+  communication_style_feedback: createDictationDebugInfo(),
+  experiment_feedback: createDictationDebugInfo(),
+});
 
 const createDictationRecorderState = (): DictationRecorderState => ({
   recorder: null,
   stream: null,
   chunks: [],
   mimeType: "audio/webm",
+  storagePath: null,
   attemptCount: 0,
   activeStartMs: null,
   activeDurationMs: 0,
-  uploaded: false,
+  persisted: false,
   stopPromise: null,
   resolveStop: null,
 });
@@ -81,6 +120,12 @@ const fileExtensionForMimeType = (mimeType: string) => {
   return "webm";
 };
 
+const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
 const FeedbackQuestionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -97,7 +142,16 @@ const FeedbackQuestionnaire = () => {
   const [interimExperience, setInterimExperience] = useState("");
   const [interimStyle, setInterimStyle] = useState("");
   const [interimExperiment, setInterimExperiment] = useState("");
+  const [dictationDebug, setDictationDebug] = useState<Record<FeedbackField, DictationDebugInfo>>(createDictationDebugInfoMap());
   const loggedInputModesRef = useRef<Set<string>>(new Set());
+  const feedbackInputModesRef = useRef<Record<FeedbackField, { typed: boolean; dictated: boolean }>>({
+    voice_assistant_feedback: { typed: false, dictated: false },
+    communication_style_feedback: { typed: false, dictated: false },
+    experiment_feedback: { typed: false, dictated: false },
+  });
+  const autosaveFingerprintRef = useRef<string>("");
+  const autosaveInFlightRef = useRef(false);
+  const autosaveQueuedRef = useRef(false);
   const dictationRecordersRef = useRef<Record<FeedbackField, DictationRecorderState>>(createDictationRecorderStateMap());
   
   // Refs to stop dictation when clicking on another field
@@ -131,6 +185,78 @@ const FeedbackQuestionnaire = () => {
     });
   }, [prolificId, callId]);
 
+  const updateDictationDebug = useCallback((field: FeedbackField, patch: Partial<DictationDebugInfo>) => {
+    setDictationDebug((prev) => ({
+      ...prev,
+      [field]: {
+        ...prev[field],
+        ...patch,
+      },
+    }));
+  }, []);
+
+  const buildFeedbackDraftMetadata = useCallback(() => {
+    const responses = {
+      voice_assistant_feedback: voiceAssistantExperience,
+      communication_style_feedback: communicationStyleFeedback,
+      experiment_feedback: experimentFeedback,
+    };
+    const wordCounts = {
+      voice_assistant_feedback: countWords(voiceAssistantExperience),
+      communication_style_feedback: countWords(communicationStyleFeedback),
+      experiment_feedback: countWords(experimentFeedback),
+    };
+    const inputModes = {
+      voice_assistant_feedback: { ...feedbackInputModesRef.current.voice_assistant_feedback },
+      communication_style_feedback: { ...feedbackInputModesRef.current.communication_style_feedback },
+      experiment_feedback: { ...feedbackInputModesRef.current.experiment_feedback },
+    };
+    return {
+      responses,
+      wordCounts,
+      inputModes,
+    };
+  }, [communicationStyleFeedback, experimentFeedback, voiceAssistantExperience]);
+
+  const persistFeedbackDraft = useCallback(async (reason: string, force = false) => {
+    if (!prolificId) return;
+
+    const draftMetadata = buildFeedbackDraftMetadata();
+    const fingerprint = JSON.stringify(draftMetadata.responses);
+    if (!force && autosaveFingerprintRef.current === fingerprint) {
+      return;
+    }
+
+    if (autosaveInFlightRef.current) {
+      autosaveQueuedRef.current = true;
+      return;
+    }
+
+    autosaveInFlightRef.current = true;
+    try {
+      await logNavigationEvent({
+        prolificId,
+        callId,
+        pageName: "feedback",
+        eventType: FEEDBACK_AUTOSAVE_EVENT_TYPE,
+        metadata: {
+          ...draftMetadata,
+          reason,
+          capturedAt: new Date().toISOString(),
+        },
+      });
+      autosaveFingerprintRef.current = fingerprint;
+    } catch (error) {
+      console.error("Error autosaving feedback draft:", error);
+    } finally {
+      autosaveInFlightRef.current = false;
+      if (autosaveQueuedRef.current) {
+        autosaveQueuedRef.current = false;
+        await persistFeedbackDraft("queued_retry", true);
+      }
+    }
+  }, [buildFeedbackDraftMetadata, callId, prolificId]);
+
   const buildRecordingStoragePath = useCallback((field: FeedbackField, mimeType: string) => {
     const safeProlificId = prolificId || "unknown-prolific";
     const safeCallId = callId || "unknown-call";
@@ -147,6 +273,10 @@ const FeedbackQuestionnaire = () => {
       return recorderState;
     }
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      updateDictationDebug(field, {
+        recorderState: "unsupported",
+        lastError: "MediaRecorder or microphone access is not supported in this browser.",
+      });
       logFeedbackEvent("dictation_recording_error", {
         field,
         fieldLabel: FEEDBACK_FIELD_LABELS[field],
@@ -166,21 +296,41 @@ const FeedbackQuestionnaire = () => {
       recorderState.recorder = recorder;
       recorderState.mimeType = supportedMimeType || recorder.mimeType || "audio/webm";
       recorderState.chunks = [];
-      recorderState.uploaded = false;
+      recorderState.persisted = false;
+      updateDictationDebug(field, {
+        recorderState: "idle",
+        lastError: null,
+        storagePath: recorderState.storagePath,
+        persisted: recorderState.persisted,
+      });
 
       recorder.ondataavailable = (event: BlobEvent) => {
         if (event.data && event.data.size > 0) {
           recorderState.chunks.push(event.data);
+          const totalBytes = recorderState.chunks.reduce((sum, chunk) => sum + chunk.size, 0);
+          updateDictationDebug(field, {
+            chunkCount: recorderState.chunks.length,
+            bytesCaptured: totalBytes,
+          });
         }
       };
 
       recorder.onstart = () => {
         recorderState.attemptCount += 1;
         recorderState.activeStartMs = Date.now();
+        updateDictationDebug(field, {
+          recorderState: "recording",
+          attemptCount: recorderState.attemptCount,
+          lastError: null,
+        });
       };
 
       recorder.onresume = () => {
         recorderState.activeStartMs = Date.now();
+        updateDictationDebug(field, {
+          recorderState: "recording",
+          lastError: null,
+        });
       };
 
       recorder.onpause = () => {
@@ -188,6 +338,9 @@ const FeedbackQuestionnaire = () => {
           recorderState.activeDurationMs += Date.now() - recorderState.activeStartMs;
           recorderState.activeStartMs = null;
         }
+        updateDictationDebug(field, {
+          recorderState: "paused",
+        });
       };
 
       recorder.onstop = () => {
@@ -198,9 +351,16 @@ const FeedbackQuestionnaire = () => {
         recorderState.resolveStop?.();
         recorderState.resolveStop = null;
         recorderState.stopPromise = null;
+        updateDictationDebug(field, {
+          recorderState: "stopped",
+        });
       };
 
       recorder.onerror = () => {
+        updateDictationDebug(field, {
+          lastUploadStatus: "error",
+          lastError: "MediaRecorder runtime error.",
+        });
         logFeedbackEvent("dictation_recording_error", {
           field,
           fieldLabel: FEEDBACK_FIELD_LABELS[field],
@@ -210,6 +370,10 @@ const FeedbackQuestionnaire = () => {
 
       return recorderState;
     } catch (error) {
+      updateDictationDebug(field, {
+        lastUploadStatus: "error",
+        lastError: error instanceof Error ? error.message : String(error),
+      });
       logFeedbackEvent("dictation_recording_error", {
         field,
         fieldLabel: FEEDBACK_FIELD_LABELS[field],
@@ -218,7 +382,7 @@ const FeedbackQuestionnaire = () => {
       });
       return null;
     }
-  }, [logFeedbackEvent]);
+  }, [logFeedbackEvent, updateDictationDebug]);
 
   const startOrResumeDictationRecording = useCallback(async (field: FeedbackField) => {
     if (isResearcherMode) return;
@@ -234,15 +398,22 @@ const FeedbackQuestionnaire = () => {
     if (recorder.state === "paused") {
       recorder.resume();
     }
-  }, [ensureDictationRecorder, isResearcherMode]);
+    updateDictationDebug(field, {
+      recorderState: "recording",
+      lastError: null,
+    });
+  }, [ensureDictationRecorder, isResearcherMode, updateDictationDebug]);
 
   const pauseDictationRecording = useCallback((field: FeedbackField) => {
     const recorder = dictationRecordersRef.current[field].recorder;
     if (!recorder) return;
     if (recorder.state === "recording") {
       recorder.pause();
+      updateDictationDebug(field, {
+        recorderState: "paused",
+      });
     }
-  }, []);
+  }, [updateDictationDebug]);
 
   const pauseOtherDictationRecordings = useCallback((activeField: FeedbackField) => {
     FEEDBACK_FIELDS.forEach((field) => {
@@ -251,6 +422,125 @@ const FeedbackQuestionnaire = () => {
       }
     });
   }, [pauseDictationRecording]);
+
+  const uploadDictationSnapshot = useCallback(async (
+    field: FeedbackField,
+    options: { finalizeRow?: boolean } = {}
+  ) => {
+    if (!prolificId) {
+      updateDictationDebug(field, {
+        lastUploadStatus: "error",
+        lastError: "Missing prolificId; cannot upload dictation audio.",
+      });
+      return;
+    }
+
+    const recorderState = dictationRecordersRef.current[field];
+    updateDictationDebug(field, {
+      lastUploadStatus: "uploading",
+      lastError: null,
+    });
+    const recorder = recorderState.recorder;
+    if (recorder && typeof recorder.requestData === "function") {
+      try {
+        recorder.requestData();
+      } catch {
+        // requestData may fail in some browser states; continue with available chunks
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 80));
+    }
+
+    if (!recorderState.chunks.length && recorderState.attemptCount === 0) {
+      updateDictationDebug(field, {
+        lastUploadStatus: "idle",
+      });
+      return;
+    }
+
+    const mimeType = recorderState.mimeType || "audio/webm";
+    const blob = new Blob(recorderState.chunks, { type: mimeType });
+    if (!recorderState.storagePath) {
+      recorderState.storagePath = buildRecordingStoragePath(field, mimeType);
+    }
+
+    const { error: uploadError } = await supabase.storage
+      .from(DICTATION_AUDIO_BUCKET)
+      .upload(recorderState.storagePath, blob, {
+        contentType: mimeType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      updateDictationDebug(field, {
+        lastUploadStatus: "error",
+        lastError: uploadError.message,
+        storagePath: recorderState.storagePath,
+      });
+      logFeedbackEvent("dictation_recording_upload_error", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        message: uploadError.message,
+      });
+      return;
+    }
+
+    const durationMs = Math.max(0, Math.round(recorderState.activeDurationMs));
+    updateDictationDebug(field, {
+      lastUploadStatus: "uploaded",
+      lastUploadAt: new Date().toISOString(),
+      lastUploadBytes: blob.size,
+      storagePath: recorderState.storagePath,
+      chunkCount: recorderState.chunks.length,
+      bytesCaptured: blob.size,
+      attemptCount: recorderState.attemptCount,
+      persisted: recorderState.persisted,
+    });
+    logFeedbackEvent("dictation_recording_uploaded", {
+      field,
+      fieldLabel: FEEDBACK_FIELD_LABELS[field],
+      attemptCount: recorderState.attemptCount,
+      fileSizeBytes: blob.size,
+      durationMs,
+      storageBucket: DICTATION_AUDIO_BUCKET,
+      storagePath: recorderState.storagePath,
+      isFinal: Boolean(options.finalizeRow),
+    });
+
+    if (!options.finalizeRow || recorderState.persisted) return;
+
+    const { error: insertError } = await supabase.from("dictation_recordings" as never).insert({
+      prolific_id: prolificId,
+      call_id: callId || null,
+      page_name: "feedback",
+      field,
+      mime_type: mimeType,
+      storage_bucket: DICTATION_AUDIO_BUCKET,
+      storage_path: recorderState.storagePath,
+      file_size_bytes: blob.size,
+      duration_ms: durationMs,
+      attempt_count: recorderState.attemptCount,
+    });
+
+    if (insertError) {
+      updateDictationDebug(field, {
+        lastUploadStatus: "error",
+        lastError: `Metadata insert failed: ${insertError.message}`,
+      });
+      logFeedbackEvent("dictation_recording_upload_error", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        message: insertError.message,
+        stage: "metadata_insert",
+      });
+      return;
+    }
+
+    recorderState.persisted = true;
+    updateDictationDebug(field, {
+      persisted: true,
+      lastError: null,
+    });
+  }, [buildRecordingStoragePath, callId, logFeedbackEvent, prolificId, updateDictationDebug]);
 
   const finalizeDictationRecording = useCallback(async (field: FeedbackField) => {
     const recorderState = dictationRecordersRef.current[field];
@@ -291,64 +581,14 @@ const FeedbackQuestionnaire = () => {
 
     for (const field of FEEDBACK_FIELDS) {
       const recorderState = dictationRecordersRef.current[field];
-      if (recorderState.uploaded) continue;
-
-      const finalized = await finalizeDictationRecording(field);
-      if (!finalized) continue;
-
-      const { blob, mimeType, attemptCount, durationMs } = finalized;
-      const storagePath = buildRecordingStoragePath(field, mimeType);
-      const { error: uploadError } = await supabase.storage
-        .from(DICTATION_AUDIO_BUCKET)
-        .upload(storagePath, blob, {
-          contentType: mimeType,
-          upsert: false,
-        });
-
-      if (uploadError) {
-        logFeedbackEvent("dictation_recording_upload_error", {
-          field,
-          fieldLabel: FEEDBACK_FIELD_LABELS[field],
-          message: uploadError.message,
-        });
-        continue;
-      }
-
-      const { error: insertError } = await supabase.from("dictation_recordings" as never).insert({
-        prolific_id: prolificId,
-        call_id: callId || null,
-        page_name: "feedback",
-        field,
-        mime_type: mimeType,
-        storage_bucket: DICTATION_AUDIO_BUCKET,
-        storage_path: storagePath,
-        file_size_bytes: blob.size,
-        duration_ms: durationMs,
-        attempt_count: attemptCount,
-      } as never);
-
-      if (insertError) {
-        logFeedbackEvent("dictation_recording_upload_error", {
-          field,
-          fieldLabel: FEEDBACK_FIELD_LABELS[field],
-          message: insertError.message,
-          stage: "metadata_insert",
-        });
-        continue;
-      }
-
-      recorderState.uploaded = true;
-      logFeedbackEvent("dictation_recording_uploaded", {
-        field,
-        fieldLabel: FEEDBACK_FIELD_LABELS[field],
-        attemptCount,
-        fileSizeBytes: blob.size,
-        durationMs,
-      });
+      if (recorderState.persisted) continue;
+      await finalizeDictationRecording(field);
+      await uploadDictationSnapshot(field, { finalizeRow: true });
     }
-  }, [buildRecordingStoragePath, callId, finalizeDictationRecording, logFeedbackEvent, prolificId]);
+  }, [finalizeDictationRecording, uploadDictationSnapshot, prolificId]);
 
   const markFeedbackInputMode = useCallback((field: FeedbackField, mode: FeedbackInputMode) => {
+    feedbackInputModesRef.current[field][mode] = true;
     const dedupeKey = `${field}:${mode}`;
     if (loggedInputModesRef.current.has(dedupeKey)) return;
     loggedInputModesRef.current.add(dedupeKey);
@@ -394,6 +634,10 @@ const FeedbackQuestionnaire = () => {
     const isPermissionBlocked = micDiagnostics.permissionState === "denied";
     const isMicAccessError = micDiagnostics.permissionState === "error" || micDiagnostics.permissionState === "unsupported";
     if (isPermissionBlocked || isMicAccessError) {
+      updateDictationDebug(field, {
+        lastUploadStatus: "error",
+        lastError: `Mic precheck blocked: ${micDiagnostics.permissionState}`,
+      });
       logFeedbackEvent("dictation_start_blocked", {
         field,
         fieldLabel: FEEDBACK_FIELD_LABELS[field],
@@ -408,14 +652,21 @@ const FeedbackQuestionnaire = () => {
       return false;
     }
 
+    updateDictationDebug(field, {
+      lastError: null,
+    });
     return true;
-  }, [isResearcherMode, logFeedbackEvent, toast]);
+  }, [isResearcherMode, logFeedbackEvent, toast, updateDictationDebug]);
 
   const handleDictationListeningChange = useCallback((field: FeedbackField, isListeningNow: boolean, reason?: string) => {
     logFeedbackEvent(isListeningNow ? "dictation_started" : "dictation_stopped", {
       field,
       fieldLabel: FEEDBACK_FIELD_LABELS[field],
       reason: reason || null,
+    });
+    updateDictationDebug(field, {
+      lastReason: reason || null,
+      recorderState: isListeningNow ? "recording" : "paused",
     });
     if (isListeningNow) {
       markFeedbackInputMode(field, "dictated");
@@ -424,12 +675,17 @@ const FeedbackQuestionnaire = () => {
       return;
     }
     pauseDictationRecording(field);
+    window.setTimeout(() => {
+      void uploadDictationSnapshot(field, { finalizeRow: false });
+    }, 120);
   }, [
     logFeedbackEvent,
     markFeedbackInputMode,
     pauseDictationRecording,
     pauseOtherDictationRecordings,
     startOrResumeDictationRecording,
+    uploadDictationSnapshot,
+    updateDictationDebug,
   ]);
 
   const handleDictationError = useCallback((field: FeedbackField, errorCode: string, message?: string) => {
@@ -439,8 +695,15 @@ const FeedbackQuestionnaire = () => {
       errorCode,
       message: message || null,
     });
+    updateDictationDebug(field, {
+      lastUploadStatus: "error",
+      lastError: `${errorCode}${message ? `: ${message}` : ""}`,
+    });
     pauseDictationRecording(field);
-  }, [logFeedbackEvent, pauseDictationRecording]);
+    window.setTimeout(() => {
+      void uploadDictationSnapshot(field, { finalizeRow: false });
+    }, 120);
+  }, [logFeedbackEvent, pauseDictationRecording, updateDictationDebug, uploadDictationSnapshot]);
 
   const { trackBackButtonClick } = usePageTracking({
     pageName: "feedback",
@@ -567,6 +830,15 @@ const FeedbackQuestionnaire = () => {
 
   useEffect(() => {
     loggedInputModesRef.current.clear();
+    feedbackInputModesRef.current = {
+      voice_assistant_feedback: { typed: false, dictated: false },
+      communication_style_feedback: { typed: false, dictated: false },
+      experiment_feedback: { typed: false, dictated: false },
+    };
+    autosaveFingerprintRef.current = "";
+    autosaveInFlightRef.current = false;
+    autosaveQueuedRef.current = false;
+    setDictationDebug(createDictationDebugInfoMap());
     FEEDBACK_FIELDS.forEach((field) => {
       const state = dictationRecordersRef.current[field];
       try {
@@ -597,7 +869,48 @@ const FeedbackQuestionnaire = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!prolificId) return;
+    const timer = window.setTimeout(() => {
+      void persistFeedbackDraft("debounced_change");
+    }, FEEDBACK_AUTOSAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    communicationStyleFeedback,
+    experimentFeedback,
+    prolificId,
+    persistFeedbackDraft,
+    voiceAssistantExperience,
+  ]);
+
+  useEffect(() => {
+    if (!prolificId) return;
+    const intervalId = window.setInterval(() => {
+      void persistFeedbackDraft("heartbeat");
+    }, FEEDBACK_AUTOSAVE_HEARTBEAT_MS);
+    return () => window.clearInterval(intervalId);
+  }, [persistFeedbackDraft, prolificId]);
+
+  useEffect(() => {
+    if (!prolificId) return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        void persistFeedbackDraft("visibility_hidden", true);
+      }
+    };
+    const handlePageHide = () => {
+      void persistFeedbackDraft("pagehide", true);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [persistFeedbackDraft, prolificId]);
+
   const handleBackClick = async () => {
+    await persistFeedbackDraft("back_click", true);
     stopAllDictation();
     await persistDictationRecordings();
     await trackBackButtonClick({
@@ -615,6 +928,7 @@ const FeedbackQuestionnaire = () => {
 
   const handleSubmit = async () => {
     // Stop all dictation when submitting
+    await persistFeedbackDraft("submit_click", true);
     stopAllDictation();
     
     const experienceStatus = getWordCountStatus(voiceAssistantExperience);
@@ -644,6 +958,17 @@ const FeedbackQuestionnaire = () => {
         });
         return;
       }
+    }
+
+    if (isResearcherMode) {
+      await persistDictationRecordings();
+      sessionStorage.setItem("flowStep", "5");
+      toast({
+        title: "Researcher Preview Submitted",
+        description: "Skipping participant data checks in researcher mode.",
+      });
+      navigate("/debriefing");
+      return;
     }
 
     if (!prolificId || !callId) {
@@ -778,6 +1103,14 @@ const FeedbackQuestionnaire = () => {
   const experienceStatus = getWordCountStatus(voiceAssistantExperience);
   const styleStatus = getWordCountStatus(communicationStyleFeedback);
   const experimentStatus = getWordCountStatus(experimentFeedback);
+  const showDictationDebug = isResearcherMode || new URLSearchParams(location.search).get("debugAudio") === "1";
+
+  const getDebugStatusColor = (status: DictationDebugInfo["lastUploadStatus"]) => {
+    if (status === "uploaded") return "text-emerald-600";
+    if (status === "uploading") return "text-sky-600";
+    if (status === "error") return "text-rose-600";
+    return "text-muted-foreground";
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
@@ -801,6 +1134,38 @@ const FeedbackQuestionnaire = () => {
               <span className="font-medium">Tip:</span> Click the "Dictate" button to speak your response instead of typing
             </p>
           </div>
+          {showDictationDebug && (
+            <details className="rounded border bg-muted/40 px-3 py-2 text-xs">
+              <summary className="cursor-pointer font-medium">Dictation Audio Debug</summary>
+              <div className="mt-2 space-y-2">
+                {FEEDBACK_FIELDS.map((field) => {
+                  const debug = dictationDebug[field];
+                  return (
+                    <div key={field} className="rounded border bg-background p-2">
+                      <p className="font-medium">{FEEDBACK_FIELD_LABELS[field]}</p>
+                      <p className="text-muted-foreground">
+                        Recorder: {debug.recorderState} | Attempts: {debug.attemptCount} | Chunks: {debug.chunkCount} | Captured: {formatBytes(debug.bytesCaptured)}
+                      </p>
+                      <p className={getDebugStatusColor(debug.lastUploadStatus)}>
+                        Upload: {debug.lastUploadStatus}{debug.lastUploadAt ? ` @ ${new Date(debug.lastUploadAt).toLocaleTimeString()}` : ""}
+                        {debug.lastUploadBytes != null ? ` | Last size: ${formatBytes(debug.lastUploadBytes)}` : ""}
+                        {debug.persisted ? " | DB row persisted" : ""}
+                      </p>
+                      {debug.lastReason && (
+                        <p className="text-muted-foreground">Last reason: {debug.lastReason}</p>
+                      )}
+                      {debug.storagePath && (
+                        <p className="text-muted-foreground break-all">Path: {debug.storagePath}</p>
+                      )}
+                      {debug.lastError && (
+                        <p className="text-rose-600 break-words">Error: {debug.lastError}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </details>
+          )}
         </CardHeader>
         <CardContent className="space-y-8">
           {/* Question 1: Voice Assistant Experience */}
@@ -822,6 +1187,11 @@ const FeedbackQuestionnaire = () => {
                 <li>Any technical issues during the call (audio quality, delays, pauses, voice changes, or glitches)</li>
               </ul>
             </div>
+            {showDictationDebug && (
+              <p className={`text-xs ${getDebugStatusColor(dictationDebug.voice_assistant_feedback.lastUploadStatus)}`}>
+                Audio status: {dictationDebug.voice_assistant_feedback.lastUploadStatus} | Recorder: {dictationDebug.voice_assistant_feedback.recorderState}
+              </p>
+            )}
             <div className="bg-accent/50 rounded-lg p-4 space-y-3">
               <div className="relative">
                 <Textarea
@@ -898,6 +1268,11 @@ const FeedbackQuestionnaire = () => {
                 <li>Whether the style affected your comfort, engagement, or trust</li>
               </ul>
             </div>
+            {showDictationDebug && (
+              <p className={`text-xs ${getDebugStatusColor(dictationDebug.communication_style_feedback.lastUploadStatus)}`}>
+                Audio status: {dictationDebug.communication_style_feedback.lastUploadStatus} | Recorder: {dictationDebug.communication_style_feedback.recorderState}
+              </p>
+            )}
             <div className="bg-accent/50 rounded-lg p-4 space-y-3">
               <div className="relative">
                 <Textarea
@@ -973,6 +1348,11 @@ const FeedbackQuestionnaire = () => {
                 <li>Anything that could be improved for future participants</li>
               </ul>
             </div>
+            {showDictationDebug && (
+              <p className={`text-xs ${getDebugStatusColor(dictationDebug.experiment_feedback.lastUploadStatus)}`}>
+                Audio status: {dictationDebug.experiment_feedback.lastUploadStatus} | Recorder: {dictationDebug.experiment_feedback.recorderState}
+              </p>
+            )}
             <div className="bg-accent/50 rounded-lg p-4 space-y-3">
               <div className="relative">
                 <Textarea

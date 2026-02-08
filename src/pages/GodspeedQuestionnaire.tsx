@@ -228,25 +228,27 @@ const GodspeedQuestionnaire = () => {
         sessionStorage.setItem("petsData", JSON.stringify(defaultPetsData));
       }
 
-      const { data: existingResponse, error } = await supabase
-        .from("experiment_responses")
-        .select("prolific_id")
-        .eq("prolific_id", storedId)
-        .maybeSingle();
+      if (!isResearcherMode && storedId) {
+        const { data: existingResponse, error } = await supabase
+          .from("experiment_responses")
+          .select("prolific_id")
+          .eq("prolific_id", storedId)
+          .maybeSingle();
 
-      if (error && error.code !== "PGRST116") {
-        console.error("Error checking existing response:", error);
-      }
+        if (error && error.code !== "PGRST116") {
+          console.error("Error checking existing response:", error);
+        }
 
-      if (existingResponse) {
-        navigate("/complete");
-        return;
+        if (existingResponse) {
+          navigate("/complete");
+          return;
+        }
       }
 
       setIsLoading(false);
     };
     checkAccess();
-  }, [navigate, location, toast]);
+  }, [navigate, location, toast, isResearcherMode]);
 
   const handleRadioChange = (key: string, value: string) => {
     setResponses((prev) => ({ ...prev, [key]: parseInt(value) }));

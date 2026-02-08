@@ -11,9 +11,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FlaskConical, Loader2, AlertCircle, CheckCircle2, Eye, User } from 'lucide-react';
 
 const ACTIVATION_KEY = 'kN&B981$%ZSK';
+const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,32}$/;
 
 const ResearcherLogin = () => {
-  const [email, setEmail] = useState('');
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [createEmail, setCreateEmail] = useState('');
+  const [createUsername, setCreateUsername] = useState('');
+  const [changeIdentifier, setChangeIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [activationKey, setActivationKey] = useState('');
@@ -25,6 +29,35 @@ const ResearcherLogin = () => {
   const [activeTab, setActiveTab] = useState('login');
   const { login, isAuthenticated, isLoading: authLoading, enterGuestMode } = useResearcherAuth();
   const navigate = useNavigate();
+
+  const resolveLoginEmail = async (identifier: string): Promise<{ email: string | null; error: string | null }> => {
+    const trimmedIdentifier = identifier.trim();
+    if (!trimmedIdentifier) {
+      return { email: null, error: 'Please enter an email or username.' };
+    }
+
+    if (trimmedIdentifier.includes('@')) {
+      return { email: trimmedIdentifier.toLowerCase(), error: null };
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke('resolve-researcher-identifier', {
+        body: { identifier: trimmedIdentifier },
+      });
+
+      if (error) {
+        return { email: null, error: 'Could not resolve username right now. Please try email or retry.' };
+      }
+
+      if (!data?.email) {
+        return { email: null, error: 'Invalid email/username or password.' };
+      }
+
+      return { email: data.email, error: null };
+    } catch {
+      return { email: null, error: 'Could not resolve username right now. Please try email or retry.' };
+    }
+  };
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -46,6 +79,13 @@ const ResearcherLogin = () => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
+
+    const { email, error: resolveError } = await resolveLoginEmail(loginIdentifier);
+    if (resolveError || !email) {
+      setError(resolveError || 'Invalid email/username or password.');
+      setIsLoading(false);
+      return;
+    }
 
     const { error } = await login(email, password);
     
@@ -84,13 +124,35 @@ const ResearcherLogin = () => {
       return;
     }
 
+    const normalizedUsername = createUsername.trim().toLowerCase();
+    if (normalizedUsername && !USERNAME_PATTERN.test(normalizedUsername)) {
+      setError('Username must be 3-32 characters and can only include letters, numbers, dot, underscore, or hyphen.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (normalizedUsername) {
+      const { email: existingEmail, error: usernameLookupError } = await resolveLoginEmail(normalizedUsername);
+      if (usernameLookupError && !usernameLookupError.toLowerCase().includes('invalid email/username or password')) {
+        setError('Could not validate username availability. Please try again.');
+        setIsLoading(false);
+        return;
+      }
+      if (existingEmail) {
+        setError('This username is already in use. Please pick another one.');
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       // Create the account
       const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
+        email: createEmail.trim().toLowerCase(),
         password,
         options: {
           emailRedirectTo: window.location.origin + '/researcher',
+          data: normalizedUsername ? { username: normalizedUsername } : undefined,
         },
       });
 
@@ -125,6 +187,9 @@ const ResearcherLogin = () => {
 
         setSuccess('Account created successfully! You can now sign in.');
         setActiveTab('login');
+        setLoginIdentifier(normalizedUsername || createEmail.trim().toLowerCase());
+        setCreateEmail('');
+        setCreateUsername('');
         setPassword('');
         setConfirmPassword('');
         setActivationKey('');
@@ -157,6 +222,13 @@ const ResearcherLogin = () => {
     }
 
     try {
+      const { email, error: resolveError } = await resolveLoginEmail(changeIdentifier);
+      if (resolveError || !email) {
+        setError(resolveError || 'Current email/username or password is incorrect');
+        setIsLoading(false);
+        return;
+      }
+
       // First verify current credentials by signing in
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
@@ -232,13 +304,13 @@ const ResearcherLogin = () => {
                 )}
                 
                 <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
+                  <Label htmlFor="login-identifier">Email or Username</Label>
                   <Input
-                    id="login-email"
-                    type="email"
-                    placeholder="researcher@university.edu"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="login-identifier"
+                    type="text"
+                    placeholder="researcher@university.edu or username"
+                    value={loginIdentifier}
+                    onChange={(e) => setLoginIdentifier(e.target.value)}
                     required
                     disabled={isLoading}
                   />
@@ -335,11 +407,26 @@ const ResearcherLogin = () => {
                     id="create-email"
                     type="email"
                     placeholder="researcher@university.edu"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={createEmail}
+                    onChange={(e) => setCreateEmail(e.target.value)}
                     required
                     disabled={isLoading}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="create-username">Username (Optional)</Label>
+                  <Input
+                    id="create-username"
+                    type="text"
+                    placeholder="e.g. ovroom"
+                    value={createUsername}
+                    onChange={(e) => setCreateUsername(e.target.value)}
+                    disabled={isLoading}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    If set, you can sign in with this username or your email.
+                  </p>
                 </div>
                 
                 <div className="space-y-2">
@@ -391,13 +478,13 @@ const ResearcherLogin = () => {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="change-email">Email</Label>
+                  <Label htmlFor="change-identifier">Email or Username</Label>
                   <Input
-                    id="change-email"
-                    type="email"
-                    placeholder="researcher@university.edu"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="change-identifier"
+                    type="text"
+                    placeholder="researcher@university.edu or username"
+                    value={changeIdentifier}
+                    onChange={(e) => setChangeIdentifier(e.target.value)}
                     required
                     disabled={isLoading}
                   />

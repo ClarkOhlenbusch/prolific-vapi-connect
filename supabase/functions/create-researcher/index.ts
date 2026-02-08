@@ -19,11 +19,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { email, password, role } = await req.json();
+    const { email, password, role, username } = await req.json();
 
     if (!email || !password) {
       return new Response(
         JSON.stringify({ error: 'Missing email or password' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const normalizedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
+    if (normalizedUsername && !/^[a-zA-Z0-9._-]{3,32}$/.test(normalizedUsername)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid username format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -88,6 +96,22 @@ Deno.serve(async (req) => {
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
     const existingUser = existingUsers?.users.find(u => u.email === email);
 
+    if (normalizedUsername) {
+      const usernameTaken = existingUsers?.users.some((u) => {
+        const candidate =
+          (typeof u.user_metadata?.username === 'string' && u.user_metadata.username) ||
+          (typeof u.raw_user_meta_data?.username === 'string' && u.raw_user_meta_data.username) ||
+          '';
+        return candidate.trim().toLowerCase() === normalizedUsername && u.id !== existingUser?.id;
+      });
+      if (usernameTaken) {
+        return new Response(
+          JSON.stringify({ error: 'Username is already in use' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     let userId: string;
 
     if (existingUser) {
@@ -106,12 +130,30 @@ Deno.serve(async (req) => {
       }
 
       userId = existingUser.id;
+
+      if (normalizedUsername) {
+        const mergedMetadata = {
+          ...(existingUser.user_metadata || {}),
+          username: normalizedUsername,
+        };
+        const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
+          existingUser.id,
+          { user_metadata: mergedMetadata }
+        );
+        if (metadataError) {
+          return new Response(
+            JSON.stringify({ error: metadataError.message }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
     } else {
       // Create new user
       const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
+        user_metadata: normalizedUsername ? { username: normalizedUsername } : undefined,
       });
 
       if (createError) {
