@@ -98,10 +98,8 @@ Deno.serve(async (req) => {
 
     if (normalizedUsername) {
       const usernameTaken = existingUsers?.users.some((u) => {
-        const candidate =
-          (typeof u.user_metadata?.username === 'string' && u.user_metadata.username) ||
-          (typeof u.raw_user_meta_data?.username === 'string' && u.raw_user_meta_data.username) ||
-          '';
+        const meta = u.user_metadata as Record<string, unknown> | undefined;
+        const candidate = typeof meta?.username === 'string' ? meta.username : '';
         return candidate.trim().toLowerCase() === normalizedUsername && u.id !== existingUser?.id;
       });
       if (usernameTaken) {
