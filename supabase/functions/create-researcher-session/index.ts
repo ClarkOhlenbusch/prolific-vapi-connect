@@ -9,41 +9,6 @@ interface CreateResearcherSessionRequest {
   source?: string;
 }
 
-const buildDraftExperimentResponse = (prolificId: string, callId: string) => ({
-  prolific_id: prolificId,
-  call_id: callId,
-  call_attempt_number: 1,
-  e1: 50,
-  e2: 50,
-  e3: 50,
-  e4: 50,
-  e5: 50,
-  e6: 50,
-  u1: 50,
-  u2: 50,
-  u3: 50,
-  u4: 50,
-  e1_position: 1,
-  e2_position: 2,
-  e3_position: 3,
-  e4_position: 4,
-  e5_position: 5,
-  e6_position: 6,
-  u1_position: 7,
-  u2_position: 8,
-  u3_position: 9,
-  u4_position: 10,
-  pets_er: 50,
-  pets_ut: 50,
-  pets_total: 50,
-  intention_1: 4,
-  intention_2: 4,
-  formality: 4,
-  voice_assistant_feedback: '',
-  communication_style_feedback: '',
-  experiment_feedback: '',
-});
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -93,19 +58,6 @@ Deno.serve(async (req) => {
       console.error('Failed to create participant_calls row:', callInsertError);
       return new Response(
         JSON.stringify({ error: 'Failed to create researcher session' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-
-    const { error: responseInsertError } = await supabase
-      .from('experiment_responses')
-      .insert(buildDraftExperimentResponse(prolificId, callId));
-
-    if (responseInsertError) {
-      console.error('Failed to create draft experiment response:', responseInsertError);
-      await supabase.from('participant_calls').delete().eq('session_token', sessionToken);
-      return new Response(
-        JSON.stringify({ error: 'Failed to initialize researcher response draft' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }

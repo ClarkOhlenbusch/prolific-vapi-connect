@@ -1120,57 +1120,6 @@ const FeedbackQuestionnaire = () => {
       return (fallbackCallRows?.length || 0) > 0;
     };
 
-    const persistResearcherFeedbackDraft = async (): Promise<boolean> => {
-      if (!prolificId || !callId) return false;
-      const sessionToken = localStorage.getItem("sessionToken");
-      if (!sessionToken) {
-        console.error("No session token found for researcher feedback draft update");
-        return false;
-      }
-
-      let formalityValue: number | null = null;
-      const formalityDataString = sessionStorage.getItem("formalityData");
-      if (formalityDataString) {
-        try {
-          const parsed = JSON.parse(formalityDataString) as { formality?: unknown };
-          if (typeof parsed.formality === "number" && Number.isFinite(parsed.formality)) {
-            formalityValue = parsed.formality;
-          }
-        } catch (parseError) {
-          console.error("Failed parsing researcher formality data for feedback draft update:", parseError);
-        }
-      }
-
-      const assistantType = sessionStorage.getItem("assistantType");
-      const { data, error } = await supabase.functions.invoke("update-researcher-feedback", {
-        body: {
-          sessionToken,
-          prolificId,
-          callId,
-          formality: formalityValue,
-          voiceAssistantFeedback: voiceAssistantExperience || "Not provided",
-          communicationStyleFeedback: communicationStyleFeedback || "Not provided",
-          experimentFeedback: experimentFeedback || "Not provided",
-          assistantType: assistantType || null,
-        },
-      });
-
-      if (error) {
-        console.error("Failed to update researcher feedback draft via edge function:", error, data);
-        return false;
-      }
-
-      const success =
-        typeof data === "object" &&
-        data !== null &&
-        "success" in data &&
-        Boolean((data as Record<string, unknown>).success);
-      if (!success) {
-        console.error("Researcher feedback draft update returned non-success payload:", data);
-      }
-      return success;
-    };
-
     const getFunctionErrorInfo = async (
       invokeError: unknown,
       invokeData: unknown,
@@ -1221,34 +1170,6 @@ const FeedbackQuestionnaire = () => {
         message: message || baseMessage || bodyMessage || "Unknown function invocation error",
       };
     };
-
-    if (isResearcherMode) {
-      const sessionToken = localStorage.getItem("sessionToken");
-      const [feedbackSaved, completionMarked] = await Promise.all([
-        persistResearcherFeedbackDraft(),
-        markSessionComplete(sessionToken),
-      ]);
-
-      try {
-        await persistDictationRecordings();
-      } catch (dictationPersistError) {
-        console.error("Dictation persistence failed during researcher submit:", dictationPersistError);
-      }
-      sessionStorage.setItem("flowStep", "5");
-      sessionStorage.setItem(RESEARCHER_ROTATE_PENDING_KEY, "1");
-      toast({
-        title: "Researcher Preview Submitted",
-        description: feedbackSaved && completionMarked
-          ? "Researcher feedback saved and session marked as completed."
-          : feedbackSaved
-            ? "Feedback saved, but completion status could not be updated."
-            : completionMarked
-              ? "Session completed, but feedback draft could not be updated."
-              : "Submitted, but completion status and feedback draft update failed.",
-      });
-      navigate("/debriefing");
-      return;
-    }
 
     if (!prolificId || !callId) {
       toast({
@@ -1330,13 +1251,17 @@ const FeedbackQuestionnaire = () => {
           normalizedErrorMessage.includes("already submitted");
         if (isAlreadySubmitted) {
           const completionMarked = await markSessionComplete(sessionToken);
+          if (isResearcherMode) {
+            sessionStorage.setItem("flowStep", "5");
+            sessionStorage.setItem(RESEARCHER_ROTATE_PENDING_KEY, "1");
+          }
           toast({
             title: "Already Submitted",
             description: completionMarked
               ? "You have already completed this questionnaire. This session was marked completed."
               : "You have already completed this questionnaire.",
           });
-          navigate("/complete");
+          navigate(isResearcherMode ? "/debriefing" : "/complete");
           return;
         }
 
@@ -1362,13 +1287,17 @@ const FeedbackQuestionnaire = () => {
 
         if (!existingResponseError && existingResponse) {
           const completionMarked = await markSessionComplete(sessionToken);
+          if (isResearcherMode) {
+            sessionStorage.setItem("flowStep", "5");
+            sessionStorage.setItem(RESEARCHER_ROTATE_PENDING_KEY, "1");
+          }
           toast({
             title: "Submission Recovered",
             description: completionMarked
               ? "Your responses were already saved and this session was marked as completed."
               : "Your responses were already saved.",
           });
-          navigate("/complete");
+          navigate(isResearcherMode ? "/debriefing" : "/complete");
           return;
         }
 
@@ -1398,12 +1327,17 @@ const FeedbackQuestionnaire = () => {
       sessionStorage.removeItem("petsData");
       sessionStorage.removeItem("tiasData");
       sessionStorage.removeItem("formalityData");
-      toast({
-        title: "Success",
-        description: "Your responses have been submitted successfully.",
-      });
 
       sessionStorage.setItem("flowStep", "5");
+      if (isResearcherMode) {
+        sessionStorage.setItem(RESEARCHER_ROTATE_PENDING_KEY, "1");
+      }
+      toast({
+        title: isResearcherMode ? "Researcher Preview Submitted" : "Success",
+        description: isResearcherMode
+          ? "Researcher responses have been submitted successfully."
+          : "Your responses have been submitted successfully.",
+      });
       navigate("/debriefing");
     } catch (err) {
       console.error("Unexpected error submitting questionnaire:", err);
