@@ -43,9 +43,9 @@ Deno.serve(async (req) => {
     // Token must exist and not be used yet
   const { data: participantCall, error: callError } = await supabase
     .from('participant_calls')
-    .select('prolific_id, call_id, created_at, token_used, expires_at')
+    .select('prolific_id, call_id, created_at, is_completed, expires_at')
     .eq('session_token', sessionToken)
-    .eq('token_used', false)
+    .eq('is_completed', false)
     .gt('expires_at', new Date().toISOString())
     .maybeSingle();
 

@@ -78,9 +78,9 @@ export const ParticipantCallsTable = () => {
       }
 
       if (statusFilter === 'completed') {
-        query = query.eq('token_used', true);
+        query = query.eq('is_completed', true);
       } else if (statusFilter === 'pending') {
-        query = query.eq('token_used', false);
+        query = query.eq('is_completed', false);
       }
 
       const { data: calls, count, error } = await query;
@@ -188,7 +188,7 @@ export const ParticipantCallsTable = () => {
         row.call_id,
         row.created_at,
         row.expires_at,
-        row.token_used
+        row.is_completed
       ].join(','))
     ].join('\n');
 
@@ -325,8 +325,8 @@ export const ParticipantCallsTable = () => {
                   </TableCell>
                   <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
                   <TableCell>
-                    <Badge variant={row.token_used ? "secondary" : "outline"}>
-                      {row.token_used ? 'Completed' : 'Pending'}
+                    <Badge variant={row.is_completed ? "secondary" : "outline"}>
+                      {row.is_completed ? 'Completed' : 'Pending'}
                     </Badge>
                   </TableCell>
                   {isSuperAdmin && (

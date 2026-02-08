@@ -870,7 +870,7 @@ export type Database = {
           id: string
           prolific_id: string
           session_token: string
-          token_used: boolean
+          is_completed: boolean
         }
         Insert: {
           call_id: string
@@ -879,7 +879,7 @@ export type Database = {
           id?: string
           prolific_id: string
           session_token?: string
-          token_used?: boolean
+          is_completed?: boolean
         }
         Update: {
           call_id?: string
@@ -888,7 +888,7 @@ export type Database = {
           id?: string
           prolific_id?: string
           session_token?: string
-          token_used?: boolean
+          is_completed?: boolean
         }
         Relationships: []
       }

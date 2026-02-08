@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
 
     let sessionLookup = supabase
       .from('participant_calls')
-      .select('id, session_token, prolific_id, call_id, token_used')
+      .select('id, session_token, prolific_id, call_id, is_completed')
       .eq('session_token', sessionToken);
 
     if (prolificId) {
@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
 
     const { error: updateError } = await supabase
       .from('participant_calls')
-      .update({ token_used: true })
+      .update({ is_completed: true })
       .eq('id', sessionRow.id);
 
     if (updateError) {
@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        alreadyCompleted: sessionRow.token_used === true,
+        alreadyCompleted: sessionRow.is_completed === true,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );

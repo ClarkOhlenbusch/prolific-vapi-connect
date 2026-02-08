@@ -266,7 +266,7 @@ Deno.serve(async (req) => {
       .from("participant_calls")
       .select("*")
       .eq("session_token", sessionToken)
-      .eq("token_used", false)
+      .eq("is_completed", false)
       .gt("expires_at", new Date().toISOString())
       .single();
 
@@ -499,7 +499,7 @@ Deno.serve(async (req) => {
     // Mark session token as used
     const { error: updateError } = await supabase
       .from("participant_calls")
-      .update({ token_used: true })
+      .update({ is_completed: true })
       .eq("session_token", sessionToken);
 
     if (updateError) {

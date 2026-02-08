@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       .select('*')
       .eq('session_token', sessionToken)
       .eq('prolific_id', prolificId)
-      .eq('token_used', false)
+      .eq('is_completed', false)
       .gt('expires_at', new Date().toISOString())
       .maybeSingle();
 

@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
       call_id: callId,
       session_token: sessionToken,
       expires_at: expiresAt,
-      token_used: false,
+      is_completed: false,
     });
 
     if (callInsertError) {

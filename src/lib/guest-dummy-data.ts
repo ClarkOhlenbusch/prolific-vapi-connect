@@ -5,7 +5,7 @@ export interface GuestParticipant {
   prolific_id: string;
   call_id: string;
   created_at: string;
-  token_used: boolean;
+  is_completed: boolean;
   response_id?: string;
   assistant_type?: string | null;
   batch_label?: string | null;
@@ -129,7 +129,7 @@ export const GUEST_PARTICIPANTS: GuestParticipant[] = (() => {
       prolific_id: generateProlificId(i),
       call_id: generateCallId(i),
       created_at: generateDate(daysAgo),
-      token_used: true,
+      is_completed: true,
       response_id: `response-formal-${i}`,
       assistant_type: 'formal',
       batch_label: batches[i % 3],
@@ -150,7 +150,7 @@ export const GUEST_PARTICIPANTS: GuestParticipant[] = (() => {
       prolific_id: generateProlificId(i + 100),
       call_id: generateCallId(i + 100),
       created_at: generateDate(daysAgo),
-      token_used: true,
+      is_completed: true,
       response_id: `response-informal-${i}`,
       assistant_type: 'informal',
       batch_label: batches[i % 3],
@@ -170,7 +170,7 @@ export const GUEST_PARTICIPANTS: GuestParticipant[] = (() => {
       prolific_id: generateProlificId(i + 200),
       call_id: generateCallId(i + 200),
       created_at: generateDate(i),
-      token_used: false,
+      is_completed: false,
       status: 'Pending',
     });
   }

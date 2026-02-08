@@ -1127,9 +1127,9 @@ const FeedbackQuestionnaire = () => {
 
         const { data: fallbackSessionRows, error: fallbackSessionError } = await supabase
           .from("participant_calls")
-          .update({ token_used: true })
+          .update({ is_completed: true })
           .eq("session_token", sessionToken)
-          .eq("token_used", false)
+          .eq("is_completed", false)
           .select("id")
           .limit(1);
 
@@ -1146,9 +1146,9 @@ const FeedbackQuestionnaire = () => {
 
       let callScopedUpdate = supabase
         .from("participant_calls")
-        .update({ token_used: true })
+        .update({ is_completed: true })
         .eq("call_id", callId)
-        .eq("token_used", false);
+        .eq("is_completed", false);
       if (prolificId) {
         callScopedUpdate = callScopedUpdate.eq("prolific_id", prolificId);
       }

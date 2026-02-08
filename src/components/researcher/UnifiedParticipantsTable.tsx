@@ -57,7 +57,7 @@ interface UnifiedParticipant {
   prolific_id: string;
   call_id: string;
   created_at: string;
-  token_used: boolean;
+  is_completed: boolean;
   // From experiment_responses (optional)
   response_id?: string;
   assistant_type?: string | null;
@@ -168,7 +168,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           prolific_id: call.prolific_id,
           call_id: call.call_id,
           created_at: call.created_at,
-          token_used: call.token_used,
+          is_completed: call.is_completed,
           response_id: response?.id,
           assistant_type: response?.assistant_type,
           batch_label: response?.batch_label,
@@ -177,7 +177,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           formality: response?.formality,
           age: demo?.age,
           gender: demo?.gender,
-          status: call.token_used ? 'Completed' : 'Pending',
+          status: call.is_completed ? 'Completed' : 'Pending',
         };
       });
 
