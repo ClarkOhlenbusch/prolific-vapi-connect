@@ -73,19 +73,35 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get all auth users to map emails
-    const { data: authUsers, error: authError } = await supabaseAdmin.auth.admin.listUsers();
+    // Get all auth users to map emails/usernames (paginated)
+    const authUsers: {
+      id: string;
+      email?: string | null;
+      user_metadata?: Record<string, unknown> | null;
+      raw_user_meta_data?: Record<string, unknown> | null;
+    }[] = [];
+    const perPage = 200;
+    let page = 1;
+    while (true) {
+      const { data: authPage, error: authError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      if (authError) {
+        return new Response(
+          JSON.stringify({ error: authError.message }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    if (authError) {
-      return new Response(
-        JSON.stringify({ error: authError.message }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      const users = authPage?.users || [];
+      authUsers.push(...users);
+
+      if (users.length < perPage) break;
+      page += 1;
+      if (page > 100) break;
     }
 
     // Map emails to roles
     const usersWithEmails = roles?.map(role => {
-      const authUser = authUsers.users.find(u => u.id === role.user_id);
+      const authUser = authUsers.find(u => u.id === role.user_id);
       const metadataUsername = authUser?.user_metadata?.username;
       const rawMetadataUsername = authUser?.raw_user_meta_data?.username;
       const usernameValue =

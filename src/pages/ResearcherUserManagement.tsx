@@ -257,12 +257,22 @@ const ResearcherUserManagement = () => {
         throw new Error(response.data.error);
       }
 
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.user_id === editUsernameUserId
+            ? { ...u, username: normalizedUsername }
+            : u
+        )
+      );
       toast.success('Username updated');
       setEditUsernameOpen(false);
       setEditUsernameUserId(null);
       setEditUsernameUserEmail('');
       setEditUsernameValue('');
-      fetchUsers();
+      // Refresh from backend as source of truth (edge metadata can be briefly stale).
+      setTimeout(() => {
+        void fetchUsers();
+      }, 400);
     } catch (error) {
       console.error('Error updating username:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to update username');
