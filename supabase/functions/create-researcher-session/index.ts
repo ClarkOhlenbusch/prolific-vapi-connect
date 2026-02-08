@@ -9,15 +9,33 @@ interface CreateResearcherSessionRequest {
   source?: string;
 }
 
+const formatDbError = (error: unknown) => {
+  if (!error || typeof error !== "object") {
+    return { raw: String(error) };
+  }
+
+  const dbError = error as { code?: string; message?: string; details?: string; hint?: string };
+  return {
+    code: dbError.code ?? null,
+    message: dbError.message ?? null,
+    details: dbError.details ?? null,
+    hint: dbError.hint ?? null,
+  };
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
+    const requestStart = Date.now();
+
     // Optional request body for future metadata extensions.
+    let requestBody: CreateResearcherSessionRequest | null = null;
     try {
-      (await req.json()) as CreateResearcherSessionRequest;
+      requestBody = (await req.json()) as CreateResearcherSessionRequest;
     } catch {
       // No-op.
     }
@@ -31,15 +49,31 @@ Deno.serve(async (req) => {
       });
     }
 
+    const supabaseHost = new URL(supabaseUrl).host;
+    console.log("create-researcher-session request started", {
+      requestId,
+      method: req.method,
+      source: requestBody?.source ?? null,
+      supabaseHost,
+    });
+
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: prolificId, error: idError } = await supabase.rpc("next_researcher_prolific_id");
     if (idError || !prolificId || typeof prolificId !== "string") {
-      console.error("Failed to allocate researcher ID:", idError);
-      return new Response(JSON.stringify({ error: "Failed to allocate researcher ID" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const formattedIdError = formatDbError(idError);
+      console.error("Failed to allocate researcher ID", { requestId, error: formattedIdError });
+      return new Response(
+        JSON.stringify({
+          error: "Failed to allocate researcher ID",
+          requestId,
+          dbError: formattedIdError,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const sessionToken = crypto.randomUUID();
@@ -55,12 +89,33 @@ Deno.serve(async (req) => {
     });
 
     if (callInsertError) {
-      console.error("Failed to create participant_calls row:", callInsertError);
-      return new Response(JSON.stringify({ error: "Failed to create researcher session" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      const formattedInsertError = formatDbError(callInsertError);
+      console.error("Failed to create participant_calls row", {
+        requestId,
+        prolificId,
+        callId,
+        insertPayloadShape: ["prolific_id", "call_id", "session_token", "expires_at", "is_completed"],
+        error: formattedInsertError,
       });
+      return new Response(
+        JSON.stringify({
+          error: "Failed to create researcher session",
+          requestId,
+          dbError: formattedInsertError,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
+
+    console.log("create-researcher-session request succeeded", {
+      requestId,
+      prolificId,
+      callId,
+      durationMs: Date.now() - requestStart,
+    });
 
     return new Response(
       JSON.stringify({
@@ -72,10 +127,19 @@ Deno.serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
-    console.error("create-researcher-session error:", error);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const formattedUnexpected = formatDbError(error);
+    console.error("create-researcher-session unexpected error", {
+      error: formattedUnexpected,
     });
+    return new Response(
+      JSON.stringify({
+        error: "Internal server error",
+        dbError: formattedUnexpected,
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });
