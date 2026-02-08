@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface ResearcherModeContextType {
   isResearcherMode: boolean;
+  activeResearcherId: string | null;
   toggleResearcherMode: () => void;
   startResearcherSession: () => Promise<boolean>;
   markSessionComplete: () => Promise<boolean>;
@@ -23,81 +24,50 @@ interface MarkCompleteResponse {
   alreadyCompleted: boolean;
 }
 
-const buildDraftExperimentResponse = (prolificId: string, callId: string) => ({
-  prolific_id: prolificId,
-  call_id: callId,
-  call_attempt_number: 1,
-  e1: 50,
-  e2: 50,
-  e3: 50,
-  e4: 50,
-  e5: 50,
-  e6: 50,
-  u1: 50,
-  u2: 50,
-  u3: 50,
-  u4: 50,
-  e1_position: 1,
-  e2_position: 2,
-  e3_position: 3,
-  e4_position: 4,
-  e5_position: 5,
-  e6_position: 6,
-  u1_position: 7,
-  u2_position: 8,
-  u3_position: 9,
-  u4_position: 10,
-  pets_er: 50,
-  pets_ut: 50,
-  pets_total: 50,
-  intention_1: 4,
-  intention_2: 4,
-  formality: 4,
-  voice_assistant_feedback: 'Researcher mode draft session',
-  communication_style_feedback: 'Researcher mode draft session',
-  experiment_feedback: 'Researcher mode draft session',
-});
-
 export const ResearcherModeProvider = ({ children }: { children: ReactNode }) => {
   const [isResearcherMode, setIsResearcherMode] = useState(false);
+  const [activeResearcherId, setActiveResearcherId] = useState<string | null>(() => sessionStorage.getItem('prolificId'));
+  const startInFlightRef = useRef(false);
 
   const startResearcherSession = useCallback(async (): Promise<boolean> => {
+    if (startInFlightRef.current) return true;
+    startInFlightRef.current = true;
+
     try {
-      // Call the edge function to get a unique researcher session
       const { data, error } = await supabase.functions.invoke<CreateSessionResponse>(
         'create-researcher-session',
-        { body: { source: 'researcher_mode' } }
+        { body: { source: 'researcher_mode' } },
       );
 
-      if (error || !data) {
-        console.error('Failed to create researcher session:', error);
+      if (error || !data?.prolificId || !data?.callId || !data?.sessionToken) {
+        console.error('Failed to create researcher session:', error || data);
+        setActiveResearcherId(null);
+        sessionStorage.removeItem('prolificId');
+        sessionStorage.removeItem('callId');
+        sessionStorage.setItem('flowStep', '0');
+        localStorage.removeItem('sessionToken');
         toast.error('Failed to start researcher session. Please try again.');
         return false;
       }
 
       const { prolificId, callId, sessionToken } = data;
-
-      // Persist to storage
       sessionStorage.setItem('prolificId', prolificId);
       sessionStorage.setItem('callId', callId);
       sessionStorage.setItem('flowStep', '0');
       localStorage.setItem('sessionToken', sessionToken);
-
-      // Create draft experiment response row
-      const { error: responseInsertError } = await supabase
-        .from('experiment_responses')
-        .insert(buildDraftExperimentResponse(prolificId, callId));
-
-      if (responseInsertError) {
-        console.error('Failed to create draft experiment_responses row:', responseInsertError);
-        // Non-fatal - session still works
-      }
-
+      setActiveResearcherId(prolificId);
       return true;
     } catch (err) {
       console.error('Error starting researcher session:', err);
+      setActiveResearcherId(null);
+      sessionStorage.removeItem('prolificId');
+      sessionStorage.removeItem('callId');
+      sessionStorage.setItem('flowStep', '0');
+      localStorage.removeItem('sessionToken');
       toast.error('Failed to start researcher session. Please try again.');
       return false;
+    } finally {
+      startInFlightRef.current = false;
     }
   }, []);
 
@@ -120,7 +90,7 @@ export const ResearcherModeProvider = ({ children }: { children: ReactNode }) =>
             prolificId: prolificId || undefined,
             callId: callId || undefined,
           },
-        }
+        },
       );
 
       if (error) {
@@ -139,7 +109,9 @@ export const ResearcherModeProvider = ({ children }: { children: ReactNode }) =>
     setIsResearcherMode((prev) => {
       const next = !prev;
       if (next) {
-        void startResearcherSession();
+        void startResearcherSession().then((ok) => {
+          if (!ok) setIsResearcherMode(false);
+        });
       }
       return next;
     });
@@ -147,7 +119,13 @@ export const ResearcherModeProvider = ({ children }: { children: ReactNode }) =>
 
   return (
     <ResearcherModeContext.Provider
-      value={{ isResearcherMode, toggleResearcherMode, startResearcherSession, markSessionComplete }}
+      value={{
+        isResearcherMode,
+        activeResearcherId,
+        toggleResearcherMode,
+        startResearcherSession,
+        markSessionComplete,
+      }}
     >
       {children}
     </ResearcherModeContext.Provider>

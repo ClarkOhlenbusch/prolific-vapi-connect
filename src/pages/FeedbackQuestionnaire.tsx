@@ -33,6 +33,7 @@ const DICTATION_AUDIO_BUCKET = "dictation-audio";
 const FEEDBACK_AUTOSAVE_EVENT_TYPE = "feedback_draft_autosave";
 const FEEDBACK_AUTOSAVE_DEBOUNCE_MS = 2500;
 const FEEDBACK_AUTOSAVE_HEARTBEAT_MS = 15000;
+const RESEARCHER_ROTATE_PENDING_KEY = "researcher-session-rotate-pending";
 
 interface DictationRecorderState {
   recorder: MediaRecorder | null;
@@ -997,6 +998,7 @@ const FeedbackQuestionnaire = () => {
 
       await persistDictationRecordings();
       sessionStorage.setItem("flowStep", "5");
+      sessionStorage.setItem(RESEARCHER_ROTATE_PENDING_KEY, "1");
       toast({
         title: "Researcher Preview Submitted",
         description: completionMarked

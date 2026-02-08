@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
 import { FlaskConical, LogIn } from 'lucide-react';
 
+const RESEARCHER_ROTATE_PENDING_KEY = 'researcher-session-rotate-pending';
+
 const PARTICIPANT_PAGE_LINKS = [
   { label: 'Prolific ID', to: '/', match: '/' },
   { label: 'Consent', to: '/consent', match: '/consent', withSession: true },
@@ -26,9 +28,10 @@ const PARTICIPANT_PAGE_LINKS = [
 export const ResearcherModeToggle = () => {
   const [showButton, setShowButton] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
-  const { isResearcherMode, toggleResearcherMode } = useResearcherMode();
+  const { isResearcherMode, activeResearcherId, toggleResearcherMode, startResearcherSession } = useResearcherMode();
   const location = useLocation();
   const navigate = useNavigate();
+  const displayedResearcherId = activeResearcherId || sessionStorage.getItem('prolificId');
 
   const getPathWithSession = (path: string) => {
     const sessionToken = localStorage.getItem('sessionToken');
@@ -76,10 +79,30 @@ export const ResearcherModeToggle = () => {
     };
   }, [spacePressed, location.pathname, isResearcherMode]);
 
+  useEffect(() => {
+    if (!isResearcherMode) return;
+    if (location.pathname.startsWith('/researcher')) return;
+    if (location.pathname === '/debriefing' || location.pathname === '/complete') return;
+    if (sessionStorage.getItem(RESEARCHER_ROTATE_PENDING_KEY) !== '1') return;
+
+    void startResearcherSession().then((success) => {
+      if (success) {
+        sessionStorage.removeItem(RESEARCHER_ROTATE_PENDING_KEY);
+      }
+    });
+  }, [isResearcherMode, location.pathname, startResearcherSession]);
+
   if (!showButton && !isResearcherMode) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+    <>
+      {isResearcherMode && !location.pathname.startsWith('/researcher') && (
+        <div className="fixed left-4 top-4 z-50 rounded-lg border bg-background/95 px-3 py-2 text-sm shadow-lg backdrop-blur">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Researcher ID</p>
+          <p className="font-mono font-semibold">{displayedResearcherId || 'initializing...'}</p>
+        </div>
+      )}
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
       {isResearcherMode && (
         <div className="max-h-[55vh] w-64 overflow-y-auto rounded-lg border bg-background/95 p-2 shadow-lg backdrop-blur">
           <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -120,6 +143,7 @@ export const ResearcherModeToggle = () => {
         <FlaskConical className="w-5 h-5 mr-2" />
         {isResearcherMode ? 'Researcher Mode: ON' : 'Researcher Mode: OFF'}
       </Button>
-    </div>
+      </div>
+    </>
   );
 };

@@ -9,105 +9,103 @@ interface CreateResearcherSessionRequest {
   source?: string;
 }
 
+const buildDraftExperimentResponse = (prolificId: string, callId: string) => ({
+  prolific_id: prolificId,
+  call_id: callId,
+  call_attempt_number: 1,
+  e1: 50,
+  e2: 50,
+  e3: 50,
+  e4: 50,
+  e5: 50,
+  e6: 50,
+  u1: 50,
+  u2: 50,
+  u3: 50,
+  u4: 50,
+  e1_position: 1,
+  e2_position: 2,
+  e3_position: 3,
+  e4_position: 4,
+  e5_position: 5,
+  e6_position: 6,
+  u1_position: 7,
+  u2_position: 8,
+  u3_position: 9,
+  u4_position: 10,
+  pets_er: 50,
+  pets_ut: 50,
+  pets_total: 50,
+  intention_1: 4,
+  intention_2: 4,
+  formality: 4,
+  voice_assistant_feedback: 'Researcher mode draft session',
+  communication_style_feedback: 'Researcher mode draft session',
+  experiment_feedback: 'Researcher mode draft session',
+});
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Parse optional body
-    let source = 'researcher_mode';
+    // Optional request body for future metadata extensions.
     try {
-      const body = (await req.json()) as CreateResearcherSessionRequest;
-      if (body.source) {
-        source = body.source;
-      }
+      await req.json() as CreateResearcherSessionRequest;
     } catch {
-      // No body or invalid JSON is fine
+      // No-op.
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !serviceRoleKey) {
       return new Response(
         JSON.stringify({ error: 'Server configuration error' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Get next researcher ID from sequence (atomic, concurrency-safe)
-    const { data: seqData, error: seqError } = await supabase.rpc('nextval', {
-      sequence_name: 'researcher_session_seq',
-    });
-
-    // If RPC doesn't work, use raw SQL via postgres function
-    let researcherNumber: number;
-    
-    if (seqError) {
-      // Fallback: query the sequence directly
-      const { data: sqlData, error: sqlError } = await supabase
-        .from('participant_calls')
-        .select('prolific_id')
-        .like('prolific_id', 'researcher%')
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (sqlError) {
-        console.error('Failed to query existing researcher IDs:', sqlError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to generate researcher ID' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        );
-      }
-
-      // Extract max number from existing researcher IDs
-      let maxNum = 0;
-      if (sqlData) {
-        for (const row of sqlData) {
-          const match = row.prolific_id?.match(/^researcher(\d+)$/);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            if (num > maxNum) maxNum = num;
-          }
-        }
-      }
-      researcherNumber = maxNum + 1;
-    } else {
-      researcherNumber = typeof seqData === 'number' ? seqData : parseInt(String(seqData), 10);
+    const { data: prolificId, error: idError } = await supabase.rpc('next_researcher_prolific_id');
+    if (idError || !prolificId || typeof prolificId !== 'string') {
+      console.error('Failed to allocate researcher ID:', idError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to allocate researcher ID' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
-    const prolificId = `researcher${researcherNumber}`;
     const sessionToken = crypto.randomUUID();
     const callId = `researcher-call-${crypto.randomUUID()}`;
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-    // Insert into participant_calls
-    const { error: insertError } = await supabase
-      .from('participant_calls')
-      .insert({
-        prolific_id: prolificId,
-        call_id: callId,
-        session_token: sessionToken,
-        expires_at: expiresAt,
-        token_used: false,
-      });
+    const { error: callInsertError } = await supabase.from('participant_calls').insert({
+      prolific_id: prolificId,
+      call_id: callId,
+      session_token: sessionToken,
+      expires_at: expiresAt,
+      token_used: false,
+    });
 
-    if (insertError) {
-      console.error('Failed to create researcher session:', insertError);
-      
-      // If it's a unique constraint violation, try again with a higher number
-      if (insertError.code === '23505') {
-        return new Response(
-          JSON.stringify({ error: 'Researcher ID collision, please retry' }),
-          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        );
-      }
-      
+    if (callInsertError) {
+      console.error('Failed to create participant_calls row:', callInsertError);
       return new Response(
-        JSON.stringify({ error: 'Failed to create session' }),
+        JSON.stringify({ error: 'Failed to create researcher session' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const { error: responseInsertError } = await supabase
+      .from('experiment_responses')
+      .insert(buildDraftExperimentResponse(prolificId, callId));
+
+    if (responseInsertError) {
+      console.error('Failed to create draft experiment response:', responseInsertError);
+      await supabase.from('participant_calls').delete().eq('session_token', sessionToken);
+      return new Response(
+        JSON.stringify({ error: 'Failed to initialize researcher response draft' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
@@ -118,7 +116,6 @@ Deno.serve(async (req) => {
         callId,
         sessionToken,
         expiresAt,
-        source,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
