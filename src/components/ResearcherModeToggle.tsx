@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useResearcherMode } from '@/contexts/ResearcherModeContext';
-import { FlaskConical, LogIn } from 'lucide-react';
+import { FlaskConical, LogIn, X } from 'lucide-react';
 
 const RESEARCHER_ROTATE_PENDING_KEY = 'researcher-session-rotate-pending';
 
@@ -26,12 +26,23 @@ const PARTICIPANT_PAGE_LINKS = [
 ];
 
 export const ResearcherModeToggle = () => {
-  const [showButton, setShowButton] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
+  const [showParticipantPages, setShowParticipantPages] = useState(true);
+  const [showResearcherLogin, setShowResearcherLogin] = useState(true);
+  const [showModeToggle, setShowModeToggle] = useState(true);
   const { isResearcherMode, activeResearcherId, toggleResearcherMode, startResearcherSession } = useResearcherMode();
   const location = useLocation();
   const navigate = useNavigate();
   const displayedResearcherId = activeResearcherId || sessionStorage.getItem('prolificId');
+  const showRestoreHidden =
+    !showParticipantPages || (isResearcherMode && !showResearcherLogin) || !showModeToggle;
+
+  const restoreHiddenControls = () => {
+    setShowParticipantPages(true);
+    setShowResearcherLogin(true);
+    setShowModeToggle(true);
+  };
 
   const getPathWithSession = (path: string) => {
     const sessionToken = localStorage.getItem('sessionToken');
@@ -49,7 +60,7 @@ export const ResearcherModeToggle = () => {
       if (location.pathname === '/no-consent') return;
       // Disable and hide on researcher pages unless mode is already active
       if (location.pathname.startsWith('/researcher') && !isResearcherMode) {
-        setShowButton(false);
+        setShowControls(false);
         return;
       }
       
@@ -60,7 +71,13 @@ export const ResearcherModeToggle = () => {
       
       // Check if both spacebar and 'r' are pressed
       if (spacePressed && e.key.toLowerCase() === 'r') {
-        setShowButton(prev => !prev);
+        setShowControls((prev) => {
+          const next = !prev;
+          if (next) {
+            restoreHiddenControls();
+          }
+          return next;
+        });
       }
     };
 
@@ -92,7 +109,17 @@ export const ResearcherModeToggle = () => {
     });
   }, [isResearcherMode, location.pathname, startResearcherSession]);
 
-  if (!showButton && !isResearcherMode) return null;
+  const handleModeToggle = () => {
+    toggleResearcherMode();
+    setShowControls(true);
+    setShowModeToggle(true);
+    if (!isResearcherMode) {
+      setShowParticipantPages(true);
+      setShowResearcherLogin(true);
+    }
+  };
+
+  if (!showControls) return null;
 
   return (
     <>
@@ -103,11 +130,22 @@ export const ResearcherModeToggle = () => {
         </div>
       )}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-      {isResearcherMode && (
+      {isResearcherMode && showParticipantPages && (
         <div className="max-h-[55vh] w-64 overflow-y-auto rounded-lg border bg-background/95 p-2 shadow-lg backdrop-blur">
-          <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Participant Pages
-          </p>
+          <div className="mb-2 flex items-center justify-between px-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Participant Pages
+            </p>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setShowParticipantPages(false)}
+              aria-label="Hide participant pages"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           <div className="flex flex-col gap-1">
             {PARTICIPANT_PAGE_LINKS.map((item) => (
               <Button
@@ -123,26 +161,60 @@ export const ResearcherModeToggle = () => {
           </div>
         </div>
       )}
-      {isResearcherMode && (
+      {isResearcherMode && showResearcherLogin && (
+        <div className="relative">
+          <Button
+            onClick={() => navigate('/researcher')}
+            variant="default"
+            size="lg"
+            className="w-full pr-10 shadow-lg"
+          >
+            <LogIn className="w-5 h-5 mr-2" />
+            Login as Researcher
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-1 top-1 h-8 w-8"
+            onClick={() => setShowResearcherLogin(false)}
+            aria-label="Hide researcher login button"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+      {showModeToggle && (
+        <div className="relative">
+          <Button
+            onClick={handleModeToggle}
+            variant={isResearcherMode ? "default" : "outline"}
+            size="lg"
+            className="w-full pr-10 shadow-lg"
+          >
+            <FlaskConical className="w-5 h-5 mr-2" />
+            {isResearcherMode ? 'Researcher Mode: ON' : 'Researcher Mode: OFF'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-1 top-1 h-8 w-8"
+            onClick={() => setShowModeToggle(false)}
+            aria-label="Hide researcher mode button"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+      {showRestoreHidden && (
         <Button
-          onClick={() => navigate('/researcher')}
-          variant="default"
-          size="lg"
-          className="shadow-lg"
+          onClick={restoreHiddenControls}
+          variant="ghost"
+          size="sm"
+          className="h-8 self-end text-xs"
         >
-          <LogIn className="w-5 h-5 mr-2" />
-          Login as Researcher
+          Restore Hidden Controls
         </Button>
       )}
-      <Button
-        onClick={toggleResearcherMode}
-        variant={isResearcherMode ? "default" : "outline"}
-        size="lg"
-        className="shadow-lg"
-      >
-        <FlaskConical className="w-5 h-5 mr-2" />
-        {isResearcherMode ? 'Researcher Mode: ON' : 'Researcher Mode: OFF'}
-      </Button>
       </div>
     </>
   );
