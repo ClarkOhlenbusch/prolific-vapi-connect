@@ -173,6 +173,7 @@ const FeedbackQuestionnaire = () => {
   const autosaveInFlightRef = useRef(false);
   const autosaveQueuedRef = useRef(false);
   const dictationRecordersRef = useRef<Record<FeedbackField, DictationRecorderState>>(createDictationRecorderStateMap());
+  const submitInFlightRef = useRef(false);
   
   // Refs to stop dictation when clicking on another field
   const experienceDictationRef = useRef<VoiceDictationRef>(null);
@@ -1248,6 +1249,10 @@ const FeedbackQuestionnaire = () => {
       navigate("/questionnaire/pets");
       return;
     }
+    if (submitInFlightRef.current) {
+      return;
+    }
+    submitInFlightRef.current = true;
     setIsSubmitting(true);
     try {
       const petsData = JSON.parse(petsDataString);
@@ -1391,6 +1396,7 @@ const FeedbackQuestionnaire = () => {
       });
     } finally {
       setIsSubmitting(false);
+      submitInFlightRef.current = false;
     }
   };
 

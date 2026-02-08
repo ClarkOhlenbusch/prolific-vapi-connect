@@ -24,6 +24,18 @@ interface MarkCompleteResponse {
   alreadyCompleted: boolean;
 }
 
+const RESEARCHER_SESSION_RESET_KEYS = [
+  'petsData',
+  'godspeedData',
+  'tiasData',
+  'tipiData',
+  'intentionData',
+  'formalityData',
+  'assistantType',
+  'assistantId',
+  'isRestarting',
+] as const;
+
 export const ResearcherModeProvider = ({ children }: { children: ReactNode }) => {
   const [isResearcherMode, setIsResearcherMode] = useState(false);
   const [activeResearcherId, setActiveResearcherId] = useState<string | null>(() => sessionStorage.getItem('prolificId'));
@@ -42,6 +54,7 @@ export const ResearcherModeProvider = ({ children }: { children: ReactNode }) =>
       if (error || !data?.prolificId || !data?.callId || !data?.sessionToken) {
         console.error('Failed to create researcher session:', error || data);
         setActiveResearcherId(null);
+        RESEARCHER_SESSION_RESET_KEYS.forEach((key) => sessionStorage.removeItem(key));
         sessionStorage.removeItem('prolificId');
         sessionStorage.removeItem('callId');
         sessionStorage.setItem('flowStep', '0');
@@ -51,6 +64,7 @@ export const ResearcherModeProvider = ({ children }: { children: ReactNode }) =>
       }
 
       const { prolificId, callId, sessionToken } = data;
+      RESEARCHER_SESSION_RESET_KEYS.forEach((key) => sessionStorage.removeItem(key));
       sessionStorage.setItem('prolificId', prolificId);
       sessionStorage.setItem('callId', callId);
       sessionStorage.setItem('flowStep', '0');
@@ -60,6 +74,7 @@ export const ResearcherModeProvider = ({ children }: { children: ReactNode }) =>
     } catch (err) {
       console.error('Error starting researcher session:', err);
       setActiveResearcherId(null);
+      RESEARCHER_SESSION_RESET_KEYS.forEach((key) => sessionStorage.removeItem(key));
       sessionStorage.removeItem('prolificId');
       sessionStorage.removeItem('callId');
       sessionStorage.setItem('flowStep', '0');
