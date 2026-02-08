@@ -35,3 +35,9 @@ verify_jwt = false
 
 [functions.update-researcher-username]
 verify_jwt = false
+
+[functions.create-researcher-session]
+verify_jwt = false
+
+[functions.mark-session-complete]
+verify_jwt = false

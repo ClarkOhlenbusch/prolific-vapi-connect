@@ -1,23 +1,27 @@
 import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface ResearcherModeContextType {
   isResearcherMode: boolean;
   toggleResearcherMode: () => void;
-  startResearcherSession: () => Promise<void>;
+  startResearcherSession: () => Promise<boolean>;
+  markSessionComplete: () => Promise<boolean>;
 }
 
 const ResearcherModeContext = createContext<ResearcherModeContextType | undefined>(undefined);
 
-const RESEARCHER_COUNTER_KEY = 'researcher-mode-counter';
+interface CreateSessionResponse {
+  prolificId: string;
+  callId: string;
+  sessionToken: string;
+  expiresAt: string;
+}
 
-const nextResearcherId = () => {
-  const currentRaw = localStorage.getItem(RESEARCHER_COUNTER_KEY);
-  const current = currentRaw ? Number.parseInt(currentRaw, 10) : 0;
-  const next = Number.isFinite(current) && current >= 0 ? current + 1 : 1;
-  localStorage.setItem(RESEARCHER_COUNTER_KEY, String(next));
-  return `researcher${next}`;
-};
+interface MarkCompleteResponse {
+  success: boolean;
+  alreadyCompleted: boolean;
+}
 
 const buildDraftExperimentResponse = (prolificId: string, callId: string) => ({
   prolific_id: prolificId,
@@ -57,51 +61,78 @@ const buildDraftExperimentResponse = (prolificId: string, callId: string) => ({
 export const ResearcherModeProvider = ({ children }: { children: ReactNode }) => {
   const [isResearcherMode, setIsResearcherMode] = useState(false);
 
-  const startResearcherSession = useCallback(async () => {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const prolificId = nextResearcherId();
-      const sessionToken = crypto.randomUUID();
-      const callId = `researcher-call-${crypto.randomUUID()}`;
+  const startResearcherSession = useCallback(async (): Promise<boolean> => {
+    try {
+      // Call the edge function to get a unique researcher session
+      const { data, error } = await supabase.functions.invoke<CreateSessionResponse>(
+        'create-researcher-session',
+        { body: { source: 'researcher_mode' } }
+      );
 
-      // Persist immediately so pages never fall back to RESEARCHER_MODE during async setup.
+      if (error || !data) {
+        console.error('Failed to create researcher session:', error);
+        toast.error('Failed to start researcher session. Please try again.');
+        return false;
+      }
+
+      const { prolificId, callId, sessionToken } = data;
+
+      // Persist to storage
       sessionStorage.setItem('prolificId', prolificId);
       sessionStorage.setItem('callId', callId);
       sessionStorage.setItem('flowStep', '0');
       localStorage.setItem('sessionToken', sessionToken);
 
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const { error: callInsertError } = await supabase
-        .from('participant_calls')
-        .insert({
-          prolific_id: prolificId,
-          call_id: callId,
-          session_token: sessionToken,
-          expires_at: expiresAt,
-          token_used: false,
-        });
-
-      if (callInsertError) {
-        console.error('Failed to create researcher participant_calls row:', callInsertError);
-        continue;
-      }
-
+      // Create draft experiment response row
       const { error: responseInsertError } = await supabase
         .from('experiment_responses')
         .insert(buildDraftExperimentResponse(prolificId, callId));
 
       if (responseInsertError) {
-        console.error('Failed to create researcher draft experiment_responses row:', responseInsertError);
-        continue;
+        console.error('Failed to create draft experiment_responses row:', responseInsertError);
+        // Non-fatal - session still works
       }
-      return;
-    }
 
-    const fallbackId = nextResearcherId();
-    const fallbackCallId = `researcher-call-${crypto.randomUUID()}`;
-    sessionStorage.setItem('prolificId', fallbackId);
-    sessionStorage.setItem('callId', fallbackCallId);
-    sessionStorage.setItem('flowStep', '0');
-    localStorage.setItem('sessionToken', crypto.randomUUID());
+      return true;
+    } catch (err) {
+      console.error('Error starting researcher session:', err);
+      toast.error('Failed to start researcher session. Please try again.');
+      return false;
+    }
+  }, []);
+
+  const markSessionComplete = useCallback(async (): Promise<boolean> => {
+    try {
+      const sessionToken = localStorage.getItem('sessionToken');
+      const prolificId = sessionStorage.getItem('prolificId');
+      const callId = sessionStorage.getItem('callId');
+
+      if (!sessionToken) {
+        console.warn('No session token found for marking complete');
+        return false;
+      }
+
+      const { data, error } = await supabase.functions.invoke<MarkCompleteResponse>(
+        'mark-session-complete',
+        {
+          body: {
+            sessionToken,
+            prolificId: prolificId || undefined,
+            callId: callId || undefined,
+          },
+        }
+      );
+
+      if (error) {
+        console.error('Failed to mark session complete:', error);
+        return false;
+      }
+
+      return data?.success ?? false;
+    } catch (err) {
+      console.error('Error marking session complete:', err);
+      return false;
+    }
   }, []);
 
   const toggleResearcherMode = () => {
@@ -115,7 +146,9 @@ export const ResearcherModeProvider = ({ children }: { children: ReactNode }) =>
   };
 
   return (
-    <ResearcherModeContext.Provider value={{ isResearcherMode, toggleResearcherMode, startResearcherSession }}>
+    <ResearcherModeContext.Provider
+      value={{ isResearcherMode, toggleResearcherMode, startResearcherSession, markSessionComplete }}
+    >
       {children}
     </ResearcherModeContext.Provider>
   );
