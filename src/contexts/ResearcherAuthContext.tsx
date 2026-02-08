@@ -6,6 +6,51 @@ import { logActivityStandalone } from '@/hooks/useActivityLog';
 type ResearcherRole = 'super_admin' | 'viewer' | null;
 
 const GUEST_MODE_KEY = 'researcher-guest-mode';
+const LOGIN_GUARD_STORAGE_KEY = 'researcher-login-guard-v1';
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_DURATION_MS = 2 * 60 * 1000;
+
+type LoginGuardEntry = {
+  failedAttempts: number;
+  lockoutUntil: number;
+};
+
+type LoginGuardState = Record<string, LoginGuardEntry>;
+
+const getLoginKey = (email: string) => email.trim().toLowerCase();
+
+const readLoginGuardState = (): LoginGuardState => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(LOGIN_GUARD_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as LoginGuardState;
+  } catch {
+    return {};
+  }
+};
+
+const writeLoginGuardState = (state: LoginGuardState) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LOGIN_GUARD_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage failures; auth flow should still work.
+  }
+};
+
+const getLockoutSecondsRemaining = (lockoutUntil: number) =>
+  Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000));
+
+const isInvalidCredentialError = (message: string) => {
+  const normalizedMessage = message.toLowerCase();
+  return (
+    normalizedMessage.includes('invalid login credentials') ||
+    normalizedMessage.includes('invalid email or password')
+  );
+};
 
 interface ResearcherAuthContextType {
   user: User | null;
@@ -150,16 +195,51 @@ export const ResearcherAuthProvider = ({ children }: { children: ReactNode }) =>
     }
 
     try {
+      const loginKey = getLoginKey(email);
+      const loginGuardState = readLoginGuardState();
+      const loginGuardEntry = loginGuardState[loginKey];
+
+      if (loginGuardEntry && loginGuardEntry.lockoutUntil > Date.now()) {
+        const secondsRemaining = getLockoutSecondsRemaining(loginGuardEntry.lockoutUntil);
+        return { error: `Too many failed login attempts. Try again in ${secondsRemaining} seconds.` };
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
+        if (isInvalidCredentialError(error.message)) {
+          const nextFailedAttempts = (loginGuardEntry?.failedAttempts ?? 0) + 1;
+
+          if (nextFailedAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+            const lockoutUntil = Date.now() + LOGIN_LOCKOUT_DURATION_MS;
+            loginGuardState[loginKey] = { failedAttempts: 0, lockoutUntil };
+            writeLoginGuardState(loginGuardState);
+            const secondsRemaining = getLockoutSecondsRemaining(lockoutUntil);
+            return { error: `Too many failed login attempts. Try again in ${secondsRemaining} seconds.` };
+          }
+
+          loginGuardState[loginKey] = { failedAttempts: nextFailedAttempts, lockoutUntil: 0 };
+          writeLoginGuardState(loginGuardState);
+
+          const attemptsLeft = MAX_FAILED_LOGIN_ATTEMPTS - nextFailedAttempts;
+          const attemptLabel = attemptsLeft === 1 ? 'attempt' : 'attempts';
+          return {
+            error: `Invalid email/username or password. ${attemptsLeft} ${attemptLabel} remaining before a 2-minute lockout.`,
+          };
+        }
+
         return { error: error.message };
       }
 
       if (data.user) {
+        if (loginGuardState[loginKey]) {
+          delete loginGuardState[loginKey];
+          writeLoginGuardState(loginGuardState);
+        }
+
         const fetchedRole = await fetchRoleWithTimeout(data.user.id);
         if (!fetchedRole) {
           // User exists but is not a researcher
