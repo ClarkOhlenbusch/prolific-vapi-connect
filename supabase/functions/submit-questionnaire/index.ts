@@ -1,9 +1,9 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.76.0';
-import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.76.0";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 // Validation schema for PETS data with positions
@@ -155,162 +155,170 @@ const feedbackDataSchema = z.object({
 });
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { sessionToken, petsData, godspeedData, tiasData, tipiData, intentionData, feedbackData, assistantType } = await req.json();
+    const { sessionToken, petsData, godspeedData, tiasData, tipiData, intentionData, feedbackData, assistantType } =
+      await req.json();
 
     // Validate session token format
-    if (!sessionToken || typeof sessionToken !== 'string') {
-      console.error('Invalid session token format');
-      return new Response(
-        JSON.stringify({ error: 'Invalid session token' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!sessionToken || typeof sessionToken !== "string") {
+      console.error("Invalid session token format");
+      return new Response(JSON.stringify({ error: "Invalid session token" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(sessionToken)) {
-      console.error('Session token is not a valid UUID');
-      return new Response(
-        JSON.stringify({ error: 'Invalid session token format' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error("Session token is not a valid UUID");
+      return new Response(JSON.stringify({ error: "Invalid session token format" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Validate all data against schemas
     let validatedPets, validatedGodspeed, validatedTias, validatedTipi, validatedIntention, validatedFeedback;
-    
+
     try {
       validatedPets = petsDataSchema.parse(petsData);
     } catch (err) {
-      console.error('PETS validation failed:', err);
+      console.error("PETS validation failed:", err);
       return new Response(
-        JSON.stringify({ error: 'Invalid PETS data', details: err instanceof z.ZodError ? err.errors : undefined }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "Invalid PETS data", details: err instanceof z.ZodError ? err.errors : undefined }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     try {
       validatedGodspeed = godspeedDataSchema.parse(godspeedData);
     } catch (err) {
-      console.error('Godspeed validation failed:', err);
+      console.error("Godspeed validation failed:", err);
       return new Response(
-        JSON.stringify({ error: 'Invalid Godspeed data', details: err instanceof z.ZodError ? err.errors : undefined }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "Invalid Godspeed data", details: err instanceof z.ZodError ? err.errors : undefined }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     try {
       validatedTias = tiasDataSchema.parse(tiasData);
     } catch (err) {
-      console.error('TIAS validation failed:', err);
+      console.error("TIAS validation failed:", err);
       return new Response(
-        JSON.stringify({ error: 'Invalid TIAS data', details: err instanceof z.ZodError ? err.errors : undefined }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "Invalid TIAS data", details: err instanceof z.ZodError ? err.errors : undefined }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     try {
       validatedTipi = tipiDataSchema.parse(tipiData);
     } catch (err) {
-      console.error('TIPI validation failed:', err);
+      console.error("TIPI validation failed:", err);
       return new Response(
-        JSON.stringify({ error: 'Invalid TIPI data', details: err instanceof z.ZodError ? err.errors : undefined }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "Invalid TIPI data", details: err instanceof z.ZodError ? err.errors : undefined }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     try {
       validatedIntention = intentionDataSchema.parse(intentionData);
     } catch (err) {
-      console.error('Intention validation failed:', err);
+      console.error("Intention validation failed:", err);
       return new Response(
-        JSON.stringify({ error: 'Invalid intention data', details: err instanceof z.ZodError ? err.errors : undefined }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          error: "Invalid intention data",
+          details: err instanceof z.ZodError ? err.errors : undefined,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     try {
       validatedFeedback = feedbackDataSchema.parse(feedbackData);
     } catch (err) {
-      console.error('Feedback validation failed:', err);
+      console.error("Feedback validation failed:", err);
       return new Response(
-        JSON.stringify({ error: 'Invalid feedback data', details: err instanceof z.ZodError ? err.errors : undefined }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "Invalid feedback data", details: err instanceof z.ZodError ? err.errors : undefined }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing Supabase environment variables');
-      return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error("Missing Supabase environment variables");
+      return new Response(JSON.stringify({ error: "Server configuration error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Validate session
     const { data: session, error: sessionError } = await supabase
-      .from('participant_calls')
-      .select('*')
-      .eq('session_token', sessionToken)
-      .eq('token_used', false)
-      .gt('expires_at', new Date().toISOString())
+      .from("participant_calls")
+      .select("*")
+      .eq("session_token", sessionToken)
+      .eq("token_used", false)
+      .gt("expires_at", new Date().toISOString())
       .single();
 
     if (sessionError || !session) {
-      console.error('Session validation failed:', sessionError);
-      return new Response(
-        JSON.stringify({ error: 'Invalid or expired session' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error("Session validation failed:", sessionError);
+      return new Response(JSON.stringify({ error: "Invalid or expired session" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Check for existing submission (by prolific_id since it's unique)
     const { data: existingResponse, error: existingError } = await supabase
-      .from('experiment_responses')
-      .select('prolific_id')
-      .eq('prolific_id', validatedPets.prolific_id)
+      .from("experiment_responses")
+      .select("id, prolific_id, call_id")
+      .eq("prolific_id", validatedPets.prolific_id)
       .maybeSingle();
 
     if (existingError) {
-      console.error('Error checking existing responses:', existingError);
-      return new Response(
-        JSON.stringify({ error: 'Database error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error("Error checking existing responses:", existingError);
+      return new Response(JSON.stringify({ error: "Database error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    if (existingResponse) {
-      console.log('Questionnaire already submitted for prolific_id:', validatedPets.prolific_id);
-      return new Response(
-        JSON.stringify({ error: 'Questionnaire already submitted' }),
-        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const isResearcherId = /^researcher[0-9]+$/i.test(validatedPets.prolific_id);
+    const canReuseExistingResearcherRow =
+      isResearcherId && !!existingResponse && existingResponse.call_id === validatedPets.call_id;
+
+    if (existingResponse && !canReuseExistingResearcherRow) {
+      console.log("Questionnaire already submitted for prolific_id:", validatedPets.prolific_id);
+      return new Response(JSON.stringify({ error: "Questionnaire already submitted" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Fetch current active batch from experiment_batches table
     const { data: activeBatch } = await supabase
-      .from('experiment_batches')
-      .select('name')
-      .eq('is_active', true)
+      .from("experiment_batches")
+      .select("name")
+      .eq("is_active", true)
       .single();
-    
+
     const batchLabel = activeBatch?.name || null;
 
     // Count call attempts for this participant
     const { count: callAttempts } = await supabase
-      .from('participant_calls')
-      .select('*', { count: 'exact', head: true })
-      .eq('prolific_id', validatedPets.prolific_id);
+      .from("participant_calls")
+      .select("*", { count: "exact", head: true })
+      .eq("prolific_id", validatedPets.prolific_id);
 
     // Insert into consolidated experiment_responses table
     const experimentData = {
@@ -463,40 +471,55 @@ Deno.serve(async (req) => {
       batch_label: batchLabel || null,
     };
 
-    const { error: insertError } = await supabase
-      .from('experiment_responses')
-      .insert([experimentData]);
+    if (canReuseExistingResearcherRow && existingResponse) {
+      const { error: updateDraftError } = await supabase
+        .from("experiment_responses")
+        .update(experimentData)
+        .eq("id", existingResponse.id);
 
-    if (insertError) {
-      console.error('Failed to insert experiment response:', insertError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to save questionnaire' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (updateDraftError) {
+        console.error("Failed to update existing researcher response:", updateDraftError);
+        return new Response(JSON.stringify({ error: "Failed to save questionnaire" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      const { error: insertError } = await supabase.from("experiment_responses").insert([experimentData]);
+
+      if (insertError) {
+        console.error("Failed to insert experiment response:", insertError);
+        return new Response(JSON.stringify({ error: "Failed to save questionnaire" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Mark session token as used
     const { error: updateError } = await supabase
-      .from('participant_calls')
+      .from("participant_calls")
       .update({ token_used: true })
-      .eq('session_token', sessionToken);
+      .eq("session_token", sessionToken);
 
     if (updateError) {
-      console.error('Failed to mark token as used:', updateError);
+      console.error("Failed to mark token as used:", updateError);
     }
 
-    console.log('Experiment response submitted successfully for prolific_id:', validatedPets.prolific_id);
+    console.log("Experiment response submitted successfully for prolific_id:", validatedPets.prolific_id);
 
-    return new Response(
-      JSON.stringify({ success: true, message: 'Questionnaire submitted successfully' }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
+    return new Response(JSON.stringify({ success: true, message: "Questionnaire submitted successfully" }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
-    console.error('Unexpected error in submit-questionnaire:', error);
+    console.error("Unexpected error in submit-questionnaire:", error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error', message: error instanceof Error ? error.message : 'Unknown error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
