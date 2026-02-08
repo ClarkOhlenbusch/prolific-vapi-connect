@@ -508,7 +508,7 @@ const FeedbackQuestionnaire = () => {
 
     if (!options.finalizeRow || recorderState.persisted) return;
 
-    const { error: insertError } = await supabase.from("dictation_recordings" as never).insert({
+    const { error: insertError } = await (supabase.from("dictation_recordings") as ReturnType<typeof supabase.from>).insert({
       prolific_id: prolificId,
       call_id: callId || null,
       page_name: "feedback",
@@ -519,7 +519,7 @@ const FeedbackQuestionnaire = () => {
       file_size_bytes: blob.size,
       duration_ms: durationMs,
       attempt_count: recorderState.attemptCount,
-    });
+    } as Record<string, unknown>);
 
     if (insertError) {
       updateDictationDebug(field, {
