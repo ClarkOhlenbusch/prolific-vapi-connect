@@ -276,7 +276,7 @@ const initializeReplay = async () => {
 
     const stop = rrwebRecordFn({
       emit: (event) => queueEvent(event),
-      maskAllInputs: true,
+      maskAllInputs: false,
       inlineStylesheet: true,
       checkoutEveryNms: 30000,
       checkoutEveryNth: 500,
