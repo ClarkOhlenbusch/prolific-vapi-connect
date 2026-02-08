@@ -63,6 +63,15 @@ interface DictationDebugInfo {
   persisted: boolean;
 }
 
+interface DictationUploadPayload {
+  mimeType: string;
+  blob: Blob;
+  storagePath: string;
+  attemptCount: number;
+  durationMs: number;
+  chunkCount: number;
+}
+
 const createDictationDebugInfo = (): DictationDebugInfo => ({
   recorderState: "idle",
   attemptCount: 0,
@@ -102,6 +111,16 @@ const createDictationRecorderStateMap = (): Record<FeedbackField, DictationRecor
   communication_style_feedback: createDictationRecorderState(),
   experiment_feedback: createDictationRecorderState(),
 });
+
+const resetDictationSegmentState = (recorderState: DictationRecorderState) => {
+  recorderState.chunks = [];
+  recorderState.storagePath = null;
+  recorderState.activeStartMs = null;
+  recorderState.activeDurationMs = 0;
+  recorderState.persisted = false;
+  recorderState.stopPromise = null;
+  recorderState.resolveStop = null;
+};
 
 const getSupportedAudioMimeType = () => {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
@@ -305,8 +324,7 @@ const FeedbackQuestionnaire = () => {
       recorderState.stream = stream;
       recorderState.recorder = recorder;
       recorderState.mimeType = supportedMimeType || recorder.mimeType || "audio/webm";
-      recorderState.chunks = [];
-      recorderState.persisted = false;
+      resetDictationSegmentState(recorderState);
       console.info("[DictationAudio] Recorder created", {
         field,
         mimeType: recorderState.mimeType,
@@ -430,6 +448,15 @@ const FeedbackQuestionnaire = () => {
 
     const recorder = recorderState.recorder;
     if (recorder.state === "inactive") {
+      resetDictationSegmentState(recorderState);
+      updateDictationDebug(field, {
+        recorderState: "idle",
+        chunkCount: 0,
+        bytesCaptured: 0,
+        storagePath: null,
+        persisted: false,
+        lastError: null,
+      });
       recorder.start(1000);
       return;
     }
@@ -453,6 +480,19 @@ const FeedbackQuestionnaire = () => {
     }
   }, [updateDictationDebug]);
 
+  const stopDictationRecording = useCallback(async (field: FeedbackField) => {
+    const recorderState = dictationRecordersRef.current[field];
+    const recorder = recorderState.recorder;
+    if (!recorder || recorder.state === "inactive") return;
+    if (!recorderState.stopPromise) {
+      recorderState.stopPromise = new Promise<void>((resolve) => {
+        recorderState.resolveStop = resolve;
+      });
+    }
+    recorder.stop();
+    await recorderState.stopPromise;
+  }, []);
+
   const pauseOtherDictationRecordings = useCallback((activeField: FeedbackField) => {
     FEEDBACK_FIELDS.forEach((field) => {
       if (field !== activeField) {
@@ -463,8 +503,9 @@ const FeedbackQuestionnaire = () => {
 
   const uploadDictationSnapshot = useCallback(async (
     field: FeedbackField,
+    payload: DictationUploadPayload,
     options: { finalizeRow?: boolean } = {}
-  ) => {
+  ): Promise<boolean> => {
     console.info("[DictationAudio] Upload snapshot requested", {
       field,
       finalizeRow: Boolean(options.finalizeRow),
@@ -476,122 +517,107 @@ const FeedbackQuestionnaire = () => {
         lastUploadStatus: "error",
         lastError: "Missing prolificId; cannot upload dictation audio.",
       });
-      return;
+      return false;
     }
 
-    const recorderState = dictationRecordersRef.current[field];
     updateDictationDebug(field, {
       lastUploadStatus: "uploading",
       lastError: null,
     });
-    const recorder = recorderState.recorder;
-    if (recorder && typeof recorder.requestData === "function") {
-      try {
-        recorder.requestData();
-      } catch {
-        // requestData may fail in some browser states; continue with available chunks
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 80));
-    }
 
-    if (!recorderState.chunks.length && recorderState.attemptCount === 0) {
+    if (!payload.chunkCount || payload.blob.size === 0) {
       console.info("[DictationAudio] Skipping upload because no chunks were captured", {
         field,
-        attemptCount: recorderState.attemptCount,
+        attemptCount: payload.attemptCount,
       });
       updateDictationDebug(field, {
         lastUploadStatus: "idle",
       });
-      return;
+      return true;
     }
 
-    const mimeType = recorderState.mimeType || "audio/webm";
-    const blob = new Blob(recorderState.chunks, { type: mimeType });
-    if (!recorderState.storagePath) {
-      recorderState.storagePath = buildRecordingStoragePath(field, mimeType);
-    }
     console.info("[DictationAudio] Uploading audio blob", {
       field,
-      storagePath: recorderState.storagePath,
-      mimeType,
-      sizeBytes: blob.size,
-      chunkCount: recorderState.chunks.length,
+      storagePath: payload.storagePath,
+      mimeType: payload.mimeType,
+      sizeBytes: payload.blob.size,
+      chunkCount: payload.chunkCount,
     });
 
     const { error: uploadError } = await supabase.storage
       .from(DICTATION_AUDIO_BUCKET)
-      .upload(recorderState.storagePath, blob, {
-        contentType: mimeType,
+      .upload(payload.storagePath, payload.blob, {
+        contentType: payload.mimeType,
         upsert: true,
       });
 
     if (uploadError) {
       console.error("[DictationAudio] Storage upload failed", {
         field,
-        storagePath: recorderState.storagePath,
+        storagePath: payload.storagePath,
         message: uploadError.message,
       });
       updateDictationDebug(field, {
         lastUploadStatus: "error",
         lastError: uploadError.message,
-        storagePath: recorderState.storagePath,
+        storagePath: payload.storagePath,
       });
       logFeedbackEvent("dictation_recording_upload_error", {
         field,
         fieldLabel: FEEDBACK_FIELD_LABELS[field],
         message: uploadError.message,
+        storagePath: payload.storagePath,
+        attemptCount: payload.attemptCount,
       });
-      return;
+      return false;
     }
 
-    const durationMs = Math.max(0, Math.round(recorderState.activeDurationMs));
     console.info("[DictationAudio] Storage upload succeeded", {
       field,
-      storagePath: recorderState.storagePath,
-      sizeBytes: blob.size,
-      durationMs,
-      attemptCount: recorderState.attemptCount,
+      storagePath: payload.storagePath,
+      sizeBytes: payload.blob.size,
+      durationMs: payload.durationMs,
+      attemptCount: payload.attemptCount,
     });
     updateDictationDebug(field, {
       lastUploadStatus: "uploaded",
       lastUploadAt: new Date().toISOString(),
-      lastUploadBytes: blob.size,
-      storagePath: recorderState.storagePath,
-      chunkCount: recorderState.chunks.length,
-      bytesCaptured: blob.size,
-      attemptCount: recorderState.attemptCount,
-      persisted: recorderState.persisted,
+      lastUploadBytes: payload.blob.size,
+      storagePath: payload.storagePath,
+      chunkCount: payload.chunkCount,
+      bytesCaptured: payload.blob.size,
+      attemptCount: payload.attemptCount,
     });
     logFeedbackEvent("dictation_recording_uploaded", {
       field,
       fieldLabel: FEEDBACK_FIELD_LABELS[field],
-      attemptCount: recorderState.attemptCount,
-      fileSizeBytes: blob.size,
-      durationMs,
+      attemptCount: payload.attemptCount,
+      fileSizeBytes: payload.blob.size,
+      durationMs: payload.durationMs,
       storageBucket: DICTATION_AUDIO_BUCKET,
-      storagePath: recorderState.storagePath,
+      storagePath: payload.storagePath,
       isFinal: Boolean(options.finalizeRow),
     });
 
-    if (!options.finalizeRow || recorderState.persisted) return;
+    if (!options.finalizeRow) return true;
 
     console.info("[DictationAudio] Inserting dictation metadata row", {
       field,
       prolificId,
       callId,
-      storagePath: recorderState.storagePath,
+      storagePath: payload.storagePath,
     });
     const { error: insertError } = await (supabase.from("dictation_recordings") as ReturnType<typeof supabase.from>).insert({
       prolific_id: prolificId,
       call_id: callId || null,
       page_name: "feedback",
       field,
-      mime_type: mimeType,
+      mime_type: payload.mimeType,
       storage_bucket: DICTATION_AUDIO_BUCKET,
-      storage_path: recorderState.storagePath,
-      file_size_bytes: blob.size,
-      duration_ms: durationMs,
-      attempt_count: recorderState.attemptCount,
+      storage_path: payload.storagePath,
+      file_size_bytes: payload.blob.size,
+      duration_ms: payload.durationMs,
+      attempt_count: payload.attemptCount,
     } as Record<string, unknown>);
 
     if (insertError) {
@@ -608,71 +634,65 @@ const FeedbackQuestionnaire = () => {
         fieldLabel: FEEDBACK_FIELD_LABELS[field],
         message: insertError.message,
         stage: "metadata_insert",
+        storagePath: payload.storagePath,
+        attemptCount: payload.attemptCount,
+      });
+      return false;
+    }
+
+    console.info("[DictationAudio] Metadata row inserted", {
+      field,
+      storagePath: payload.storagePath,
+    });
+    updateDictationDebug(field, { persisted: true, lastError: null });
+    return true;
+  }, [callId, logFeedbackEvent, prolificId, updateDictationDebug]);
+
+  const persistDictationSegment = useCallback(async (field: FeedbackField) => {
+    await stopDictationRecording(field);
+    const recorderState = dictationRecordersRef.current[field];
+    const mimeType = recorderState.mimeType || "audio/webm";
+    const chunkCount = recorderState.chunks.length;
+    if (!chunkCount) {
+      updateDictationDebug(field, {
+        recorderState: "idle",
+        lastUploadStatus: "idle",
+        chunkCount: 0,
+        bytesCaptured: 0,
       });
       return;
     }
-
-    recorderState.persisted = true;
-    console.info("[DictationAudio] Metadata row inserted", {
-      field,
+    if (!recorderState.storagePath) {
+      recorderState.storagePath = buildRecordingStoragePath(field, mimeType);
+    }
+    const payload: DictationUploadPayload = {
+      mimeType,
+      blob: new Blob(recorderState.chunks, { type: mimeType }),
       storagePath: recorderState.storagePath,
-    });
-    updateDictationDebug(field, {
-      persisted: true,
-      lastError: null,
-    });
-  }, [buildRecordingStoragePath, callId, logFeedbackEvent, prolificId, updateDictationDebug]);
-
-  const finalizeDictationRecording = useCallback(async (field: FeedbackField) => {
-    const recorderState = dictationRecordersRef.current[field];
-    const recorder = recorderState.recorder;
-
-    if (recorder && recorder.state !== "inactive") {
-      if (!recorderState.stopPromise) {
-        recorderState.stopPromise = new Promise<void>((resolve) => {
-          recorderState.resolveStop = resolve;
-        });
-      }
-      recorder.stop();
-      await recorderState.stopPromise;
-    }
-
-    if (recorderState.stream) {
-      recorderState.stream.getTracks().forEach((track) => track.stop());
-      recorderState.stream = null;
-    }
-
-    recorderState.recorder = null;
-
-    if (!recorderState.chunks.length && recorderState.attemptCount === 0) {
-      return null;
-    }
-
-    const blob = new Blob(recorderState.chunks, { type: recorderState.mimeType || "audio/webm" });
-    return {
-      blob,
-      mimeType: recorderState.mimeType || "audio/webm",
       attemptCount: recorderState.attemptCount,
       durationMs: Math.max(0, Math.round(recorderState.activeDurationMs)),
+      chunkCount,
     };
-  }, []);
+    const uploadSucceeded = await uploadDictationSnapshot(field, payload, { finalizeRow: true });
+    if (!uploadSucceeded) return;
+    resetDictationSegmentState(recorderState);
+    updateDictationDebug(field, {
+      recorderState: "idle",
+      chunkCount: 0,
+      bytesCaptured: 0,
+      storagePath: null,
+      persisted: false,
+    });
+  }, [buildRecordingStoragePath, stopDictationRecording, updateDictationDebug, uploadDictationSnapshot]);
 
   const persistDictationRecordings = useCallback(async () => {
     if (!prolificId) return;
 
     console.info("[DictationAudio] Persisting dictation recordings", { prolificId, callId });
     for (const field of FEEDBACK_FIELDS) {
-      const recorderState = dictationRecordersRef.current[field];
-      if (recorderState.persisted) continue;
-      console.info("[DictationAudio] Finalizing field", {
-        field,
-        chunkCount: recorderState.chunks.length,
-        attemptCount: recorderState.attemptCount,
-      });
-      await finalizeDictationRecording(field);
-      await uploadDictationSnapshot(field, { finalizeRow: true });
+      await persistDictationSegment(field);
     }
-  }, [callId, finalizeDictationRecording, uploadDictationSnapshot, prolificId]);
+  }, [callId, persistDictationSegment, prolificId]);
 
   const markFeedbackInputMode = useCallback((field: FeedbackField, mode: FeedbackInputMode) => {
     feedbackInputModesRef.current[field][mode] = true;
@@ -761,17 +781,13 @@ const FeedbackQuestionnaire = () => {
       void startOrResumeDictationRecording(field);
       return;
     }
-    pauseDictationRecording(field);
-    window.setTimeout(() => {
-      void uploadDictationSnapshot(field, { finalizeRow: false });
-    }, 120);
+    void persistDictationSegment(field);
   }, [
     logFeedbackEvent,
     markFeedbackInputMode,
-    pauseDictationRecording,
     pauseOtherDictationRecordings,
+    persistDictationSegment,
     startOrResumeDictationRecording,
-    uploadDictationSnapshot,
     updateDictationDebug,
   ]);
 
@@ -786,11 +802,8 @@ const FeedbackQuestionnaire = () => {
       lastUploadStatus: "error",
       lastError: `${errorCode}${message ? `: ${message}` : ""}`,
     });
-    pauseDictationRecording(field);
-    window.setTimeout(() => {
-      void uploadDictationSnapshot(field, { finalizeRow: false });
-    }, 120);
-  }, [logFeedbackEvent, pauseDictationRecording, updateDictationDebug, uploadDictationSnapshot]);
+    void persistDictationSegment(field);
+  }, [logFeedbackEvent, persistDictationSegment, updateDictationDebug]);
 
   const { trackBackButtonClick } = usePageTracking({
     pageName: "feedback",
@@ -1346,8 +1359,15 @@ const FeedbackQuestionnaire = () => {
                     onTranscript={(text) => {
                       markFeedbackInputMode("voice_assistant_feedback", "dictated");
                       setVoiceAssistantExperience((prev) => {
-                        const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
+                        const prefix = prev && !prev.endsWith(" ") ? " " : "";
+                        const newValue = prev + `${prefix}${text}`;
                         return newValue.length <= MAX_CHARS ? newValue : prev;
+                      });
+                      logFeedbackEvent("dictation_transcript_appended", {
+                        field: "voice_assistant_feedback",
+                        fieldLabel: FEEDBACK_FIELD_LABELS.voice_assistant_feedback,
+                        text,
+                        length: text.length,
                       });
                     }}
                     onInterimTranscript={(text) => {
@@ -1425,8 +1445,15 @@ const FeedbackQuestionnaire = () => {
                     onTranscript={(text) => {
                       markFeedbackInputMode("communication_style_feedback", "dictated");
                       setCommunicationStyleFeedback((prev) => {
-                        const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
+                        const prefix = prev && !prev.endsWith(" ") ? " " : "";
+                        const newValue = prev + `${prefix}${text}`;
                         return newValue.length <= MAX_CHARS ? newValue : prev;
+                      });
+                      logFeedbackEvent("dictation_transcript_appended", {
+                        field: "communication_style_feedback",
+                        fieldLabel: FEEDBACK_FIELD_LABELS.communication_style_feedback,
+                        text,
+                        length: text.length,
                       });
                     }}
                     onInterimTranscript={(text) => {
@@ -1505,8 +1532,15 @@ const FeedbackQuestionnaire = () => {
                     onTranscript={(text) => {
                       markFeedbackInputMode("experiment_feedback", "dictated");
                       setExperimentFeedback((prev) => {
-                        const newValue = prev + (prev && !prev.endsWith(" ") ? " " : "") + text;
+                        const prefix = prev && !prev.endsWith(" ") ? " " : "";
+                        const newValue = prev + `${prefix}${text}`;
                         return newValue.length <= MAX_CHARS ? newValue : prev;
+                      });
+                      logFeedbackEvent("dictation_transcript_appended", {
+                        field: "experiment_feedback",
+                        fieldLabel: FEEDBACK_FIELD_LABELS.experiment_feedback,
+                        text,
+                        length: text.length,
                       });
                     }}
                     onInterimTranscript={(text) => {

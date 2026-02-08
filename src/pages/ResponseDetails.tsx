@@ -56,6 +56,10 @@ interface ReplayMarker {
 type FeedbackFieldKey = "voice_assistant_feedback" | "communication_style_feedback" | "experiment_feedback";
 type FeedbackInputSourceState = Record<FeedbackFieldKey, { typed: boolean; dictated: boolean }>;
 type DictationRecordingsByField = Record<FeedbackFieldKey, DictationRecording[]>;
+type DictationUploadSnapshotsByField = Record<FeedbackFieldKey, DictationUploadSnapshot[]>;
+type DictationDiagnosticsByField = Record<FeedbackFieldKey, DictationFieldDiagnostics>;
+type DictationTranscriptSegmentsByField = Record<FeedbackFieldKey, DictationTranscriptSegment[]>;
+type MergedDictationByField = Record<FeedbackFieldKey, MergedDictationAudioState>;
 type FeedbackDraftUsage = Record<FeedbackFieldKey, boolean>;
 
 interface DictationRecording {
@@ -64,6 +68,8 @@ interface DictationRecording {
   createdAt: string;
   attemptCount: number;
   durationMs: number | null;
+  storagePath: string | null;
+  source: 'table' | 'event_snapshot';
   playbackUrl: string | null;
 }
 
@@ -75,11 +81,41 @@ interface DictationUploadSnapshot {
   durationMs: number | null;
 }
 
+interface DictationEventIssue {
+  createdAt: string;
+  eventType: string;
+  message: string;
+}
+
+interface DictationTranscriptSegment {
+  createdAt: string;
+  text: string;
+}
+
+interface DictationFieldDiagnostics {
+  started: number;
+  stopped: number;
+  uploadSaved: number;
+  uploadFailed: number;
+  blocked: number;
+  runtimeErrors: number;
+  issues: DictationEventIssue[];
+}
+
+interface MergedDictationAudioState {
+  status: 'none' | 'building' | 'ready' | 'error';
+  playbackUrl: string | null;
+  durationMs: number | null;
+  clipCount: number;
+  errorMessage: string | null;
+}
+
 const FEEDBACK_FIELD_LABELS: Record<FeedbackFieldKey, string> = {
   voice_assistant_feedback: "Voice Assistant Feedback",
   communication_style_feedback: "Communication Style Feedback",
   experiment_feedback: "Experiment Feedback",
 };
+const FEEDBACK_FIELDS = Object.keys(FEEDBACK_FIELD_LABELS) as FeedbackFieldKey[];
 
 const LEGACY_RESEARCHER_DRAFT_PLACEHOLDER = "researcher mode draft session";
 
@@ -101,6 +137,48 @@ const createEmptyDictationRecordingsByField = (): DictationRecordingsByField => 
   voice_assistant_feedback: [],
   communication_style_feedback: [],
   experiment_feedback: [],
+});
+
+const createEmptyDictationUploadSnapshotsByField = (): DictationUploadSnapshotsByField => ({
+  voice_assistant_feedback: [],
+  communication_style_feedback: [],
+  experiment_feedback: [],
+});
+
+const createEmptyDictationFieldDiagnostics = (): DictationFieldDiagnostics => ({
+  started: 0,
+  stopped: 0,
+  uploadSaved: 0,
+  uploadFailed: 0,
+  blocked: 0,
+  runtimeErrors: 0,
+  issues: [],
+});
+
+const createEmptyDictationDiagnosticsByField = (): DictationDiagnosticsByField => ({
+  voice_assistant_feedback: createEmptyDictationFieldDiagnostics(),
+  communication_style_feedback: createEmptyDictationFieldDiagnostics(),
+  experiment_feedback: createEmptyDictationFieldDiagnostics(),
+});
+
+const createEmptyDictationTranscriptSegmentsByField = (): DictationTranscriptSegmentsByField => ({
+  voice_assistant_feedback: [],
+  communication_style_feedback: [],
+  experiment_feedback: [],
+});
+
+const createEmptyMergedDictationAudioState = (): MergedDictationAudioState => ({
+  status: 'none',
+  playbackUrl: null,
+  durationMs: null,
+  clipCount: 0,
+  errorMessage: null,
+});
+
+const createEmptyMergedDictationByField = (): MergedDictationByField => ({
+  voice_assistant_feedback: createEmptyMergedDictationAudioState(),
+  communication_style_feedback: createEmptyMergedDictationAudioState(),
+  experiment_feedback: createEmptyMergedDictationAudioState(),
 });
 
 const createEmptyFeedbackDraftUsage = (): FeedbackDraftUsage => ({
@@ -281,6 +359,201 @@ const formatFeedbackInputSource = (typed: boolean, dictated: boolean): string =>
   if (typed) return "Typed";
   if (dictated) return "Dictated";
   return "Not captured";
+};
+
+const formatDictationIssueType = (eventType: string): string => {
+  if (eventType === 'dictation_recording_upload_error') return 'Upload failed';
+  if (eventType === 'dictation_start_blocked') return 'Start blocked';
+  if (eventType === 'dictation_recording_error') return 'Recorder error';
+  if (eventType === 'dictation_error') return 'Dictation error';
+  return 'Issue';
+};
+
+const isBlobUrl = (url: string | null | undefined): boolean => {
+  return typeof url === 'string' && url.startsWith('blob:');
+};
+
+const buildFeedbackTextModeParts = (
+  fullText: string,
+  dictatedSegments: string[],
+): Array<{ text: string; mode: 'typed' | 'dictated' }> => {
+  if (!dictatedSegments.length) {
+    return [{ text: fullText, mode: 'typed' }];
+  }
+
+  const parts: Array<{ text: string; mode: 'typed' | 'dictated' }> = [];
+  let cursor = 0;
+
+  dictatedSegments.forEach((segment) => {
+    if (!segment) return;
+    let matchedSegment = segment;
+    let index = fullText.indexOf(matchedSegment, cursor);
+    if (index === -1) {
+      const trimmed = segment.trim();
+      if (!trimmed) return;
+      matchedSegment = trimmed;
+      index = fullText.indexOf(trimmed, cursor);
+    }
+    if (index === -1) return;
+
+    if (index > cursor) {
+      parts.push({
+        text: fullText.slice(cursor, index),
+        mode: 'typed',
+      });
+    }
+
+    parts.push({
+      text: matchedSegment,
+      mode: 'dictated',
+    });
+    cursor = index + matchedSegment.length;
+  });
+
+  if (cursor < fullText.length) {
+    parts.push({
+      text: fullText.slice(cursor),
+      mode: 'typed',
+    });
+  }
+
+  if (!parts.length) {
+    return [{ text: fullText, mode: 'typed' }];
+  }
+
+  return parts;
+};
+
+const resolveAudioDurationMs = async (playbackUrl: string): Promise<number | null> => {
+  return new Promise((resolve) => {
+    const audio = new Audio();
+    const cleanup = () => {
+      audio.removeAttribute('src');
+      audio.load();
+    };
+    audio.preload = 'metadata';
+    audio.onloadedmetadata = () => {
+      const durationMs = Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : null;
+      cleanup();
+      resolve(durationMs && durationMs > 0 ? durationMs : null);
+    };
+    audio.onerror = () => {
+      cleanup();
+      resolve(null);
+    };
+    audio.src = playbackUrl;
+  });
+};
+
+const encodeAudioBufferToWav = (buffer: AudioBuffer): Blob => {
+  const channels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const samples = buffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = samples * blockAlign;
+  const bufferSize = 44 + dataSize;
+  const arrayBuffer = new ArrayBuffer(bufferSize);
+  const view = new DataView(arrayBuffer);
+
+  let offset = 0;
+  const writeString = (value: string) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+    offset += value.length;
+  };
+
+  writeString('RIFF');
+  view.setUint32(offset, 36 + dataSize, true);
+  offset += 4;
+  writeString('WAVE');
+  writeString('fmt ');
+  view.setUint32(offset, 16, true);
+  offset += 4;
+  view.setUint16(offset, 1, true);
+  offset += 2;
+  view.setUint16(offset, channels, true);
+  offset += 2;
+  view.setUint32(offset, sampleRate, true);
+  offset += 4;
+  view.setUint32(offset, byteRate, true);
+  offset += 4;
+  view.setUint16(offset, blockAlign, true);
+  offset += 2;
+  view.setUint16(offset, 16, true);
+  offset += 2;
+  writeString('data');
+  view.setUint32(offset, dataSize, true);
+  offset += 4;
+
+  const channelData: Float32Array[] = [];
+  for (let channel = 0; channel < channels; channel += 1) {
+    channelData.push(buffer.getChannelData(channel));
+  }
+
+  for (let i = 0; i < samples; i += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const raw = channelData[channel]?.[i] ?? 0;
+      const sample = Math.max(-1, Math.min(1, raw));
+      const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      view.setInt16(offset, int16, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([arrayBuffer], { type: 'audio/wav' });
+};
+
+const mergeAudioUrlsIntoWav = async (playbackUrls: string[]): Promise<{ playbackUrl: string; durationMs: number }> => {
+  if (playbackUrls.length < 2) {
+    throw new Error('Need at least two clips to merge.');
+  }
+  if (typeof window === 'undefined' || typeof window.AudioContext === 'undefined' || typeof window.OfflineAudioContext === 'undefined') {
+    throw new Error('Audio merge is not supported in this browser.');
+  }
+
+  const decodeContext = new window.AudioContext();
+  let decodedBuffers: AudioBuffer[] = [];
+  try {
+    decodedBuffers = await Promise.all(playbackUrls.map(async (url) => {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch clip (${response.status})`);
+      }
+      const bytes = await response.arrayBuffer();
+      return await decodeContext.decodeAudioData(bytes.slice(0));
+    }));
+  } finally {
+    await decodeContext.close();
+  }
+
+  if (!decodedBuffers.length) {
+    throw new Error('No decodable clips available.');
+  }
+
+  const sampleRate = Math.max(...decodedBuffers.map((buffer) => buffer.sampleRate));
+  const channelCount = Math.max(...decodedBuffers.map((buffer) => buffer.numberOfChannels));
+  const totalDurationSeconds = decodedBuffers.reduce((sum, buffer) => sum + buffer.duration, 0);
+  const totalFrames = Math.max(1, Math.ceil(totalDurationSeconds * sampleRate));
+  const offlineContext = new window.OfflineAudioContext(channelCount, totalFrames, sampleRate);
+
+  let startTimeSeconds = 0;
+  decodedBuffers.forEach((buffer) => {
+    const source = offlineContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(offlineContext.destination);
+    source.start(startTimeSeconds);
+    startTimeSeconds += buffer.duration;
+  });
+
+  const renderedBuffer = await offlineContext.startRendering();
+  const wavBlob = encodeAudioBufferToWav(renderedBuffer);
+  return {
+    playbackUrl: URL.createObjectURL(wavBlob),
+    durationMs: Math.max(0, Math.round(renderedBuffer.duration * 1000)),
+  };
 };
 
 const SessionReplayPanel = ({
@@ -674,9 +947,50 @@ const ResponseDetails = () => {
   const [feedbackDraftUsage, setFeedbackDraftUsage] = useState<FeedbackDraftUsage>(createEmptyFeedbackDraftUsage());
   const [feedbackDraftSavedAt, setFeedbackDraftSavedAt] = useState<string | null>(null);
   const [dictationRecordingsByField, setDictationRecordingsByField] = useState<DictationRecordingsByField>(createEmptyDictationRecordingsByField());
+  const [dictationDiagnosticsByField, setDictationDiagnosticsByField] = useState<DictationDiagnosticsByField>(createEmptyDictationDiagnosticsByField());
+  const [dictationTranscriptSegmentsByField, setDictationTranscriptSegmentsByField] = useState<DictationTranscriptSegmentsByField>(createEmptyDictationTranscriptSegmentsByField());
+  const [showIndividualClipsByField, setShowIndividualClipsByField] = useState<Record<FeedbackFieldKey, boolean>>({
+    voice_assistant_feedback: false,
+    communication_style_feedback: false,
+    experiment_feedback: false,
+  });
+  const [resolvedClipDurationsById, setResolvedClipDurationsById] = useState<Record<string, number>>({});
+  const [mergedDictationByField, setMergedDictationByField] = useState<MergedDictationByField>(createEmptyMergedDictationByField());
+  const mergedAudioUrlsRef = useRef<Partial<Record<FeedbackFieldKey, string>>>({});
   const [replayEvents, setReplayEvents] = useState<ReplayEvent[]>([]);
   const [replayMarkers, setReplayMarkers] = useState<ReplayMarker[]>([]);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
+
+  const setMergedFieldState = useCallback((field: FeedbackFieldKey, next: MergedDictationAudioState) => {
+    setMergedDictationByField((prev) => {
+      const previousUrl = prev[field]?.playbackUrl;
+      if (previousUrl && previousUrl !== next.playbackUrl && isBlobUrl(previousUrl)) {
+        URL.revokeObjectURL(previousUrl);
+      }
+      if (next.playbackUrl) {
+        mergedAudioUrlsRef.current[field] = next.playbackUrl;
+      } else {
+        delete mergedAudioUrlsRef.current[field];
+      }
+      return {
+        ...prev,
+        [field]: next,
+      };
+    });
+  }, []);
+
+  const resetMergedFieldState = useCallback(() => {
+    setMergedDictationByField((prev) => {
+      FEEDBACK_FIELDS.forEach((field) => {
+        const previousUrl = prev[field]?.playbackUrl;
+        if (previousUrl && isBlobUrl(previousUrl)) {
+          URL.revokeObjectURL(previousUrl);
+        }
+      });
+      return createEmptyMergedDictationByField();
+    });
+    mergedAudioUrlsRef.current = {};
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -688,6 +1002,15 @@ const ResponseDetails = () => {
       setFeedbackDraftUsage(createEmptyFeedbackDraftUsage());
       setFeedbackDraftSavedAt(null);
       setDictationRecordingsByField(createEmptyDictationRecordingsByField());
+      setDictationDiagnosticsByField(createEmptyDictationDiagnosticsByField());
+      setDictationTranscriptSegmentsByField(createEmptyDictationTranscriptSegmentsByField());
+      setShowIndividualClipsByField({
+        voice_assistant_feedback: false,
+        communication_style_feedback: false,
+        experiment_feedback: false,
+      });
+      setResolvedClipDurationsById({});
+      resetMergedFieldState();
       setReplayEvents([]);
       setReplayMarkers([]);
       try {
@@ -769,7 +1092,7 @@ const ResponseDetails = () => {
             .maybeSingle(),
           supabase
             .from('navigation_events')
-            .select('page_name, event_type, metadata, created_at')
+            .select('call_id, page_name, event_type, metadata, created_at')
             .eq('prolific_id', response.prolific_id)
             .in('event_type', [
               'mic_permission',
@@ -783,7 +1106,10 @@ const ResponseDetails = () => {
               'dictation_stopped',
               'dictation_error',
               'dictation_start_blocked',
+              'dictation_recording_error',
               'dictation_recording_uploaded',
+              'dictation_recording_upload_error',
+              'dictation_transcript_appended',
               'feedback_input_mode',
               'feedback_draft_autosave',
             ])
@@ -799,7 +1125,7 @@ const ResponseDetails = () => {
 
         let replayStartTimestamp: number | null = null;
         let replayDurationMs = 0;
-        const latestDictationUploads: Partial<Record<FeedbackFieldKey, DictationUploadSnapshot>> = {};
+        const dictationUploadSnapshots = createEmptyDictationUploadSnapshotsByField();
         const latestFeedbackDraft: Partial<Record<FeedbackFieldKey, string>> = {};
         let latestFeedbackDraftSavedAt: string | null = null;
         if (replayChunks) {
@@ -827,12 +1153,18 @@ const ResponseDetails = () => {
         }
 
         if (navigationEvents) {
+          const scopedNavigationEvents = navigationEvents.filter((event: NavigationEvent) => {
+            if (!response.call_id) return true;
+            return !event.call_id || event.call_id === response.call_id;
+          });
           const diagnostics = {
             practice: { micPermission: null, micAudio: null },
             main: { micPermission: null, micAudio: null },
             feedback: { micPermission: null, micAudio: null },
           };
           const nextFeedbackInputSources = createEmptyFeedbackInputSourceState();
+          const nextDictationDiagnosticsByField = createEmptyDictationDiagnosticsByField();
+          const nextDictationTranscriptSegmentsByField = createEmptyDictationTranscriptSegmentsByField();
           const markers: ReplayMarker[] = [];
 
           const pageLabel = (pageName: string) => {
@@ -842,15 +1174,68 @@ const ResponseDetails = () => {
             return pageName;
           };
 
-          navigationEvents.forEach((event: NavigationEvent, index: number) => {
+          scopedNavigationEvents.forEach((event: NavigationEvent, index: number) => {
             const pageKey = event.page_name === 'practice-conversation'
               ? 'practice'
               : event.page_name === 'voice-conversation'
                 ? 'main'
                 : null;
             const metadata = (event.metadata || {}) as Record<string, unknown>;
+            const feedbackField = isFeedbackField(metadata.field) ? metadata.field : null;
 
             const isFeedbackDictationEvent = event.page_name === 'feedback' && metadata.context === 'dictation';
+
+            if (feedbackField) {
+              const fieldDiagnostics = nextDictationDiagnosticsByField[feedbackField];
+              if (event.event_type === 'dictation_started') {
+                fieldDiagnostics.started += 1;
+              } else if (event.event_type === 'dictation_stopped') {
+                fieldDiagnostics.stopped += 1;
+              } else if (event.event_type === 'dictation_recording_uploaded') {
+                fieldDiagnostics.uploadSaved += 1;
+              } else if (event.event_type === 'dictation_recording_upload_error') {
+                fieldDiagnostics.uploadFailed += 1;
+                fieldDiagnostics.issues.push({
+                  createdAt: event.created_at,
+                  eventType: event.event_type,
+                  message: typeof metadata.message === 'string' && metadata.message
+                    ? metadata.message
+                    : 'Upload failed',
+                });
+              } else if (event.event_type === 'dictation_start_blocked') {
+                fieldDiagnostics.blocked += 1;
+                fieldDiagnostics.issues.push({
+                  createdAt: event.created_at,
+                  eventType: event.event_type,
+                  message: typeof metadata.reasonCode === 'string' && metadata.reasonCode
+                    ? metadata.reasonCode
+                    : 'Microphone access blocked',
+                });
+              } else if (event.event_type === 'dictation_error' || event.event_type === 'dictation_recording_error') {
+                if (event.event_type === 'dictation_recording_error') {
+                  fieldDiagnostics.runtimeErrors += 1;
+                }
+                const message = [
+                  typeof metadata.errorCode === 'string' ? metadata.errorCode : null,
+                  typeof metadata.message === 'string' ? metadata.message : null,
+                ].filter(Boolean).join(': ');
+                fieldDiagnostics.issues.push({
+                  createdAt: event.created_at,
+                  eventType: event.event_type,
+                  message: message || 'Dictation error',
+                });
+              }
+
+              if (event.event_type === 'dictation_transcript_appended') {
+                const appendedText = typeof metadata.text === 'string' ? metadata.text : '';
+                if (appendedText) {
+                  nextDictationTranscriptSegmentsByField[feedbackField].push({
+                    createdAt: event.created_at,
+                    text: appendedText,
+                  });
+                }
+              }
+            }
 
             if (pageKey && event.event_type === 'mic_permission') {
               diagnostics[pageKey].micPermission = formatMicPermission(metadata.state as string | null);
@@ -944,12 +1329,15 @@ const ResponseDetails = () => {
             } else if (event.event_type === 'dictation_error' || event.event_type === 'dictation_start_blocked') {
               label = `${labelPrefix}: ${feedbackFieldLabel} dictation issue`;
               tone = 'warning';
+            } else if (event.event_type === 'dictation_recording_error') {
+              label = `${labelPrefix}: ${feedbackFieldLabel} recorder error`;
+              tone = 'warning';
             } else if (event.event_type === 'dictation_recording_uploaded') {
               label = `${labelPrefix}: ${feedbackFieldLabel} dictation audio saved`;
               tone = 'success';
               const storagePath = typeof metadata.storagePath === 'string' ? metadata.storagePath : '';
-              if (isFeedbackField(metadata.field) && storagePath) {
-                latestDictationUploads[metadata.field] = {
+              if (feedbackField && storagePath) {
+                const snapshot: DictationUploadSnapshot = {
                   storageBucket: typeof metadata.storageBucket === 'string' && metadata.storageBucket
                     ? metadata.storageBucket
                     : 'dictation-audio',
@@ -958,7 +1346,19 @@ const ResponseDetails = () => {
                   attemptCount: typeof metadata.attemptCount === 'number' ? metadata.attemptCount : 1,
                   durationMs: typeof metadata.durationMs === 'number' ? metadata.durationMs : null,
                 };
+                const alreadyTracked = dictationUploadSnapshots[feedbackField].some((existing) => (
+                  existing.storagePath === snapshot.storagePath && existing.createdAt === snapshot.createdAt
+                ));
+                if (!alreadyTracked) {
+                  dictationUploadSnapshots[feedbackField].push(snapshot);
+                }
               }
+            } else if (event.event_type === 'dictation_recording_upload_error') {
+              label = `${labelPrefix}: ${feedbackFieldLabel} dictation upload failed`;
+              tone = 'error';
+            } else if (event.event_type === 'dictation_transcript_appended') {
+              label = `${labelPrefix}: ${feedbackFieldLabel} dictation transcript appended`;
+              tone = 'info';
             } else if (event.event_type === 'feedback_draft_autosave') {
               label = `${labelPrefix}: Feedback draft autosaved`;
               tone = 'info';
@@ -983,6 +1383,8 @@ const ResponseDetails = () => {
 
           setJourneyDiagnostics(diagnostics);
           setFeedbackInputSources(nextFeedbackInputSources);
+          setDictationDiagnosticsByField(nextDictationDiagnosticsByField);
+          setDictationTranscriptSegmentsByField(nextDictationTranscriptSegmentsByField);
           setFeedbackDraftSavedAt(latestFeedbackDraftSavedAt);
           setReplayMarkers(markers.slice(0, 80));
         }
@@ -1046,6 +1448,8 @@ const ResponseDetails = () => {
                 createdAt: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
                 attemptCount: typeof row.attempt_count === 'number' ? row.attempt_count : 1,
                 durationMs: typeof row.duration_ms === 'number' ? row.duration_ms : null,
+                storagePath: storagePath || null,
+                source: 'table',
                 playbackUrl,
               } as DictationRecording;
             }));
@@ -1056,35 +1460,49 @@ const ResponseDetails = () => {
             });
           }
 
-          // Fallback for pending/in-progress sessions: use latest uploaded snapshot event if table rows are not present yet.
-          const latestSnapshots = Object.entries(latestDictationUploads) as [FeedbackFieldKey, DictationUploadSnapshot][];
-          for (const [field, snapshot] of latestSnapshots) {
-            if (nextRecordings[field].length > 0) continue;
-            const { data: signedData, error: signedError } = await supabase.storage
-              .from(snapshot.storageBucket)
-              .createSignedUrl(snapshot.storagePath, 60 * 60);
-            if (signedError) {
-              console.warn('[DictationAudio][Replay] Snapshot signed URL failed', {
+          // Fallback for pending/in-progress sessions and metadata insert failures:
+          // resolve each uploaded snapshot event that's missing in dictation_recordings.
+          for (const field of Object.keys(FEEDBACK_FIELD_LABELS) as FeedbackFieldKey[]) {
+            const snapshots = [...dictationUploadSnapshots[field]]
+              .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+            for (const snapshot of snapshots) {
+              const alreadyPresent = nextRecordings[field].some((recording) => (
+                recording.storagePath
+                && snapshot.storagePath
+                && recording.storagePath === snapshot.storagePath
+              ));
+              if (alreadyPresent) continue;
+
+              const { data: signedData, error: signedError } = await supabase.storage
+                .from(snapshot.storageBucket)
+                .createSignedUrl(snapshot.storagePath, 60 * 60);
+              if (signedError) {
+                console.warn('[DictationAudio][Replay] Snapshot signed URL failed', {
+                  field,
+                  storageBucket: snapshot.storageBucket,
+                  storagePath: snapshot.storagePath,
+                  message: signedError.message,
+                });
+              } else {
+                console.info('[DictationAudio][Replay] Using snapshot fallback audio', {
+                  field,
+                  storageBucket: snapshot.storageBucket,
+                  storagePath: snapshot.storagePath,
+                });
+              }
+              nextRecordings[field].push({
+                id: `${field}-${snapshot.createdAt}-${snapshot.storagePath}`,
                 field,
-                storageBucket: snapshot.storageBucket,
+                createdAt: snapshot.createdAt,
+                attemptCount: snapshot.attemptCount,
+                durationMs: snapshot.durationMs,
                 storagePath: snapshot.storagePath,
-                message: signedError.message,
-              });
-            } else {
-              console.info('[DictationAudio][Replay] Using snapshot fallback audio', {
-                field,
-                storageBucket: snapshot.storageBucket,
-                storagePath: snapshot.storagePath,
+                source: 'event_snapshot',
+                playbackUrl: signedError ? null : (signedData?.signedUrl || null),
               });
             }
-            nextRecordings[field].push({
-              id: `${field}-${snapshot.createdAt}-snapshot`,
-              field,
-              createdAt: snapshot.createdAt,
-              attemptCount: snapshot.attemptCount,
-              durationMs: snapshot.durationMs,
-              playbackUrl: signedError ? null : (signedData?.signedUrl || null),
-            });
+
+            nextRecordings[field].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
           }
 
           console.info('[DictationAudio][Replay] Final audio recordings by field', {
@@ -1125,7 +1543,120 @@ const ResponseDetails = () => {
     };
 
     fetchData();
-  }, [id]);
+  }, [id, resetMergedFieldState]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pending = FEEDBACK_FIELDS.flatMap((field) => dictationRecordingsByField[field])
+      .filter((recording) => (
+        Boolean(recording.playbackUrl)
+        && ((recording.durationMs ?? 0) <= 0)
+        && resolvedClipDurationsById[recording.id] === undefined
+      ));
+
+    if (!pending.length) return;
+
+    const resolveDurations = async () => {
+      for (const recording of pending) {
+        if (!recording.playbackUrl) continue;
+        const durationMs = await resolveAudioDurationMs(recording.playbackUrl);
+        if (cancelled || !durationMs || durationMs <= 0) continue;
+        setResolvedClipDurationsById((prev) => (
+          prev[recording.id] !== undefined ? prev : { ...prev, [recording.id]: durationMs }
+        ));
+      }
+    };
+
+    void resolveDurations();
+    return () => {
+      cancelled = true;
+    };
+  }, [dictationRecordingsByField, resolvedClipDurationsById]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const buildMergedByField = async () => {
+      for (const field of FEEDBACK_FIELDS) {
+        const clips = [...dictationRecordingsByField[field]]
+          .filter((recording) => Boolean(recording.playbackUrl))
+          .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+
+        if (clips.length === 0) {
+          setMergedFieldState(field, {
+            status: 'none',
+            playbackUrl: null,
+            durationMs: null,
+            clipCount: 0,
+            errorMessage: null,
+          });
+          continue;
+        }
+
+        if (clips.length === 1) {
+          const clip = clips[0];
+          const durationMs = (clip.durationMs && clip.durationMs > 0)
+            ? clip.durationMs
+            : (resolvedClipDurationsById[clip.id] ?? null);
+          setMergedFieldState(field, {
+            status: 'ready',
+            playbackUrl: clip.playbackUrl,
+            durationMs,
+            clipCount: 1,
+            errorMessage: null,
+          });
+          continue;
+        }
+
+        setMergedFieldState(field, {
+          status: 'building',
+          playbackUrl: null,
+          durationMs: null,
+          clipCount: clips.length,
+          errorMessage: null,
+        });
+
+        try {
+          const merged = await mergeAudioUrlsIntoWav(clips.map((clip) => clip.playbackUrl as string));
+          if (cancelled) {
+            URL.revokeObjectURL(merged.playbackUrl);
+            continue;
+          }
+          setMergedFieldState(field, {
+            status: 'ready',
+            playbackUrl: merged.playbackUrl,
+            durationMs: merged.durationMs,
+            clipCount: clips.length,
+            errorMessage: null,
+          });
+        } catch (error) {
+          if (cancelled) continue;
+          setMergedFieldState(field, {
+            status: 'error',
+            playbackUrl: null,
+            durationMs: null,
+            clipCount: clips.length,
+            errorMessage: error instanceof Error ? error.message : 'Unable to merge clips.',
+          });
+        }
+      }
+    };
+
+    void buildMergedByField();
+    return () => {
+      cancelled = true;
+    };
+  }, [dictationRecordingsByField, resolvedClipDurationsById, setMergedFieldState]);
+
+  useEffect(() => {
+    return () => {
+      FEEDBACK_FIELDS.forEach((field) => {
+        const url = mergedAudioUrlsRef.current[field];
+        if (url && isBlobUrl(url)) URL.revokeObjectURL(url);
+      });
+      mergedAudioUrlsRef.current = {};
+    };
+  }, []);
 
   // Scroll to section on load
   useEffect(() => {
@@ -1147,28 +1678,156 @@ const ResponseDetails = () => {
     }
   };
 
+  const renderFeedbackTextWithHighlights = (field: FeedbackFieldKey, value: string | null | undefined) => {
+    if (!value) {
+      return <span className="italic text-muted-foreground">No feedback provided</span>;
+    }
+    const dictatedSegments = dictationTranscriptSegmentsByField[field]
+      .map((segment) => segment.text)
+      .filter((segment) => Boolean(segment));
+    const parts = buildFeedbackTextModeParts(value, dictatedSegments);
+    const hasDictatedPart = parts.some((part) => part.mode === 'dictated');
+    const isDictatedOnly = feedbackInputSources[field].dictated && !feedbackInputSources[field].typed;
+    const safeParts = !hasDictatedPart && isDictatedOnly
+      ? [{ text: value, mode: 'dictated' as const }]
+      : parts;
+    return (
+      <span className="whitespace-pre-wrap">
+        {safeParts.map((part, idx) => (
+          <span
+            key={`${field}-${idx}-${part.mode}`}
+            className={part.mode === 'dictated'
+              ? 'rounded bg-sky-100/80 px-0.5 text-sky-900'
+              : 'rounded bg-amber-100/60 px-0.5 text-amber-900'}
+          >
+            {part.text}
+          </span>
+        ))}
+      </span>
+    );
+  };
+
   const renderDictationRecordings = (field: FeedbackFieldKey) => {
     const recordings = dictationRecordingsByField[field];
-    if (!recordings.length) {
+    const diagnostics = dictationDiagnosticsByField[field];
+    const merged = mergedDictationByField[field];
+    const showIndividualClips = showIndividualClipsByField[field];
+    const recentIssues = diagnostics.issues.slice(-3).reverse();
+    const hasDictationTelemetry = (
+      diagnostics.started > 0
+      || diagnostics.stopped > 0
+      || diagnostics.uploadSaved > 0
+      || diagnostics.uploadFailed > 0
+      || diagnostics.blocked > 0
+      || diagnostics.runtimeErrors > 0
+      || recentIssues.length > 0
+    );
+    const hasMergedSection = merged.status !== 'none' || merged.clipCount >= 2;
+
+    if (!recordings.length && !hasDictationTelemetry && !hasMergedSection) {
       return <p className="mt-2 text-xs italic text-muted-foreground">No dictation audio recorded.</p>;
     }
+
     return (
       <div className="mt-2 space-y-2">
-        {recordings.map((recording, idx) => (
-          <div key={recording.id} className="rounded border bg-background p-2">
-            <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span>Recording {idx + 1}</span>
-              <span>Segments: {recording.attemptCount}</span>
-              <span>Duration: {recording.durationMs != null ? formatDuration(recording.durationMs) : "Unknown"}</span>
-              <span>{new Date(recording.createdAt).toLocaleString()}</span>
-            </div>
-            {recording.playbackUrl ? (
-              <audio controls preload="none" src={recording.playbackUrl} className="w-full" />
-            ) : (
-              <p className="text-xs italic text-muted-foreground">Audio file exists, but URL could not be resolved.</p>
+        {hasDictationTelemetry && (
+          <div className="rounded border border-dashed bg-muted/40 p-2 text-xs text-muted-foreground">
+            <p>
+              Dictation starts: {diagnostics.started}
+              {' '}• Stops: {diagnostics.stopped}
+              {' '}• Uploads saved: {diagnostics.uploadSaved}
+              {' '}• Upload failures: {diagnostics.uploadFailed}
+            </p>
+            <p>Start # is the order of dictation starts for this question (1, 2, 3...).</p>
+            {(diagnostics.blocked > 0 || diagnostics.runtimeErrors > 0) && (
+              <p>
+                Blocked starts: {diagnostics.blocked}
+                {' '}• Recorder/runtime errors: {diagnostics.runtimeErrors}
+              </p>
+            )}
+            {recentIssues.length > 0 && (
+              <div className="mt-1 space-y-0.5">
+                {recentIssues.map((issue, idx) => (
+                  <p key={`${issue.createdAt}-${issue.eventType}-${idx}`}>
+                    {formatDictationIssueType(issue.eventType)} ({new Date(issue.createdAt).toLocaleTimeString()}): {issue.message}
+                  </p>
+                ))}
+              </div>
             )}
           </div>
-        ))}
+        )}
+        {hasMergedSection && (
+          <div className="rounded border bg-muted/30 p-2">
+            <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>Merged clip</span>
+              <span>Source clips: {merged.clipCount}</span>
+              <span>
+                Duration: {merged.durationMs != null ? formatDuration(merged.durationMs) : 'Unknown'}
+              </span>
+            </div>
+            {merged.status === 'building' && (
+              <p className="text-xs italic text-muted-foreground">
+                Building merged audio from clips...
+              </p>
+            )}
+            {merged.status === 'error' && (
+              <p className="text-xs italic text-muted-foreground">
+                Merged audio unavailable: {merged.errorMessage || 'Unknown error'}
+              </p>
+            )}
+            {merged.status === 'ready' && merged.playbackUrl && (
+              <audio controls preload="metadata" src={merged.playbackUrl} className="w-full" />
+            )}
+          </div>
+        )}
+        {recordings.length === 0 && (
+          <p className="text-xs italic text-muted-foreground">
+            No playable audio resolved for this field. Check upload failures above.
+          </p>
+        )}
+        {recordings.length > 0 && (
+          <Collapsible
+            open={showIndividualClips}
+            onOpenChange={(next) => {
+              setShowIndividualClipsByField((prev) => ({
+                ...prev,
+                [field]: next,
+              }));
+            }}
+          >
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm" className="w-full justify-between text-xs">
+                {showIndividualClips ? 'Hide individual clips' : `Show individual clips (${recordings.length})`}
+                <ChevronDown className={cn("h-4 w-4 transition-transform", showIndividualClips && "rotate-180")} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 space-y-2">
+              {recordings.map((recording, idx) => (
+                <div key={recording.id} className="rounded border bg-background p-2">
+                  {(() => {
+                    const displayDurationMs = recording.durationMs && recording.durationMs > 0
+                      ? recording.durationMs
+                      : (resolvedClipDurationsById[recording.id] ?? null);
+                    return (
+                      <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span>Clip {idx + 1}</span>
+                        <span>Start #: {recording.attemptCount}</span>
+                        <span>Duration: {displayDurationMs != null ? formatDuration(displayDurationMs) : "Unknown"}</span>
+                        <span>Source: {recording.source === 'table' ? 'Database row' : 'Upload event'}</span>
+                        <span>{new Date(recording.createdAt).toLocaleString()}</span>
+                      </div>
+                    );
+                  })()}
+                  {recording.playbackUrl ? (
+                    <audio controls preload="metadata" src={recording.playbackUrl} className="w-full" />
+                  ) : (
+                    <p className="text-xs italic text-muted-foreground">Audio reference exists, but signed URL could not be resolved.</p>
+                  )}
+                </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </div>
     );
   };
@@ -1909,6 +2568,10 @@ const ResponseDetails = () => {
                   Latest autosaved feedback draft: {new Date(feedbackDraftSavedAt).toLocaleString()}
                 </p>
               )}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded bg-amber-100/60 px-2 py-0.5 text-amber-900">Typed text</span>
+                <span className="rounded bg-sky-100/80 px-2 py-0.5 text-sky-900">Dictated text</span>
+              </div>
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-sm font-medium text-muted-foreground">Voice Assistant Feedback</label>
@@ -1925,7 +2588,7 @@ const ResponseDetails = () => {
                   </div>
                 </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
-                  {data.voice_assistant_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}
+                  {renderFeedbackTextWithHighlights("voice_assistant_feedback", data.voice_assistant_feedback)}
                 </p>
                 {renderDictationRecordings("voice_assistant_feedback")}
               </div>
@@ -1945,7 +2608,7 @@ const ResponseDetails = () => {
                   </div>
                 </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
-                  {data.communication_style_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}
+                  {renderFeedbackTextWithHighlights("communication_style_feedback", data.communication_style_feedback)}
                 </p>
                 {renderDictationRecordings("communication_style_feedback")}
               </div>
@@ -1965,7 +2628,7 @@ const ResponseDetails = () => {
                   </div>
                 </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm">
-                  {data.experiment_feedback || <span className="italic text-muted-foreground">No feedback provided</span>}
+                  {renderFeedbackTextWithHighlights("experiment_feedback", data.experiment_feedback)}
                 </p>
                 {renderDictationRecordings("experiment_feedback")}
               </div>
