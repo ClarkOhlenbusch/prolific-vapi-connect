@@ -277,7 +277,7 @@ Deno.serve(async (req) => {
     // Check for existing submission (by prolific_id since it's unique)
     const { data: existingResponse, error: existingError } = await supabase
       .from('experiment_responses')
-      .select('prolific_id')
+      .select('id, prolific_id, call_id')
       .eq('prolific_id', validatedPets.prolific_id)
       .maybeSingle();
 
@@ -289,7 +289,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (existingResponse) {
+    const isResearcherId = /^researcher[0-9]+$/i.test(validatedPets.prolific_id);
+    const canReuseExistingResearcherRow =
+      isResearcherId &&
+      !!existingResponse &&
+      existingResponse.call_id === validatedPets.call_id;
+
+    if (existingResponse && !canReuseExistingResearcherRow) {
       console.log('Questionnaire already submitted for prolific_id:', validatedPets.prolific_id);
       return new Response(
         JSON.stringify({ error: 'Questionnaire already submitted' }),
@@ -463,16 +469,31 @@ Deno.serve(async (req) => {
       batch_label: batchLabel || null,
     };
 
-    const { error: insertError } = await supabase
-      .from('experiment_responses')
-      .insert([experimentData]);
+    if (canReuseExistingResearcherRow && existingResponse) {
+      const { error: updateDraftError } = await supabase
+        .from('experiment_responses')
+        .update(experimentData)
+        .eq('id', existingResponse.id);
 
-    if (insertError) {
-      console.error('Failed to insert experiment response:', insertError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to save questionnaire' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (updateDraftError) {
+        console.error('Failed to update existing researcher response:', updateDraftError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to save questionnaire' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } else {
+      const { error: insertError } = await supabase
+        .from('experiment_responses')
+        .insert([experimentData]);
+
+      if (insertError) {
+        console.error('Failed to insert experiment response:', insertError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to save questionnaire' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Mark session token as used

@@ -825,6 +825,7 @@ const FeedbackQuestionnaire = () => {
       const storedId = sessionStorage.getItem("prolificId");
       const stateCallId = location.state?.callId;
       const petsDataString = sessionStorage.getItem("petsData");
+      const godspeedDataString = sessionStorage.getItem("godspeedData");
       const tiasDataString = sessionStorage.getItem("tiasData");
       const tipiDataString = sessionStorage.getItem("tipiData");
       const intentionDataString = sessionStorage.getItem("intentionData");
@@ -855,6 +856,48 @@ const FeedbackQuestionnaire = () => {
             pets_er: 50,
             pets_ut: 50,
             pets_total: 50,
+          }),
+        );
+      }
+
+      if (!godspeedDataString) {
+        sessionStorage.setItem(
+          "godspeedData",
+          JSON.stringify({
+            godspeed_anthro_1: 3,
+            godspeed_anthro_2: 3,
+            godspeed_anthro_3: 3,
+            godspeed_anthro_4: 3,
+            godspeed_like_1: 3,
+            godspeed_like_2: 3,
+            godspeed_like_3: 3,
+            godspeed_like_4: 3,
+            godspeed_like_5: 3,
+            godspeed_intel_1: 3,
+            godspeed_intel_2: 3,
+            godspeed_intel_3: 3,
+            godspeed_intel_4: 3,
+            godspeed_intel_5: 3,
+            godspeed_anthro_1_position: 1,
+            godspeed_anthro_2_position: 2,
+            godspeed_anthro_3_position: 3,
+            godspeed_anthro_4_position: 4,
+            godspeed_like_1_position: 5,
+            godspeed_like_2_position: 6,
+            godspeed_like_3_position: 7,
+            godspeed_like_4_position: 8,
+            godspeed_like_5_position: 9,
+            godspeed_intel_1_position: 10,
+            godspeed_intel_2_position: 11,
+            godspeed_intel_3_position: 12,
+            godspeed_intel_4_position: 13,
+            godspeed_intel_5_position: 14,
+            godspeed_anthro_total: 3,
+            godspeed_like_total: 3,
+            godspeed_intel_total: 3,
+            godspeed_attention_check_1: 3,
+            godspeed_attention_check_1_expected: 3,
+            godspeed_attention_check_1_position: 15,
           }),
         );
       }
