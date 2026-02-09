@@ -13,8 +13,9 @@ Deno.serve(async (req) => {
   try {
     const { email, password, bootstrapSecret } = await req.json();
 
-    // Simple secret to prevent unauthorized access - only use once
-    if (bootstrapSecret !== 'SETUP_FIRST_ADMIN_2024') {
+    // Validate bootstrap secret from environment variable
+    const expectedSecret = Deno.env.get('BOOTSTRAP_SECRET');
+    if (!expectedSecret || bootstrapSecret !== expectedSecret) {
       return new Response(
         JSON.stringify({ error: 'Invalid bootstrap secret' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Auto-confirm email
+      email_confirm: true,
     });
 
     if (authError) {
@@ -64,7 +65,6 @@ Deno.serve(async (req) => {
       });
 
     if (roleError) {
-      // Rollback: delete the auth user if role insert fails
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
       return new Response(
         JSON.stringify({ error: roleError.message }),

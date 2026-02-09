@@ -11,15 +11,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { email, adminSecret } = await req.json();
-
-    // Validate admin secret
-    if (adminSecret !== "calico-admin-2024") {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: "Invalid admin secret" }),
+        JSON.stringify({ error: 'Missing authorization header' }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const { email } = await req.json();
 
     if (!email) {
       return new Response(
@@ -28,11 +28,43 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Verify caller identity via JWT
+    const supabaseUser = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      {
+        global: { headers: { Authorization: authHeader } },
+        auth: { autoRefreshToken: false, persistSession: false }
+      }
+    );
+
+    const { data: { user: callingUser }, error: userError } = await supabaseUser.auth.getUser();
+    if (userError || !callingUser) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid user session' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
+
+    // Verify super_admin role
+    const { data: roleData, error: roleError } = await supabaseAdmin
+      .from("researcher_roles")
+      .select("role")
+      .eq("user_id", callingUser.id)
+      .single();
+
+    if (roleError || !roleData || roleData.role !== 'super_admin') {
+      return new Response(
+        JSON.stringify({ error: 'Only super admins can add viewers' }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Check if user already exists
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
@@ -54,11 +86,11 @@ Deno.serve(async (req) => {
       }
       
       // Add viewer role to existing user
-      const { error: roleError } = await supabaseAdmin
+      const { error: insertError } = await supabaseAdmin
         .from("researcher_roles")
         .insert({ user_id: existingUser.id, role: "viewer" });
       
-      if (roleError) throw roleError;
+      if (insertError) throw insertError;
       
       return new Response(
         JSON.stringify({ success: true, message: "Viewer role added to existing user" }),
@@ -78,14 +110,14 @@ Deno.serve(async (req) => {
     if (createError) throw createError;
 
     // Add viewer role
-    const { error: roleError } = await supabaseAdmin
+    const { error: insertError } = await supabaseAdmin
       .from("researcher_roles")
       .insert({ user_id: newUser.user.id, role: "viewer" });
 
-    if (roleError) {
+    if (insertError) {
       // Rollback: delete the user if role insertion fails
       await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
-      throw roleError;
+      throw insertError;
     }
 
     // Generate password reset link
