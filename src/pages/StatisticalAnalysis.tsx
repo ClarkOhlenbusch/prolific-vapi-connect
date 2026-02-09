@@ -1211,8 +1211,7 @@ run_moderation_analysis <- function(df) {
               <Info className="h-4 w-4" />
               <AlertTitle>Significance Progression by Batch</AlertTitle>
               <AlertDescription>
-                Each chart shows how the p-value changes as batches are added cumulatively, alongside cumulative participant count.
-                The dashed line marks α = .05 (below line indicates significance).
+                Each chart shows p-value (y-axis) as cumulative sample size N (x-axis) increases. Vertical lines mark the end of each batch. The dashed line marks α = .05 (below line indicates significance).
               </AlertDescription>
             </Alert>
 
@@ -1242,38 +1241,32 @@ run_moderation_analysis <- function(df) {
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart
                               data={measureProgression.points}
-                              margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
+                              margin={{ top: 24, right: 24, left: 8, bottom: 24 }}
                             >
                               <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                              <XAxis dataKey="stepLabel" tickLine={false} axisLine={false} />
+                              <XAxis
+                                dataKey="cumulativeParticipants"
+                                type="number"
+                                allowDecimals={false}
+                                tickLine={false}
+                                axisLine={false}
+                                label={{ value: 'N (cumulative sample size)', position: 'insideBottom', offset: -8 }}
+                              />
                               <YAxis
-                                yAxisId="p"
                                 domain={[0, 1]}
                                 tickFormatter={(value) => Number(value).toFixed(2)}
                                 tickLine={false}
                                 axisLine={false}
                                 label={{ value: 'p-value', angle: -90, position: 'insideLeft' }}
                               />
-                              <YAxis
-                                yAxisId="n"
-                                orientation="right"
-                                allowDecimals={false}
-                                tickLine={false}
-                                axisLine={false}
-                                label={{ value: 'Cumulative N', angle: 90, position: 'insideRight' }}
-                              />
                               <RechartsTooltip
-                                labelFormatter={(_, payload) => {
+                                labelFormatter={(n, payload) => {
                                   const point = payload?.[0]?.payload as ProgressionPoint | undefined;
-                                  if (!point) return '';
-                                  return `${point.batchLabel} (step ${point.batchStep})`;
+                                  return point ? `${point.batchLabel} (N=${n})` : `N = ${n}`;
                                 }}
                                 formatter={(value, name) => {
                                   if (name === 'p-value' && typeof value === 'number') {
                                     return [formatP(value), 'p-value'];
-                                  }
-                                  if (name === 'Cumulative N') {
-                                    return [String(value), 'Cumulative N'];
                                   }
                                   return [String(value), String(name)];
                                 }}
@@ -1281,14 +1274,21 @@ run_moderation_analysis <- function(df) {
                               />
                               <Legend />
                               <ReferenceLine
-                                yAxisId="p"
                                 y={0.05}
                                 stroke="#ef4444"
                                 strokeDasharray="4 4"
                                 label={{ value: 'α=.05', position: 'insideTopRight' }}
                               />
+                              {measureProgression.points.map((point) => (
+                                <ReferenceLine
+                                  key={point.batchStep}
+                                  x={point.cumulativeParticipants}
+                                  stroke="hsl(var(--muted-foreground))"
+                                  strokeDasharray="2 2"
+                                  label={{ value: point.batchLabel, position: 'top', fontSize: 10 }}
+                                />
+                              ))}
                               <Line
-                                yAxisId="p"
                                 type="monotone"
                                 dataKey="pValue"
                                 name="p-value"
@@ -1296,15 +1296,6 @@ run_moderation_analysis <- function(df) {
                                 strokeWidth={2}
                                 connectNulls={false}
                                 dot={{ r: 3 }}
-                              />
-                              <Line
-                                yAxisId="n"
-                                type="monotone"
-                                dataKey="cumulativeParticipants"
-                                name="Cumulative N"
-                                stroke="#0f766e"
-                                strokeWidth={2}
-                                dot={{ r: 2 }}
                               />
                             </LineChart>
                           </ResponsiveContainer>
