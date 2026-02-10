@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ArrowLeft, Download, Info, CheckCircle2, AlertTriangle, XCircle, HelpCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
+import { GlobalSourceFilter, SourceFilterValue } from '@/components/researcher/GlobalSourceFilter';
 import {
   Table,
   TableBody,
@@ -84,16 +85,20 @@ const EXPLORATORY_DVS: DependentVariable[] = [
   { key: 'godspeed_like_total', label: 'Godspeed Likeability', scale: '5-25', description: 'Perceived likeability of the assistant' },
   { key: 'godspeed_intel_total', label: 'Godspeed Intelligence', scale: '5-25', description: 'Perceived intelligence of the assistant' },
   { key: 'pets_total', label: 'PETS Total', scale: '10-70', description: 'Overall Privacy and Emotional Trust Scale score' },
-  { key: 'tipi_extraversion', label: 'TIPI Extraversion', scale: '1-7', description: 'Personality: Extraversion subscale' },
-  { key: 'tipi_agreeableness', label: 'TIPI Agreeableness', scale: '1-7', description: 'Personality: Agreeableness subscale' },
-  { key: 'tipi_conscientiousness', label: 'TIPI Conscientiousness', scale: '1-7', description: 'Personality: Conscientiousness subscale' },
-  { key: 'tipi_emotional_stability', label: 'TIPI Emotional Stability', scale: '1-7', description: 'Personality: Emotional Stability subscale' },
-  { key: 'tipi_openness', label: 'TIPI Openness', scale: '1-7', description: 'Personality: Openness subscale' },
 ];
 
 const MANIPULATION_CHECKS: DependentVariable[] = [
   { key: 'formality', label: 'Perceived Formality', scale: '1-7', description: 'User-rated perception of assistant formality' },
   { key: 'ai_formality_score', label: 'F-Score (AI Formality)', scale: '0-100', description: 'Calculated linguistic formality from transcript' },
+];
+
+// Baseline characteristics / covariates (used for randomization checks, not outcomes)
+const BASELINE_DVS: DependentVariable[] = [
+  { key: 'tipi_extraversion', label: 'TIPI Extraversion', scale: '1-7', description: 'Personality: Extraversion subscale' },
+  { key: 'tipi_agreeableness', label: 'TIPI Agreeableness', scale: '1-7', description: 'Personality: Agreeableness subscale' },
+  { key: 'tipi_conscientiousness', label: 'TIPI Conscientiousness', scale: '1-7', description: 'Personality: Conscientiousness subscale' },
+  { key: 'tipi_emotional_stability', label: 'TIPI Emotional Stability', scale: '1-7', description: 'Personality: Emotional Stability subscale' },
+  { key: 'tipi_openness', label: 'TIPI Openness', scale: '1-7', description: 'Personality: Openness subscale' },
 ];
 
 const ALL_DVS: DependentVariable[] = [
@@ -108,11 +113,6 @@ const ALL_DVS: DependentVariable[] = [
   { key: 'intention_2', label: 'Intention 2', scale: '1-7', description: 'Behavioral intention item 2' },
   { key: 'formality', label: 'Perceived Formality', scale: '1-7', description: 'User-rated formality perception' },
   { key: 'ai_formality_score', label: 'F-Score (AI Formality)', scale: '0-100', description: 'Calculated linguistic formality' },
-  { key: 'tipi_extraversion', label: 'TIPI Extraversion', scale: '1-7', description: 'Personality: Extraversion' },
-  { key: 'tipi_agreeableness', label: 'TIPI Agreeableness', scale: '1-7', description: 'Personality: Agreeableness' },
-  { key: 'tipi_conscientiousness', label: 'TIPI Conscientiousness', scale: '1-7', description: 'Personality: Conscientiousness' },
-  { key: 'tipi_emotional_stability', label: 'TIPI Emotional Stability', scale: '1-7', description: 'Personality: Emotional Stability' },
-  { key: 'tipi_openness', label: 'TIPI Openness', scale: '1-7', description: 'Personality: Openness' },
 ];
 
 interface AnalysisResult {
@@ -183,16 +183,24 @@ const toFiniteNumber = (value: unknown): number | null => {
   return null;
 };
 
-type SourceFilterValue = 'all' | 'participant' | 'researcher';
+const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
 
 const StatisticalAnalysis = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [responses, setResponses] = useState<ExperimentResponse[]>([]);
   const [activeTab, setActiveTab] = useState('hypotheses');
-  
-  // Read source filter from sessionStorage (set by dashboard)
-  const sourceFilter = (sessionStorage.getItem('researcher-dashboard-source-filter') || 'participant') as SourceFilterValue;
+  const [sourceFilter, setSourceFilter] = useState<SourceFilterValue>(() => {
+    const saved = sessionStorage.getItem(SOURCE_FILTER_STORAGE_KEY);
+    if (saved === 'all' || saved === 'participant' || saved === 'researcher') {
+      return saved as SourceFilterValue;
+    }
+    return 'participant';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem(SOURCE_FILTER_STORAGE_KEY, sourceFilter);
+  }, [sourceFilter]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -222,7 +230,7 @@ const StatisticalAnalysis = () => {
     fetchData();
   }, [sourceFilter]);
 
-  const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults, progressionResults } = useMemo(() => {
+  const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults, baselineResults, progressionResults } = useMemo(() => {
     const formal = responses.filter(r => r.assistant_type === 'formal');
     const informal = responses.filter(r => r.assistant_type === 'informal');
 
@@ -312,10 +320,14 @@ const StatisticalAnalysis = () => {
       .map(dv => results.find(r => r.dv.key === dv.key))
       .filter((r): r is AnalysisResult => r !== undefined);
 
-    // Exploratory
+    // Exploratory outcomes
     const expResults = EXPLORATORY_DVS
       .map(dv => results.find(r => r.dv.key === dv.key))
       .filter((r): r is AnalysisResult => r !== undefined);
+
+    // Baseline / covariate balance (TIPI personality)
+    // Compute directly from the same formal/informal splits instead of relying on ALL_DVS.
+    const baseResults = BASELINE_DVS.map((dv) => computeResult(dv));
 
     const conditionResponses = responses.filter(
       (r) => r.assistant_type === 'formal' || r.assistant_type === 'informal'
@@ -402,6 +414,7 @@ const StatisticalAnalysis = () => {
       hypothesisResults: hypResults,
       manipulationResults: manipResults,
       exploratoryResults: expResults,
+      baselineResults: baseResults,
       progressionResults: progressionByMeasure,
     };
   }, [responses]);
@@ -880,7 +893,7 @@ run_moderation_analysis <- function(df) {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={() => navigate('/researcher/dashboard')}>
               <ArrowLeft className="h-5 w-5" />
@@ -892,15 +905,18 @@ run_moderation_analysis <- function(df) {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={generatePythonScript}>
-              <Download className="h-4 w-4 mr-2" />
-              Python
-            </Button>
-            <Button variant="outline" onClick={generateRScript}>
-              <Download className="h-4 w-4 mr-2" />
-              R Script
-            </Button>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+            <GlobalSourceFilter value={sourceFilter} onChange={setSourceFilter} />
+            <div className="flex gap-2 self-start md:self-auto">
+              <Button variant="outline" onClick={generatePythonScript}>
+                <Download className="h-4 w-4 mr-2" />
+                Python
+              </Button>
+              <Button variant="outline" onClick={generateRScript}>
+                <Download className="h-4 w-4 mr-2" />
+                R Script
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -950,8 +966,9 @@ run_moderation_analysis <- function(df) {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
+            <TabsTrigger value="baseline">Baseline Balance</TabsTrigger>
             <TabsTrigger value="manipulation">Manipulation Check</TabsTrigger>
             <TabsTrigger value="exploratory">Exploratory</TabsTrigger>
             <TabsTrigger value="progression">Progression</TabsTrigger>
@@ -1054,6 +1071,123 @@ run_moderation_analysis <- function(df) {
                 </CardContent>
               </Card>
             ))}
+          </TabsContent>
+
+          {/* Baseline / Covariate Balance Tab */}
+          <TabsContent value="baseline" className="space-y-6">
+            <Alert>
+              <HelpCircle className="h-4 w-4" />
+              <AlertTitle>Baseline Balance / Randomization Check</AlertTitle>
+              <AlertDescription>
+                Personality (TIPI) scores are treated as <strong>baseline covariates</strong>, not outcomes. This table checks whether the
+                formal and informal groups look comparable at baseline, and highlights any imbalances that might help explain differences
+                in outcomes beyond the assigned condition.
+              </AlertDescription>
+            </Alert>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>TIPI Personality Profiles by Condition</CardTitle>
+                <CardDescription>
+                  Comparing baseline personality between formal and informal conditions. Large differences here suggest selection or randomization
+                  imbalances rather than effects of the assistant&apos;s formality.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {baselineResults.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No TIPI data available for the selected data source.
+                  </p>
+                ) : (
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Scale</TableHead>
+                          <TableHead className="text-center bg-blue-50/50 dark:bg-blue-950/30">Formal (M ± SD)</TableHead>
+                          <TableHead className="text-center bg-amber-50/50 dark:bg-amber-950/30">Informal (M ± SD)</TableHead>
+                          <TableHead className="text-center">t</TableHead>
+                          <TableHead className="text-center">p</TableHead>
+                          <TableHead className="text-center">Cohen&apos;s d</TableHead>
+                          <TableHead className="text-center">Balance</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {baselineResults.map((result) => {
+                          const p = result.tTest.pValue;
+                          const absD = Math.abs(result.tTest.cohensD);
+
+                          // Balance rule:
+                          // - Balanced: clearly small and non-significant (p >= .10 AND |d| < .2)
+                          // - Imbalance: clearly different and non-trivial (p < .05 AND |d| >= .5)
+                          // - Borderline: everything in between (some signal but not strong enough either way)
+                          let balanceStatus: 'balanced' | 'borderline' | 'imbalanced';
+                          if (p >= 0.10 && absD < 0.2) {
+                            balanceStatus = 'balanced';
+                          } else if (p < 0.05 && absD >= 0.5) {
+                            balanceStatus = 'imbalanced';
+                          } else {
+                            balanceStatus = 'borderline';
+                          }
+
+                          return (
+                            <TableRow key={result.dv.key}>
+                              <TableCell>
+                                <div>
+                                  <span className="font-medium">{result.dv.label}</span>
+                                  <p className="text-xs text-muted-foreground">{result.dv.description}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center bg-blue-50/30 dark:bg-blue-950/10">
+                                {result.formalStats.mean.toFixed(2)} ± {result.formalStats.std.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-center bg-amber-50/30 dark:bg-amber-950/10">
+                                {result.informalStats.mean.toFixed(2)} ± {result.informalStats.std.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-center font-mono">
+                                {result.tTest.t.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-center font-mono">
+                                {formatP(result.tTest.pValue)}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="font-mono">{result.tTest.cohensD.toFixed(2)}</span>
+                                <Badge variant="outline" className="ml-2 text-xs">
+                                  {interpretCohensD(result.tTest.cohensD)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {balanceStatus === 'balanced' ? (
+                                  <Badge className="bg-green-100 text-green-800 flex items-center gap-1">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Balanced
+                                  </Badge>
+                                ) : balanceStatus === 'imbalanced' ? (
+                                  <Badge variant="outline" className="flex items-center gap-1 text-red-700 border-red-300 bg-red-50/80 dark:border-red-900 dark:bg-red-950/30">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Imbalance
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="flex items-center gap-1 text-amber-700 border-amber-300 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/30">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Borderline
+                                  </Badge>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      "Balanced" means clearly small and non-significant differences (p ≥ .10 and |d| &lt; 0.2). "Imbalance" flags rows with
+                      strong evidence of a non-trivial baseline difference (p &lt; .05 and |d| ≥ 0.5). "Borderline" covers intermediate cases
+                      where there is some signal but not strong enough to classify as clearly balanced or clearly imbalanced.
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Manipulation Check Tab */}
