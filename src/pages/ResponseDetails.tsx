@@ -1005,7 +1005,9 @@ const ResponseDetails = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
-      
+      const fetchStartedAt = performance.now();
+      console.info('[ResponseDetails] Fetching response details', { id });
+
       setIsLoading(true);
       setJourneyDiagnostics(null);
       setFeedbackInputSources(createEmptyFeedbackInputSourceState());
@@ -1094,7 +1096,24 @@ const ResponseDetails = () => {
           .eq('prolific_id', response.prolific_id)
           .maybeSingle();
 
-        const [{ data: formalityCalc }, { data: navigationEvents }, { data: replayChunks }] = await Promise.all([
+        // Build session replay query with the most specific filters available
+        let replayQuery = supabase
+          .from('navigation_events')
+          .select('metadata, created_at')
+          .eq('prolific_id', response.prolific_id)
+          .eq('event_type', 'session_replay_chunk')
+          .order('created_at', { ascending: true })
+          .limit(2000);
+
+        if (response.call_id) {
+          replayQuery = replayQuery.eq('call_id', response.call_id);
+        }
+
+        const [
+          { data: formalityCalc },
+          { data: navigationEvents },
+          { data: replayChunks, error: replayChunksError },
+        ] = await Promise.all([
           supabase
             .from('formality_calculations')
             .select('id')
@@ -1125,13 +1144,7 @@ const ResponseDetails = () => {
               'feedback_draft_autosave',
             ])
             .order('created_at', { ascending: true }),
-          supabase
-            .from('navigation_events')
-            .select('metadata, created_at')
-            .eq('prolific_id', response.prolific_id)
-            .eq('event_type', 'session_replay_chunk')
-            .order('created_at', { ascending: true })
-            .limit(2000),
+          replayQuery,
         ]);
 
         let replayStartTimestamp: number | null = null;
@@ -1139,7 +1152,17 @@ const ResponseDetails = () => {
         const dictationUploadSnapshots = createEmptyDictationUploadSnapshotsByField();
         const latestFeedbackDraft: Partial<Record<FeedbackFieldKey, string>> = {};
         let latestFeedbackDraftSavedAt: string | null = null;
-        if (replayChunks) {
+        if (replayChunksError) {
+          const timeoutCode = (replayChunksError as { code?: string }).code;
+          if (timeoutCode === '57014') {
+            console.warn('[SessionReplay] Query timed out, skipping replay for this response.', {
+              prolificId: response.prolific_id,
+              callId: response.call_id,
+            });
+          } else {
+            console.warn('[SessionReplay] Error loading session replay chunks', replayChunksError);
+          }
+        } else if (replayChunks) {
           const flattenedEvents: ReplayEvent[] = [];
           replayChunks.forEach((chunk: { metadata: unknown; created_at: string }) => {
             const metadata = (chunk.metadata || {}) as Record<string, unknown>;
@@ -1431,6 +1454,7 @@ const ResponseDetails = () => {
         }
 
         try {
+          const dictationFetchStartedAt = performance.now();
           const nextRecordings = createEmptyDictationRecordingsByField();
           const { data: dictationRows, error: dictationError } = await supabase
             .from('dictation_recordings' as never)
@@ -1550,6 +1574,7 @@ const ResponseDetails = () => {
             voice_assistant_feedback: nextRecordings.voice_assistant_feedback.length,
             communication_style_feedback: nextRecordings.communication_style_feedback.length,
             experiment_feedback: nextRecordings.experiment_feedback.length,
+            durationMs: Math.round(performance.now() - dictationFetchStartedAt),
           });
           setDictationRecordingsByField(nextRecordings);
         } catch (dictationLoadError) {
@@ -1579,6 +1604,11 @@ const ResponseDetails = () => {
         console.error('Error fetching response details:', err);
         setError('Failed to load response details');
       } finally {
+        const totalDurationMs = Math.round(performance.now() - fetchStartedAt);
+        console.info('[ResponseDetails] Finished loading response details', {
+          id,
+          durationMs: totalDurationMs,
+        });
         setIsLoading(false);
       }
     };
@@ -1598,6 +1628,10 @@ const ResponseDetails = () => {
     if (!pending.length) return;
 
     const resolveDurations = async () => {
+      const startedAt = performance.now();
+      console.info('[DictationAudio][Durations] Resolving pending clip durations', {
+        pendingCount: pending.length,
+      });
       for (const recording of pending) {
         if (!recording.playbackUrl) continue;
         const durationMs = await resolveAudioDurationMs(recording.playbackUrl);
@@ -1606,6 +1640,10 @@ const ResponseDetails = () => {
           prev[recording.id] !== undefined ? prev : { ...prev, [recording.id]: durationMs }
         ));
       }
+      console.info('[DictationAudio][Durations] Finished resolving clip durations', {
+        pendingCount: pending.length,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
     };
 
     void resolveDurations();
@@ -1618,6 +1656,8 @@ const ResponseDetails = () => {
     let cancelled = false;
 
     const buildMergedByField = async () => {
+      const startedAt = performance.now();
+      console.info('[DictationAudio][Merge] Building merged dictation audio by field');
       for (const field of FEEDBACK_FIELDS) {
         const clips = [...dictationRecordingsByField[field]]
           .filter((recording) => Boolean(recording.playbackUrl))
@@ -1670,6 +1710,11 @@ const ResponseDetails = () => {
             clipCount: clips.length,
             errorMessage: null,
           });
+          console.info('[DictationAudio][Merge] Field merged', {
+            field,
+            clipCount: clips.length,
+            durationMs: merged.durationMs,
+          });
         } catch (error) {
           if (cancelled) continue;
           setMergedFieldState(field, {
@@ -1681,6 +1726,9 @@ const ResponseDetails = () => {
           });
         }
       }
+      console.info('[DictationAudio][Merge] Finished building merged audio', {
+        durationMs: Math.round(performance.now() - startedAt),
+      });
     };
 
     void buildMergedByField();
