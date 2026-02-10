@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -38,6 +38,8 @@ export type SourceFilterValue = 'all' | 'participant' | 'researcher';
 const ResearcherDashboard = () => {
   const { user, role, logout, isSuperAdmin, isGuestMode } = useResearcherAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [openBatchCreate, setOpenBatchCreate] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
     const saved = sessionStorage.getItem(TAB_STORAGE_KEY);
     // Migrate old 'participants' tab value to 'responses'
@@ -65,6 +67,13 @@ const ResearcherDashboard = () => {
   useEffect(() => {
     sessionStorage.setItem(SOURCE_FILTER_STORAGE_KEY, sourceFilter);
   }, [sourceFilter]);
+
+  useEffect(() => {
+    const s = location.state as { openTab?: string; openBatchCreate?: boolean } | undefined;
+    if (s?.openTab) setActiveTab(s.openTab);
+    if (s?.openBatchCreate) setOpenBatchCreate(true);
+    if (s?.openTab || s?.openBatchCreate) navigate('/researcher/dashboard', { replace: true, state: {} });
+  }, [location.state, navigate]);
 
   const handleLogout = async () => {
     await logout();
@@ -255,7 +264,11 @@ const ResearcherDashboard = () => {
 
           {isSuperAdmin && (
             <TabsContent value="settings">
-              <ExperimentSettings sourceFilter={sourceFilter} />
+              <ExperimentSettings
+                sourceFilter={sourceFilter}
+                openBatchCreate={openBatchCreate}
+                onBatchCreateConsumed={() => setOpenBatchCreate(false)}
+              />
             </TabsContent>
           )}
         </Tabs>

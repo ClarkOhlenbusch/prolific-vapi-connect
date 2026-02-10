@@ -12,6 +12,8 @@ export interface GuestParticipant {
   pets_total?: number | null;
   tias_total?: number | null;
   formality?: number | null;
+  reviewed_by_researcher?: boolean;
+  flagged?: boolean;
   age?: string | null;
   gender?: string | null;
   status: 'Completed' | 'Pending';
@@ -136,6 +138,8 @@ export const GUEST_PARTICIPANTS: GuestParticipant[] = (() => {
       pets_total: 45 + Math.floor(Math.random() * 15), // 45-60
       tias_total: 50 + Math.floor(Math.random() * 20), // 50-70
       formality: 4.5 + Math.random() * 2, // 4.5-6.5
+      reviewed_by_researcher: i < 12,
+      flagged: i % 5 === 2,
       age: ages[i % ages.length],
       gender: genders[i % genders.length],
       status: 'Completed',
@@ -157,6 +161,8 @@ export const GUEST_PARTICIPANTS: GuestParticipant[] = (() => {
       pets_total: 40 + Math.floor(Math.random() * 15), // 40-55
       tias_total: 45 + Math.floor(Math.random() * 20), // 45-65
       formality: 2.5 + Math.random() * 2, // 2.5-4.5
+      reviewed_by_researcher: i < 9,
+      flagged: i % 4 === 1,
       age: ages[(i + 2) % ages.length],
       gender: genders[(i + 1) % genders.length],
       status: 'Completed',
@@ -545,6 +551,8 @@ export const getGuestBatchStats = (batchName: string) => {
   
   const dates = participants.map(p => new Date(p.created_at).getTime());
   
+  const allReviewed = participants.length > 0 && participants.every(p => p.reviewed_by_researcher);
+
   return {
     batch_name: batchName,
     total_responses: participants.length,
@@ -555,6 +563,7 @@ export const getGuestBatchStats = (batchName: string) => {
     avg_pets_total: avgPets,
     avg_tias_total: avgTias,
     avg_formality: avgFormality,
+    all_reviewed: allReviewed,
   };
 };
 
@@ -693,6 +702,8 @@ export const buildGuestExperimentResponse = (participant: GuestParticipant, resp
     created_at: participant.created_at,
     assistant_type: condition,
     batch_label: participant.batch_label || null,
+    reviewed_by_researcher: participant.reviewed_by_researcher ?? false,
+    flagged: participant.flagged ?? false,
     call_attempt_number: 1,
 
     // Totals

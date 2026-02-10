@@ -34,9 +34,11 @@ import { GUEST_EXPERIMENT_SETTINGS } from "@/lib/guest-dummy-data";
 
 interface ExperimentSettingsProps {
   sourceFilter?: SourceFilterValue;
+  openBatchCreate?: boolean;
+  onBatchCreateConsumed?: () => void;
 }
 
-export const ExperimentSettings = ({ sourceFilter = "all" }: ExperimentSettingsProps) => {
+export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBatchCreateConsumed }: ExperimentSettingsProps) => {
   const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const [assistantType, setAssistantType] = useState<"formal" | "informal">("informal");
   const [isLoading, setIsLoading] = useState(true);
@@ -768,7 +770,11 @@ export const ExperimentSettings = ({ sourceFilter = "all" }: ExperimentSettingsP
       </Tabs>
 
       {/* Batch Manager Section */}
-      <BatchManager />
+      <BatchManager
+        sourceFilter={sourceFilter}
+        openBatchCreate={openBatchCreate}
+        onBatchCreateConsumed={onBatchCreateConsumed}
+      />
     </div>
   );
 };

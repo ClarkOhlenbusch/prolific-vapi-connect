@@ -26,7 +26,9 @@ import {
   RotateCcw,
   Download,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Check,
+  Flag
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import { cn } from '@/lib/utils';
@@ -35,6 +37,16 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ParticipantJourneyModal } from '@/components/researcher/ParticipantJourneyModal';
 import { EventType, Replayer, ReplayerEvents } from 'rrweb';
 import type { eventWithTime } from '@rrweb/types';
@@ -966,6 +978,7 @@ const ResponseDetails = () => {
   const [isPendingRecord, setIsPendingRecord] = useState(false);
   const [formalityCalcId, setFormalityCalcId] = useState<string | null>(null);
   const [journeyModalOpen, setJourneyModalOpen] = useState(false);
+  const [createBatchDialog, setCreateBatchDialog] = useState<{ open: boolean; batchLabel: string | null }>({ open: false, batchLabel: null });
   const [journeyDiagnostics, setJourneyDiagnostics] = useState<{
     practice: { micPermission?: string | null; micAudio?: string | null };
     main: { micPermission?: string | null; micAudio?: string | null };
@@ -2171,6 +2184,45 @@ const ResponseDetails = () => {
     }
   };
 
+  const handleToggleReviewed = async () => {
+    if (!data?.id || isPendingRecord || isGuestMode) return;
+    const next = !(data.reviewed_by_researcher ?? false);
+    try {
+      const { error } = await supabase
+        .from('experiment_responses')
+        .update({ reviewed_by_researcher: next })
+        .eq('id', data.id);
+      if (error) throw error;
+      setData((prev) => (prev ? { ...prev, reviewed_by_researcher: next } : null));
+      if (next && data.batch_label) {
+        const { data: batchResponses } = await supabase
+          .from('experiment_responses')
+          .select('id, reviewed_by_researcher')
+          .eq('batch_label', data.batch_label);
+        const allReviewed = (batchResponses ?? []).length > 0
+          && (batchResponses ?? []).every((r) => r.reviewed_by_researcher === true);
+        if (allReviewed) setCreateBatchDialog({ open: true, batchLabel: data.batch_label });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleFlagged = async () => {
+    if (!data?.id || isPendingRecord || isGuestMode) return;
+    const next = !(data.flagged ?? false);
+    try {
+      const { error } = await supabase
+        .from('experiment_responses')
+        .update({ flagged: next })
+        .eq('id', data.id);
+      if (error) throw error;
+      setData((prev) => (prev ? { ...prev, flagged: next } : null));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const renderFeedbackTextWithHighlights = (field: FeedbackFieldKey, value: string | null | undefined) => {
     if (!value) {
       return <span className="italic text-muted-foreground">No feedback provided</span>;
@@ -2383,6 +2435,32 @@ const ResponseDetails = () => {
               )}
               {data.batch_label && (
                 <Badge variant="outline">{data.batch_label}</Badge>
+              )}
+              {!isPendingRecord && data.id && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleToggleReviewed}
+                    className={cn(
+                      'inline-flex items-center justify-center w-8 h-8 rounded border transition-colors',
+                      data.reviewed_by_researcher ? 'bg-primary text-primary-foreground border-primary' : 'border-muted-foreground/30 hover:bg-muted'
+                    )}
+                    title={data.reviewed_by_researcher ? 'Reviewed' : 'Mark as reviewed'}
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleToggleFlagged}
+                    className={cn(
+                      'inline-flex items-center justify-center w-8 h-8 rounded border transition-colors',
+                      data.flagged ? 'bg-destructive/15 text-destructive border-destructive/50' : 'border-muted-foreground/30 hover:bg-muted'
+                    )}
+                    title={data.flagged ? 'Flagged' : 'Flag'}
+                  >
+                    <Flag className="h-4 w-4" />
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -3173,6 +3251,28 @@ const ResponseDetails = () => {
         status="Completed"
         condition={data.assistant_type}
       />
+
+      <AlertDialog open={createBatchDialog.open} onOpenChange={(open) => !open && setCreateBatchDialog({ open: false, batchLabel: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Batch fully reviewed</AlertDialogTitle>
+            <AlertDialogDescription>
+              All participants in batch {createBatchDialog.batchLabel ?? ''} are reviewed. Do you want to create a new batch?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Later</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setCreateBatchDialog({ open: false, batchLabel: null });
+                navigate('/researcher/dashboard', { state: { openTab: 'settings', openBatchCreate: true } });
+              }}
+            >
+              Create new batch
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

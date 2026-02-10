@@ -28,7 +28,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Archive,
-  Route
+  Route,
+  Check,
+  Flag
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useActivityLog } from '@/hooks/useActivityLog';
@@ -65,6 +67,8 @@ interface UnifiedParticipant {
   pets_total?: number | null;
   tias_total?: number | null;
   formality?: number | null;
+  reviewed_by_researcher?: boolean;
+  flagged?: boolean;
   // From demographics (optional)
   age?: string | null;
   gender?: string | null;
@@ -107,6 +111,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     status: 'Completed' | 'Pending';
     condition: string | null;
   }>({ open: false, prolificId: '', status: 'Pending', condition: null });
+  const [createBatchDialog, setCreateBatchDialog] = useState<{ open: boolean; batchLabel: string | null }>({ open: false, batchLabel: null });
   
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
   const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
@@ -140,7 +145,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       // Fetch experiment_responses
       const { data: responses, error: responsesError } = await supabase
         .from('experiment_responses')
-        .select('id, call_id, prolific_id, assistant_type, batch_label, pets_total, tias_total, formality');
+        .select('id, call_id, prolific_id, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged');
 
       if (responsesError) throw responsesError;
 
@@ -175,6 +180,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           pets_total: response?.pets_total,
           tias_total: response?.tias_total,
           formality: response?.formality,
+          reviewed_by_researcher: response?.reviewed_by_researcher ?? false,
+          flagged: response?.flagged ?? false,
           age: demo?.age,
           gender: demo?.gender,
           status: call.is_completed ? 'Completed' : 'Pending',
@@ -363,6 +370,45 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     });
   };
 
+  const updateResponseFlag = async (responseId: string, field: 'reviewed_by_researcher' | 'flagged', value: boolean) => {
+    const { error } = await supabase
+      .from('experiment_responses')
+      .update({ [field]: value })
+      .eq('id', responseId);
+    if (error) throw error;
+  };
+
+  const handleToggleReviewed = async (row: UnifiedParticipant, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!row.response_id || isGuestMode) return;
+    const next = !(row.reviewed_by_researcher ?? false);
+    try {
+      await updateResponseFlag(row.response_id, 'reviewed_by_researcher', next);
+      setData(prev => prev.map(p => p.response_id === row.response_id ? { ...p, reviewed_by_researcher: next } : p));
+      if (next && row.batch_label) {
+        const inBatch = data.filter(p => p.batch_label === row.batch_label && p.response_id);
+        const allReviewed = inBatch.every(p => (p.response_id === row.response_id ? next : (p.reviewed_by_researcher ?? false)));
+        if (allReviewed) setCreateBatchDialog({ open: true, batchLabel: row.batch_label });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update reviewed status');
+    }
+  };
+
+  const handleToggleFlagged = async (row: UnifiedParticipant, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!row.response_id || isGuestMode) return;
+    const next = !(row.flagged ?? false);
+    try {
+      await updateResponseFlag(row.response_id, 'flagged', next);
+      setData(prev => prev.map(p => p.response_id === row.response_id ? { ...p, flagged: next } : p));
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update flag');
+    }
+  };
+
   const exportToCSV = async () => {
     const headers = [
       'Prolific ID', 'Status', 'Created At', 'Call ID', 
@@ -511,6 +557,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
               <TableHead>Created At</TableHead>
               <TableHead>Condition</TableHead>
               <TableHead>Batch</TableHead>
+              <TableHead className="w-[80px] text-center" title="Reviewed by researcher">Reviewed</TableHead>
+              <TableHead className="w-[80px] text-center" title="Flagged">Flag</TableHead>
               <TableHead className="text-right">PETS</TableHead>
               <TableHead className="text-right">TIAS</TableHead>
               <TableHead>Actions</TableHead>
@@ -519,7 +567,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           <TableBody>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isSuperAdmin ? 9 : 8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isSuperAdmin ? 11 : 10} className="text-center py-8 text-muted-foreground">
                   No participants found
                 </TableCell>
               </TableRow>
@@ -560,6 +608,38 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                   <TableCell>
                     {row.batch_label ? (
                       <Badge variant="outline">{row.batch_label}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                    {row.response_id ? (
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleReviewed(row, e)}
+                        className={`inline-flex items-center justify-center w-8 h-8 rounded border transition-colors ${
+                          row.reviewed_by_researcher ? 'bg-primary text-primary-foreground border-primary' : 'border-muted-foreground/30 hover:bg-muted'
+                        }`}
+                        title={row.reviewed_by_researcher ? 'Reviewed' : 'Mark as reviewed'}
+                      >
+                        <Check className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                    {row.response_id ? (
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleFlagged(row, e)}
+                        className={`inline-flex items-center justify-center w-8 h-8 rounded border transition-colors ${
+                          row.flagged ? 'bg-destructive/15 text-destructive border-destructive/50' : 'border-muted-foreground/30 hover:bg-muted'
+                        }`}
+                        title={row.flagged ? 'Flagged' : 'Flag'}
+                      >
+                        <Flag className="h-4 w-4" />
+                      </button>
                     ) : (
                       <span className="text-muted-foreground">-</span>
                     )}
@@ -680,6 +760,28 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         status={journeyModal.status}
         condition={journeyModal.condition}
       />
+
+      <AlertDialog open={createBatchDialog.open} onOpenChange={(open) => !open && setCreateBatchDialog({ open: false, batchLabel: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Batch fully reviewed</AlertDialogTitle>
+            <AlertDialogDescription>
+              All participants in batch {createBatchDialog.batchLabel ?? ''} are reviewed. Do you want to create a new batch?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Later</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setCreateBatchDialog({ open: false, batchLabel: null });
+                navigate('/researcher/dashboard', { state: { openTab: 'settings', openBatchCreate: true } });
+              }}
+            >
+              Create new batch
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

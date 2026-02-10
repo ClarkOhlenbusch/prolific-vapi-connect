@@ -36,6 +36,10 @@ import { toast } from 'sonner';
 import { Plus, Edit, Trash2, Star, StickyNote } from 'lucide-react';
 import { format } from 'date-fns';
 import { GUEST_BATCHES, getGuestBatchStats } from '@/lib/guest-dummy-data';
+import type { SourceFilterValue } from './GlobalSourceFilter';
+
+const isResearcherId = (prolificId: string | null): boolean =>
+  prolificId != null && prolificId.length !== 24;
 
 interface Batch {
   id: string;
@@ -57,9 +61,16 @@ interface BatchStats {
   avg_pets_total: number | null;
   avg_tias_total: number | null;
   avg_formality: number | null;
+  all_reviewed: boolean;
 }
 
-export const BatchManager = () => {
+interface BatchManagerProps {
+  sourceFilter?: SourceFilterValue;
+  openBatchCreate?: boolean;
+  onBatchCreateConsumed?: () => void;
+}
+
+export const BatchManager = ({ sourceFilter = 'all', openBatchCreate, onBatchCreateConsumed }: BatchManagerProps) => {
   const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [batchStats, setBatchStats] = useState<Map<string, BatchStats>>(new Map());
@@ -74,7 +85,14 @@ export const BatchManager = () => {
 
   useEffect(() => {
     fetchBatches();
-  }, [isGuestMode]);
+  }, [isGuestMode, sourceFilter]);
+
+  useEffect(() => {
+    if (openBatchCreate) {
+      setShowCreateDialog(true);
+      onBatchCreateConsumed?.();
+    }
+  }, [openBatchCreate, onBatchCreateConsumed]);
 
   const fetchBatches = async () => {
     try {
@@ -104,16 +122,23 @@ export const BatchManager = () => {
       setBatches(batchData || []);
 
       // Fetch stats for all batches from experiment_responses
-      const { data: responses, error: responseError } = await supabase
+      const { data: rawResponses, error: responseError } = await supabase
         .from('experiment_responses')
-        .select('batch_label, assistant_type, created_at, pets_total, tias_total, formality');
+        .select('prolific_id, batch_label, assistant_type, created_at, pets_total, tias_total, formality, reviewed_by_researcher');
 
       if (responseError) throw responseError;
+
+      let responses = rawResponses ?? [];
+      if (sourceFilter === 'participant') {
+        responses = responses.filter((r) => !isResearcherId(r.prolific_id ?? null));
+      } else if (sourceFilter === 'researcher') {
+        responses = responses.filter((r) => isResearcherId(r.prolific_id ?? null));
+      }
 
       // Calculate stats per batch
       const statsMap = new Map<string, BatchStats>();
       
-      responses?.forEach(response => {
+      responses.forEach(response => {
         const batchName = response.batch_label || 'No Batch';
         
         if (!statsMap.has(batchName)) {
@@ -127,11 +152,13 @@ export const BatchManager = () => {
             avg_pets_total: null,
             avg_tias_total: null,
             avg_formality: null,
+            all_reviewed: true,
           });
         }
 
         const stats = statsMap.get(batchName)!;
         stats.total_responses++;
+        if (!response.reviewed_by_researcher) stats.all_reviewed = false;
         
         if (response.assistant_type === 'formal') stats.formal_count++;
         if (response.assistant_type === 'informal') stats.informal_count++;
@@ -357,7 +384,7 @@ export const BatchManager = () => {
           <div>
             <CardTitle>Experiment Batches</CardTitle>
             <CardDescription>
-              Manage experiment batches and track their responses
+              Manage experiment batches and track their responses. Response counts respect the Data Source filter (Participants / Researchers / All) at the top of the page.
             </CardDescription>
           </div>
           {isSuperAdmin && (
@@ -374,6 +401,7 @@ export const BatchManager = () => {
                 <TableHead className="w-12">#</TableHead>
                 <TableHead>Batch Name</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-center">Reviewed</TableHead>
                 <TableHead className="text-right">Responses</TableHead>
                 <TableHead className="text-right">Formal / Informal</TableHead>
                 <TableHead>Date Range</TableHead>
@@ -416,6 +444,17 @@ export const BatchManager = () => {
                         <Badge className="bg-green-500">Active</Badge>
                       ) : (
                         <Badge variant="secondary">Inactive</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {stats?.total_responses ? (
+                        stats.all_reviewed ? (
+                          <Badge variant="default" className="bg-green-600">Reviewed</Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )
+                      ) : (
+                        '—'
                       )}
                     </TableCell>
                     <TableCell className="text-right font-mono">
