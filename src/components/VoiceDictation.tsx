@@ -12,6 +12,10 @@ interface VoiceDictationProps {
   disabled?: boolean;
   className?: string;
   silenceTimeoutMs?: number;
+  /** Button label when not recording (e.g. "Click to record") */
+  startLabel?: string;
+  /** When true, button is pulsing blue when idle to draw attention */
+  prominentWhenIdle?: boolean;
 }
 
 export interface VoiceDictationRef {
@@ -59,6 +63,8 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
     disabled,
     className,
     silenceTimeoutMs = 15000,
+    startLabel = "Dictate",
+    prominentWhenIdle = false,
   }, ref) => {
     const [isListening, setIsListening] = useState(false);
     const [isSupported, setIsSupported] = useState(true);
@@ -266,16 +272,17 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
     return (
       <Button
         type="button"
-        variant={isListening ? "destructive" : "outline"}
+        variant={isListening ? "destructive" : prominentWhenIdle ? "default" : "outline"}
         size="sm"
         onClick={toggleListening}
         disabled={disabled}
         className={cn(
           "shrink-0 gap-2 transition-all",
           isListening && "animate-pulse",
+          prominentWhenIdle && !isListening && "animate-pulse bg-blue-600 hover:bg-blue-700 text-white border-blue-600",
           className
         )}
-        title={isListening ? "Stop dictation" : "Click to dictate your response"}
+        title={isListening ? "Stop recording" : startLabel}
       >
         {isListening ? (
           <>
@@ -285,7 +292,7 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
         ) : (
           <>
             <Mic className="h-4 w-4" />
-            <span className="hidden sm:inline">Dictate</span>
+            <span className="hidden sm:inline">{startLabel}</span>
           </>
         )}
       </Button>

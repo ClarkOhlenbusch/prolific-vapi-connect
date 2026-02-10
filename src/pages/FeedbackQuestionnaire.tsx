@@ -10,6 +10,7 @@ import { ArrowLeft, Mic } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
 import { usePageTracking } from "@/hooks/usePageTracking";
 import { FeedbackProgressBar } from "@/components/FeedbackProgressBar";
+import { RecordingProgressBar } from "@/components/RecordingProgressBar";
 import { ExperimentProgress } from "@/components/ExperimentProgress";
 import { VoiceDictation, VoiceDictationRef } from "@/components/VoiceDictation";
 import { logNavigationEvent, runMicDiagnostics } from "@/lib/participant-telemetry";
@@ -61,6 +62,10 @@ interface DictationDebugInfo {
   lastError: string | null;
   lastReason: string | null;
   persisted: boolean;
+  /** Set when recording starts, cleared when stopped/paused – used for live timer */
+  recordingStartedAtMs: number | null;
+  /** Last recorded duration in seconds that met the minimum (for display when idle) */
+  lastRecordedDurationSeconds: number | null;
 }
 
 interface DictationUploadPayload {
@@ -84,6 +89,8 @@ const createDictationDebugInfo = (): DictationDebugInfo => ({
   lastError: null,
   lastReason: null,
   persisted: false,
+  recordingStartedAtMs: null,
+  lastRecordedDurationSeconds: null,
 });
 
 const createDictationDebugInfoMap = (): Record<FeedbackField, DictationDebugInfo> => ({
@@ -146,10 +153,20 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 };
 
+const formatDurationMs = (durationMs: number, minSeconds: number): string => {
+  const sec = Math.round(durationMs / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  const label = `${m}:${s.toString().padStart(2, "0")}`;
+  return sec >= minSeconds ? label : `${label} (under ${minSeconds}s)`;
+};
+
 const FeedbackQuestionnaire = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { toast } = useToast();
+  const { toast, dismiss: dismissToast } = useToast();
+  const shortRecordingToastIdRef = useRef<string | null>(null);
+  const shortRecordingToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isResearcherMode } = useResearcherMode();
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
@@ -187,6 +204,37 @@ const FeedbackQuestionnaire = () => {
   
   const MAX_CHARS = 2500;
   const MIN_WORDS = 35;
+  const MIN_RECORDING_DURATION_MS = 20_000;
+  const MIN_RECORDING_SECONDS = Math.floor(MIN_RECORDING_DURATION_MS / 1000);
+
+  /** Ticks every second while any field is recording so timer UI updates */
+  const [recordingTick, setRecordingTick] = useState(0);
+
+  // Hidden dictated text that counts for validation/submission but is not shown to participants
+  const [dictatedFeedbackByField, setDictatedFeedbackByField] = useState<Record<FeedbackField, string>>({
+    voice_assistant_feedback: "",
+    communication_style_feedback: "",
+    experiment_feedback: "",
+  });
+
+  // Transcript accumulated for the currently active recording segment per field
+  const dictationSegmentTextRef = useRef<Record<FeedbackField, string>>({
+    voice_assistant_feedback: "",
+    communication_style_feedback: "",
+    experiment_feedback: "",
+  });
+
+  /** Saved recordings for playback (including under-20s); URLs revoked on unmount/reset */
+  const [savedRecordingsByField, setSavedRecordingsByField] = useState<
+    Record<FeedbackField, { url: string; durationMs: number }[]>
+  >({
+    voice_assistant_feedback: [],
+    communication_style_feedback: [],
+    experiment_feedback: [],
+  });
+  const savedRecordingsByFieldRef = useRef(savedRecordingsByField);
+  savedRecordingsByFieldRef.current = savedRecordingsByField;
+  const MAX_SAVED_RECORDINGS_PER_FIELD = 10;
   
   // Stop all dictation sessions
   const stopAllDictation = useCallback(() => {
@@ -224,15 +272,19 @@ const FeedbackQuestionnaire = () => {
   }, []);
 
   const buildFeedbackDraftMetadata = useCallback(() => {
+    const mergeFeedback = (typed: string, field: FeedbackField) => {
+      const dictated = dictatedFeedbackByField[field] || "";
+      return [typed, dictated].filter(Boolean).join(" ");
+    };
     const responses = {
-      voice_assistant_feedback: voiceAssistantExperience,
-      communication_style_feedback: communicationStyleFeedback,
-      experiment_feedback: experimentFeedback,
+      voice_assistant_feedback: mergeFeedback(voiceAssistantExperience, "voice_assistant_feedback"),
+      communication_style_feedback: mergeFeedback(communicationStyleFeedback, "communication_style_feedback"),
+      experiment_feedback: mergeFeedback(experimentFeedback, "experiment_feedback"),
     };
     const wordCounts = {
-      voice_assistant_feedback: countWords(voiceAssistantExperience),
-      communication_style_feedback: countWords(communicationStyleFeedback),
-      experiment_feedback: countWords(experimentFeedback),
+      voice_assistant_feedback: countWords(responses.voice_assistant_feedback),
+      communication_style_feedback: countWords(responses.communication_style_feedback),
+      experiment_feedback: countWords(responses.experiment_feedback),
     };
     const inputModes = {
       voice_assistant_feedback: { ...feedbackInputModesRef.current.voice_assistant_feedback },
@@ -244,7 +296,7 @@ const FeedbackQuestionnaire = () => {
       wordCounts,
       inputModes,
     };
-  }, [communicationStyleFeedback, experimentFeedback, voiceAssistantExperience]);
+  }, [communicationStyleFeedback, dictatedFeedbackByField, experimentFeedback, voiceAssistantExperience]);
 
   const persistFeedbackDraft = useCallback(async (reason: string, force = false) => {
     if (!prolificId) return;
@@ -372,6 +424,7 @@ const FeedbackQuestionnaire = () => {
           recorderState: "recording",
           attemptCount: recorderState.attemptCount,
           lastError: null,
+          recordingStartedAtMs: Date.now(),
         });
       };
 
@@ -381,6 +434,7 @@ const FeedbackQuestionnaire = () => {
         updateDictationDebug(field, {
           recorderState: "recording",
           lastError: null,
+          recordingStartedAtMs: Date.now(),
         });
       };
 
@@ -395,6 +449,7 @@ const FeedbackQuestionnaire = () => {
         });
         updateDictationDebug(field, {
           recorderState: "paused",
+          recordingStartedAtMs: null,
         });
       };
 
@@ -413,6 +468,7 @@ const FeedbackQuestionnaire = () => {
         recorderState.stopPromise = null;
         updateDictationDebug(field, {
           recorderState: "stopped",
+          recordingStartedAtMs: null,
         });
       };
 
@@ -683,6 +739,53 @@ const FeedbackQuestionnaire = () => {
     };
     const uploadSucceeded = await uploadDictationSnapshot(field, payload, { finalizeRow: true });
     if (!uploadSucceeded) return;
+
+    const url = URL.createObjectURL(payload.blob);
+    setSavedRecordingsByField((prev) => {
+      const list = [...(prev[field] || []), { url, durationMs: payload.durationMs }];
+      const next = list.slice(-MAX_SAVED_RECORDINGS_PER_FIELD);
+      const toDrop = list.length - next.length;
+      if (toDrop > 0) list.slice(0, toDrop).forEach(({ url: u }) => URL.revokeObjectURL(u));
+      return { ...prev, [field]: next };
+    });
+
+    const segmentText = dictationSegmentTextRef.current[field] || "";
+    const totalDurationMsAfter =
+      (savedRecordingsByFieldRef.current[field] || []).reduce((acc, r) => acc + r.durationMs, 0) + payload.durationMs;
+    const totalMeetsMinimum = totalDurationMsAfter >= MIN_RECORDING_DURATION_MS;
+    const currentClipShort = payload.durationMs < MIN_RECORDING_DURATION_MS;
+
+    if (currentClipShort && !totalMeetsMinimum && !isResearcherMode) {
+      if (shortRecordingToastTimeoutRef.current) {
+        clearTimeout(shortRecordingToastTimeoutRef.current);
+        shortRecordingToastTimeoutRef.current = null;
+      }
+      const t = toast({
+        title: "Recording too short",
+        description: `This clip was under ${MIN_RECORDING_SECONDS} seconds. Short recordings add up — record again or add more clips to reach ${MIN_RECORDING_SECONDS} seconds total. You can also click Record to try again (this message will close).`,
+        variant: "destructive",
+      });
+      shortRecordingToastIdRef.current = t.id;
+      shortRecordingToastTimeoutRef.current = setTimeout(() => {
+        if (shortRecordingToastIdRef.current) dismissToast(shortRecordingToastIdRef.current);
+        shortRecordingToastIdRef.current = null;
+        shortRecordingToastTimeoutRef.current = null;
+      }, 15000);
+    }
+
+    if (segmentText) {
+      setDictatedFeedbackByField((prev) => {
+        const previous = prev[field] || "";
+        const merged = [previous, segmentText].filter(Boolean).join(" ");
+        return {
+          ...prev,
+          [field]: merged,
+        };
+      });
+    }
+    // Always clear the in-memory segment text after upload (short or long).
+    dictationSegmentTextRef.current[field] = "";
+
     resetDictationSegmentState(recorderState);
     updateDictationDebug(field, {
       recorderState: "idle",
@@ -690,8 +793,9 @@ const FeedbackQuestionnaire = () => {
       bytesCaptured: 0,
       storagePath: null,
       persisted: false,
+      ...(totalMeetsMinimum && { lastRecordedDurationSeconds: Math.round(totalDurationMsAfter / 1000) }),
     });
-  }, [buildRecordingStoragePath, stopDictationRecording, updateDictationDebug, uploadDictationSnapshot]);
+  }, [buildRecordingStoragePath, dismissToast, isResearcherMode, stopDictationRecording, toast, updateDictationDebug, uploadDictationSnapshot]);
 
   const persistDictationRecordings = useCallback(async () => {
     if (!prolificId) return;
@@ -773,11 +877,19 @@ const FeedbackQuestionnaire = () => {
     return true;
   }, [isResearcherMode, logFeedbackEvent, toast, updateDictationDebug]);
 
-  // Before starting dictation for a field: stop any other active dictation, then run mic precheck
+  // Before starting dictation for a field: stop any other active dictation, dismiss short-recording toast if open, then run mic precheck
   const getDictationBeforeStart = useCallback((field: FeedbackField) => async () => {
+    if (shortRecordingToastIdRef.current) {
+      dismissToast(shortRecordingToastIdRef.current);
+      shortRecordingToastIdRef.current = null;
+    }
+    if (shortRecordingToastTimeoutRef.current) {
+      clearTimeout(shortRecordingToastTimeoutRef.current);
+      shortRecordingToastTimeoutRef.current = null;
+    }
     stopOtherDictationSessions(field);
     return runDictationMicPrecheck(field);
-  }, [stopOtherDictationSessions, runDictationMicPrecheck]);
+  }, [dismissToast, stopOtherDictationSessions, runDictationMicPrecheck]);
 
   const handleDictationListeningChange = useCallback((field: FeedbackField, isListeningNow: boolean, reason?: string) => {
     logFeedbackEvent(isListeningNow ? "dictation_started" : "dictation_stopped", {
@@ -1012,7 +1124,41 @@ const FeedbackQuestionnaire = () => {
       state.stream?.getTracks().forEach((track) => track.stop());
     });
     dictationRecordersRef.current = createDictationRecorderStateMap();
+    const prev = savedRecordingsByFieldRef.current;
+    FEEDBACK_FIELDS.forEach((f) => (prev[f] || []).forEach(({ url }) => URL.revokeObjectURL(url)));
+    setSavedRecordingsByField({
+      voice_assistant_feedback: [],
+      communication_style_feedback: [],
+      experiment_feedback: [],
+    });
   }, [prolificId, callId]);
+
+  useEffect(() => {
+    return () => {
+      const prev = savedRecordingsByFieldRef.current;
+      FEEDBACK_FIELDS.forEach((f) => (prev[f] || []).forEach(({ url }) => URL.revokeObjectURL(url)));
+    };
+  }, []);
+
+  /** Tick every second while recording so live timer updates */
+  useEffect(() => {
+    const isAnyRecording = FEEDBACK_FIELDS.some(
+      (f) => dictationDebug[f].recorderState === "recording"
+    );
+    if (!isAnyRecording) return;
+    const id = setInterval(() => setRecordingTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [dictationDebug]);
+
+  const getRecordingDurationSeconds = useCallback((field: FeedbackField): number => {
+    const totalFromSaved = (savedRecordingsByField[field] || []).reduce((acc, r) => acc + r.durationMs / 1000, 0);
+    const info = dictationDebug[field];
+    if (info.recorderState === "recording" && info.recordingStartedAtMs != null) {
+      const currentSegmentSeconds = Math.floor((Date.now() - info.recordingStartedAtMs) / 1000);
+      return totalFromSaved + currentSegmentSeconds;
+    }
+    return Math.floor(totalFromSaved);
+  }, [dictationDebug, recordingTick, savedRecordingsByField]);
 
   useEffect(() => {
     return () => {
@@ -1092,9 +1238,15 @@ const FeedbackQuestionnaire = () => {
     await persistFeedbackDraft("submit_click", true);
     stopAllDictation();
     
-    const experienceStatus = getWordCountStatus(voiceAssistantExperience);
-    const styleStatus = getWordCountStatus(communicationStyleFeedback);
-    const experimentStatus = getWordCountStatus(experimentFeedback);
+    const experienceStatus = getWordCountStatus(
+      [voiceAssistantExperience, dictatedFeedbackByField.voice_assistant_feedback].filter(Boolean).join(" ")
+    );
+    const styleStatus = getWordCountStatus(
+      [communicationStyleFeedback, dictatedFeedbackByField.communication_style_feedback].filter(Boolean).join(" ")
+    );
+    const experimentStatus = getWordCountStatus(
+      [experimentFeedback, dictatedFeedbackByField.experiment_feedback].filter(Boolean).join(" ")
+    );
 
     if (!isResearcherMode) {
       if (!experienceStatus.isValid || !styleStatus.isValid || !experimentStatus.isValid) {
@@ -1280,9 +1432,18 @@ const FeedbackQuestionnaire = () => {
 
       const feedbackPayload = {
         formality: formalityData.formality,
-        voice_assistant_feedback: voiceAssistantExperience || "Not provided",
-        communication_style_feedback: communicationStyleFeedback || "Not provided",
-        experiment_feedback: experimentFeedback || "Not provided",
+        voice_assistant_feedback: (
+          [voiceAssistantExperience, dictatedFeedbackByField.voice_assistant_feedback].filter(Boolean).join(" ") ||
+          "Not provided"
+        ),
+        communication_style_feedback: (
+          [communicationStyleFeedback, dictatedFeedbackByField.communication_style_feedback].filter(Boolean).join(" ") ||
+          "Not provided"
+        ),
+        experiment_feedback: (
+          [experimentFeedback, dictatedFeedbackByField.experiment_feedback].filter(Boolean).join(" ") ||
+          "Not provided"
+        ),
       };
 
       // Get assistant type from session storage (set during VoiceConversation)
@@ -1428,9 +1589,15 @@ const FeedbackQuestionnaire = () => {
     );
   }
 
-  const experienceStatus = getWordCountStatus(voiceAssistantExperience);
-  const styleStatus = getWordCountStatus(communicationStyleFeedback);
-  const experimentStatus = getWordCountStatus(experimentFeedback);
+  const experienceStatus = getWordCountStatus(
+    [voiceAssistantExperience, dictatedFeedbackByField.voice_assistant_feedback].filter(Boolean).join(" ")
+  );
+  const styleStatus = getWordCountStatus(
+    [communicationStyleFeedback, dictatedFeedbackByField.communication_style_feedback].filter(Boolean).join(" ")
+  );
+  const experimentStatus = getWordCountStatus(
+    [experimentFeedback, dictatedFeedbackByField.experiment_feedback].filter(Boolean).join(" ")
+  );
   const showDictationDebug = isResearcherMode || new URLSearchParams(location.search).get("debugAudio") === "1";
 
   const getDebugStatusColor = (status: DictationDebugInfo["lastUploadStatus"]) => {
@@ -1455,13 +1622,16 @@ const FeedbackQuestionnaire = () => {
               The more detail you provide, the more helpful your feedback and the higher your bonus payout may be.
             </p>
           </div>
-          {/* Voice dictation hint */}
+          {/* Voice recording hint */}
           <div className="flex items-center justify-center gap-2 text-muted-foreground mt-2">
             <Mic className="h-4 w-4" />
             <p className="text-sm">
-              <span className="font-medium">Tip:</span> Click the "Dictate" button to speak your response instead of typing
+              <span className="font-medium">Tip:</span> Record your answer for each question (at least 20 seconds). You can also type below if you prefer. Your recording is sent to researchers; nothing appears on screen as you speak.
             </p>
           </div>
+          <p className="text-sm text-center text-muted-foreground mt-2 font-medium">
+            There are 3 questions on this page — scroll down to answer each one.
+          </p>
           {showDictationDebug && (
             <details className="rounded border bg-muted/40 px-3 py-2 text-xs">
               <summary className="cursor-pointer font-medium">Dictation Audio Debug</summary>
@@ -1498,6 +1668,7 @@ const FeedbackQuestionnaire = () => {
         <CardContent className="space-y-8">
           {/* Question 1: Voice Assistant Experience */}
           <div ref={experienceQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experienceStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && experienceStatus.isValid ? 'border border-green-500/30' : ''}`}>
+            <p className="text-xs font-medium text-muted-foreground">Question 1 of 3</p>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Experience with Cali
@@ -1515,78 +1686,109 @@ const FeedbackQuestionnaire = () => {
                 <li>Any technical issues during the call (audio quality, delays, pauses, voice changes, or glitches)</li>
               </ul>
             </div>
+            {/* Recording first: primary way to give feedback */}
+            <div className="bg-accent/50 rounded-lg p-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">
+                Record your feedback (at least {MIN_RECORDING_SECONDS} seconds)
+              </p>
+              <div className="flex items-start gap-3">
+                <VoiceDictation
+                  ref={experienceDictationRef}
+                  onTranscript={(text) => {
+                    markFeedbackInputMode("voice_assistant_feedback", "dictated");
+                    const prevSegment = dictationSegmentTextRef.current.voice_assistant_feedback;
+                    const prefix = prevSegment && !prevSegment.endsWith(" ") ? " " : "";
+                    dictationSegmentTextRef.current.voice_assistant_feedback = `${prevSegment}${prefix}${text}`;
+                    logFeedbackEvent("dictation_transcript_appended", {
+                      field: "voice_assistant_feedback",
+                      fieldLabel: FEEDBACK_FIELD_LABELS.voice_assistant_feedback,
+                      text,
+                      length: text.length,
+                    });
+                  }}
+                  onInterimTranscript={undefined}
+                  onBeforeStart={getDictationBeforeStart("voice_assistant_feedback")}
+                  onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("voice_assistant_feedback", isListeningNow, reason)}
+                  onDictationError={(errorCode, message) => handleDictationError("voice_assistant_feedback", errorCode, message)}
+                  disabled={isSubmitting}
+                  startLabel="Click to record"
+                  prominentWhenIdle
+                  className="shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <RecordingProgressBar
+                    durationSeconds={getRecordingDurationSeconds("voice_assistant_feedback")}
+                    isRecording={dictationDebug.voice_assistant_feedback.recorderState === "recording"}
+                    minSeconds={MIN_RECORDING_SECONDS}
+                    showValidationError={showValidationErrors && !experienceStatus.isValid && getRecordingDurationSeconds("voice_assistant_feedback") < MIN_RECORDING_SECONDS}
+                    showValidationSuccess={showValidationErrors && getRecordingDurationSeconds("voice_assistant_feedback") >= MIN_RECORDING_SECONDS}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {dictationDebug.voice_assistant_feedback.recorderState === "recording"
+                  ? "Recording…"
+                  : dictationDebug.voice_assistant_feedback.lastUploadStatus === "uploading"
+                  ? "Uploading your recording…"
+                  : dictationDebug.voice_assistant_feedback.lastUploadStatus === "uploaded"
+                  ? "Recording saved."
+                  : `Record at least ${MIN_RECORDING_SECONDS} seconds total (short clips add up). You can also add text below.`}
+              </p>
+              {savedRecordingsByField.voice_assistant_feedback.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-border/60">
+                  <p className="text-xs font-medium text-foreground">Saved recordings</p>
+                  <ul className="space-y-2">
+                    {savedRecordingsByField.voice_assistant_feedback.map(({ url, durationMs }, i) => (
+                      <li key={url} className="flex items-center gap-3 flex-wrap">
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {formatDurationMs(durationMs, MIN_RECORDING_SECONDS)}
+                        </span>
+                        <audio controls src={url} className="h-8 max-w-full flex-1 min-w-0" preload="metadata" />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
             {showDictationDebug && (
               <p className={`text-xs ${getDebugStatusColor(dictationDebug.voice_assistant_feedback.lastUploadStatus)}`}>
                 Audio status: {dictationDebug.voice_assistant_feedback.lastUploadStatus} | Recorder: {dictationDebug.voice_assistant_feedback.recorderState}
               </p>
             )}
-            <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-              <div className="relative">
-                <Textarea
-                  value={voiceAssistantExperience + interimExperience}
-                  onChange={(e) => {
-                    // Only update if not currently showing interim text
-                    if (!interimExperience && e.target.value.length <= MAX_CHARS) {
-                      setVoiceAssistantExperience(e.target.value);
-                      markFeedbackInputMode("voice_assistant_feedback", "typed");
-                    }
-                  }}
-                  onFocus={() => {
-                    // Stop other dictation sessions when focusing this field
-                    styleDictationRef.current?.stopListening();
-                    experimentDictationRef.current?.stopListening();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === " ") {
-                      e.stopPropagation();
-                    }
-                  }}
-                  className={`min-h-[150px] resize-none bg-background pr-24 ${showValidationErrors && !experienceStatus.isValid ? 'border-destructive' : ''}`}
-                  placeholder="Describe your experience with Cali... (or click Dictate to speak)"
-                />
-                <div className="absolute top-2 right-2">
-                  <VoiceDictation
-                    ref={experienceDictationRef}
-                    onTranscript={(text) => {
-                      markFeedbackInputMode("voice_assistant_feedback", "dictated");
-                      setVoiceAssistantExperience((prev) => {
-                        const prefix = prev && !prev.endsWith(" ") ? " " : "";
-                        const newValue = prev + `${prefix}${text}`;
-                        return newValue.length <= MAX_CHARS ? newValue : prev;
-                      });
-                      logFeedbackEvent("dictation_transcript_appended", {
-                        field: "voice_assistant_feedback",
-                        fieldLabel: FEEDBACK_FIELD_LABELS.voice_assistant_feedback,
-                        text,
-                        length: text.length,
-                      });
-                    }}
-                    onInterimTranscript={(text) => {
-                      if (text) {
-                        const prefix = voiceAssistantExperience && !voiceAssistantExperience.endsWith(" ") ? " " : "";
-                        setInterimExperience(prefix + text);
-                      } else {
-                        setInterimExperience("");
-                      }
-                    }}
-                    onBeforeStart={getDictationBeforeStart("voice_assistant_feedback")}
-                    onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("voice_assistant_feedback", isListeningNow, reason)}
-                    onDictationError={(errorCode, message) => handleDictationError("voice_assistant_feedback", errorCode, message)}
-                    disabled={isSubmitting}
-                  />
-                </div>
-              </div>
-              <FeedbackProgressBar 
-                wordCount={experienceStatus.count} 
-                minWords={MIN_WORDS} 
+            {/* Optional text */}
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Or add text below (optional)</p>
+              <Textarea
+                value={voiceAssistantExperience}
+                onChange={(e) => {
+                  if (!interimExperience && e.target.value.length <= MAX_CHARS) {
+                    setVoiceAssistantExperience(e.target.value);
+                    markFeedbackInputMode("voice_assistant_feedback", "typed");
+                  }
+                }}
+                onFocus={() => {
+                  styleDictationRef.current?.stopListening();
+                  experimentDictationRef.current?.stopListening();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === " ") e.stopPropagation();
+                }}
+                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !experienceStatus.isValid ? "border-destructive" : ""}`}
+                placeholder="Type additional feedback if you like..."
+              />
+              <FeedbackProgressBar
+                wordCount={experienceStatus.count}
+                minWords={MIN_WORDS}
                 showValidationError={showValidationErrors && !experienceStatus.isValid}
                 showValidationSuccess={showValidationErrors && experienceStatus.isValid}
               />
             </div>
+            <p className="text-sm text-center text-muted-foreground pt-2 border-t border-border/50">↓ Scroll down for question 2</p>
           </div>
 
           {/* Question 2: Communication Style and Formality */}
           <div ref={styleQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !styleStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && styleStatus.isValid ? 'border border-green-500/30' : ''}`}>
+            <p className="text-xs font-medium text-muted-foreground">Question 2 of 3</p>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Communication Style (Formality)
@@ -1603,76 +1805,106 @@ const FeedbackQuestionnaire = () => {
                 <li>Whether the style affected your comfort, engagement, or trust</li>
               </ul>
             </div>
+            {/* Recording first */}
+            <div className="bg-accent/50 rounded-lg p-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">
+                Record your feedback (at least {MIN_RECORDING_SECONDS} seconds)
+              </p>
+              <div className="flex items-start gap-3">
+                <VoiceDictation
+                  ref={styleDictationRef}
+                  onTranscript={(text) => {
+                    markFeedbackInputMode("communication_style_feedback", "dictated");
+                    const prevSegment = dictationSegmentTextRef.current.communication_style_feedback;
+                    const prefix = prevSegment && !prevSegment.endsWith(" ") ? " " : "";
+                    dictationSegmentTextRef.current.communication_style_feedback = `${prevSegment}${prefix}${text}`;
+                    logFeedbackEvent("dictation_transcript_appended", {
+                      field: "communication_style_feedback",
+                      fieldLabel: FEEDBACK_FIELD_LABELS.communication_style_feedback,
+                      text,
+                      length: text.length,
+                    });
+                  }}
+                  onInterimTranscript={undefined}
+                  onBeforeStart={getDictationBeforeStart("communication_style_feedback")}
+                  onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("communication_style_feedback", isListeningNow, reason)}
+                  onDictationError={(errorCode, message) => handleDictationError("communication_style_feedback", errorCode, message)}
+                  disabled={isSubmitting}
+                  startLabel="Click to record"
+                  prominentWhenIdle
+                  className="shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <RecordingProgressBar
+                    durationSeconds={getRecordingDurationSeconds("communication_style_feedback")}
+                    isRecording={dictationDebug.communication_style_feedback.recorderState === "recording"}
+                    minSeconds={MIN_RECORDING_SECONDS}
+                    showValidationError={showValidationErrors && !styleStatus.isValid && getRecordingDurationSeconds("communication_style_feedback") < MIN_RECORDING_SECONDS}
+                    showValidationSuccess={showValidationErrors && getRecordingDurationSeconds("communication_style_feedback") >= MIN_RECORDING_SECONDS}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {dictationDebug.communication_style_feedback.recorderState === "recording"
+                  ? "Recording…"
+                  : dictationDebug.communication_style_feedback.lastUploadStatus === "uploading"
+                  ? "Uploading your recording…"
+                  : dictationDebug.communication_style_feedback.lastUploadStatus === "uploaded"
+                  ? "Recording saved."
+                  : `Record at least ${MIN_RECORDING_SECONDS} seconds total (short clips add up). You can also add text below.`}
+              </p>
+              {savedRecordingsByField.communication_style_feedback.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-border/60">
+                  <p className="text-xs font-medium text-foreground">Saved recordings</p>
+                  <ul className="space-y-2">
+                    {savedRecordingsByField.communication_style_feedback.map(({ url, durationMs }) => (
+                      <li key={url} className="flex items-center gap-3 flex-wrap">
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {formatDurationMs(durationMs, MIN_RECORDING_SECONDS)}
+                        </span>
+                        <audio controls src={url} className="h-8 max-w-full flex-1 min-w-0" preload="metadata" />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
             {showDictationDebug && (
               <p className={`text-xs ${getDebugStatusColor(dictationDebug.communication_style_feedback.lastUploadStatus)}`}>
                 Audio status: {dictationDebug.communication_style_feedback.lastUploadStatus} | Recorder: {dictationDebug.communication_style_feedback.recorderState}
               </p>
             )}
-            <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-              <div className="relative">
-                <Textarea
-                  value={communicationStyleFeedback + interimStyle}
-                  onChange={(e) => {
-                    if (!interimStyle && e.target.value.length <= MAX_CHARS) {
-                      setCommunicationStyleFeedback(e.target.value);
-                      markFeedbackInputMode("communication_style_feedback", "typed");
-                    }
-                  }}
-                  onFocus={() => {
-                    experienceDictationRef.current?.stopListening();
-                    experimentDictationRef.current?.stopListening();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === " ") {
-                      e.stopPropagation();
-                    }
-                  }}
-                  className={`min-h-[150px] resize-none bg-background pr-24 ${showValidationErrors && !styleStatus.isValid ? 'border-destructive' : ''}`}
-                  placeholder="Describe Cali's communication style... (or click Dictate to speak)"
-                />
-                <div className="absolute top-2 right-2">
-                  <VoiceDictation
-                    ref={styleDictationRef}
-                    onTranscript={(text) => {
-                      markFeedbackInputMode("communication_style_feedback", "dictated");
-                      setCommunicationStyleFeedback((prev) => {
-                        const prefix = prev && !prev.endsWith(" ") ? " " : "";
-                        const newValue = prev + `${prefix}${text}`;
-                        return newValue.length <= MAX_CHARS ? newValue : prev;
-                      });
-                      logFeedbackEvent("dictation_transcript_appended", {
-                        field: "communication_style_feedback",
-                        fieldLabel: FEEDBACK_FIELD_LABELS.communication_style_feedback,
-                        text,
-                        length: text.length,
-                      });
-                    }}
-                    onInterimTranscript={(text) => {
-                      if (text) {
-                        const prefix = communicationStyleFeedback && !communicationStyleFeedback.endsWith(" ") ? " " : "";
-                        setInterimStyle(prefix + text);
-                      } else {
-                        setInterimStyle("");
-                      }
-                    }}
-                    onBeforeStart={getDictationBeforeStart("communication_style_feedback")}
-                    onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("communication_style_feedback", isListeningNow, reason)}
-                    onDictationError={(errorCode, message) => handleDictationError("communication_style_feedback", errorCode, message)}
-                    disabled={isSubmitting}
-                  />
-                </div>
-              </div>
-              <FeedbackProgressBar 
-                wordCount={styleStatus.count} 
-                minWords={MIN_WORDS} 
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Or add text below (optional)</p>
+              <Textarea
+                value={communicationStyleFeedback}
+                onChange={(e) => {
+                  if (!interimStyle && e.target.value.length <= MAX_CHARS) {
+                    setCommunicationStyleFeedback(e.target.value);
+                    markFeedbackInputMode("communication_style_feedback", "typed");
+                  }
+                }}
+                onFocus={() => {
+                  experienceDictationRef.current?.stopListening();
+                  experimentDictationRef.current?.stopListening();
+                }}
+                onKeyDown={(e) => { if (e.key === " ") e.stopPropagation(); }}
+                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !styleStatus.isValid ? "border-destructive" : ""}`}
+                placeholder="Type additional feedback if you like..."
+              />
+              <FeedbackProgressBar
+                wordCount={styleStatus.count}
+                minWords={MIN_WORDS}
                 showValidationError={showValidationErrors && !styleStatus.isValid}
                 showValidationSuccess={showValidationErrors && styleStatus.isValid}
               />
             </div>
+            <p className="text-sm text-center text-muted-foreground pt-2 border-t border-border/50">↓ Scroll down for question 3</p>
           </div>
 
           {/* Question 3: Experiment Feedback */}
           <div ref={experimentQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && experimentStatus.isValid ? 'border border-green-500/30' : ''}`}>
+            <p className="text-xs font-medium text-muted-foreground">Question 3 of 3</p>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Feedback on the Experiment
@@ -1690,68 +1922,96 @@ const FeedbackQuestionnaire = () => {
                 <li>Anything that could be improved for future participants</li>
               </ul>
             </div>
+            {/* Recording first */}
+            <div className="bg-accent/50 rounded-lg p-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">
+                Record your feedback (at least {MIN_RECORDING_SECONDS} seconds)
+              </p>
+              <div className="flex items-start gap-3">
+                <VoiceDictation
+                  ref={experimentDictationRef}
+                  onTranscript={(text) => {
+                    markFeedbackInputMode("experiment_feedback", "dictated");
+                    const prevSegment = dictationSegmentTextRef.current.experiment_feedback;
+                    const prefix = prevSegment && !prevSegment.endsWith(" ") ? " " : "";
+                    dictationSegmentTextRef.current.experiment_feedback = `${prevSegment}${prefix}${text}`;
+                    logFeedbackEvent("dictation_transcript_appended", {
+                      field: "experiment_feedback",
+                      fieldLabel: FEEDBACK_FIELD_LABELS.experiment_feedback,
+                      text,
+                      length: text.length,
+                    });
+                  }}
+                  onInterimTranscript={undefined}
+                  onBeforeStart={getDictationBeforeStart("experiment_feedback")}
+                  onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("experiment_feedback", isListeningNow, reason)}
+                  onDictationError={(errorCode, message) => handleDictationError("experiment_feedback", errorCode, message)}
+                  disabled={isSubmitting}
+                  startLabel="Click to record"
+                  prominentWhenIdle
+                  className="shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <RecordingProgressBar
+                    durationSeconds={getRecordingDurationSeconds("experiment_feedback")}
+                    isRecording={dictationDebug.experiment_feedback.recorderState === "recording"}
+                    minSeconds={MIN_RECORDING_SECONDS}
+                    showValidationError={showValidationErrors && !experimentStatus.isValid && getRecordingDurationSeconds("experiment_feedback") < MIN_RECORDING_SECONDS}
+                    showValidationSuccess={showValidationErrors && getRecordingDurationSeconds("experiment_feedback") >= MIN_RECORDING_SECONDS}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {dictationDebug.experiment_feedback.recorderState === "recording"
+                  ? "Recording…"
+                  : dictationDebug.experiment_feedback.lastUploadStatus === "uploading"
+                  ? "Uploading your recording…"
+                  : dictationDebug.experiment_feedback.lastUploadStatus === "uploaded"
+                  ? "Recording saved."
+                  : `Record at least ${MIN_RECORDING_SECONDS} seconds total (short clips add up). You can also add text below.`}
+              </p>
+              {savedRecordingsByField.experiment_feedback.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-border/60">
+                  <p className="text-xs font-medium text-foreground">Saved recordings</p>
+                  <ul className="space-y-2">
+                    {savedRecordingsByField.experiment_feedback.map(({ url, durationMs }) => (
+                      <li key={url} className="flex items-center gap-3 flex-wrap">
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {formatDurationMs(durationMs, MIN_RECORDING_SECONDS)}
+                        </span>
+                        <audio controls src={url} className="h-8 max-w-full flex-1 min-w-0" preload="metadata" />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
             {showDictationDebug && (
               <p className={`text-xs ${getDebugStatusColor(dictationDebug.experiment_feedback.lastUploadStatus)}`}>
                 Audio status: {dictationDebug.experiment_feedback.lastUploadStatus} | Recorder: {dictationDebug.experiment_feedback.recorderState}
               </p>
             )}
-            <div className="bg-accent/50 rounded-lg p-4 space-y-3">
-              <div className="relative">
-                <Textarea
-                  value={experimentFeedback + interimExperiment}
-                  onChange={(e) => {
-                    if (!interimExperiment && e.target.value.length <= MAX_CHARS) {
-                      setExperimentFeedback(e.target.value);
-                      markFeedbackInputMode("experiment_feedback", "typed");
-                    }
-                  }}
-                  onFocus={() => {
-                    experienceDictationRef.current?.stopListening();
-                    styleDictationRef.current?.stopListening();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === " ") {
-                      e.stopPropagation();
-                    }
-                  }}
-                  placeholder="Share your feedback on the experiment... (or click Dictate to speak)"
-                  className={`min-h-[150px] resize-none bg-background pr-24 ${showValidationErrors && !experimentStatus.isValid ? 'border-destructive' : ''}`}
-                />
-                <div className="absolute top-2 right-2">
-                  <VoiceDictation
-                    ref={experimentDictationRef}
-                    onTranscript={(text) => {
-                      markFeedbackInputMode("experiment_feedback", "dictated");
-                      setExperimentFeedback((prev) => {
-                        const prefix = prev && !prev.endsWith(" ") ? " " : "";
-                        const newValue = prev + `${prefix}${text}`;
-                        return newValue.length <= MAX_CHARS ? newValue : prev;
-                      });
-                      logFeedbackEvent("dictation_transcript_appended", {
-                        field: "experiment_feedback",
-                        fieldLabel: FEEDBACK_FIELD_LABELS.experiment_feedback,
-                        text,
-                        length: text.length,
-                      });
-                    }}
-                    onInterimTranscript={(text) => {
-                      if (text) {
-                        const prefix = experimentFeedback && !experimentFeedback.endsWith(" ") ? " " : "";
-                        setInterimExperiment(prefix + text);
-                      } else {
-                        setInterimExperiment("");
-                      }
-                    }}
-                    onBeforeStart={getDictationBeforeStart("experiment_feedback")}
-                    onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("experiment_feedback", isListeningNow, reason)}
-                    onDictationError={(errorCode, message) => handleDictationError("experiment_feedback", errorCode, message)}
-                    disabled={isSubmitting}
-                  />
-                </div>
-              </div>
-              <FeedbackProgressBar 
-                wordCount={experimentStatus.count} 
-                minWords={MIN_WORDS} 
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Or add text below (optional)</p>
+              <Textarea
+                value={experimentFeedback}
+                onChange={(e) => {
+                  if (!interimExperiment && e.target.value.length <= MAX_CHARS) {
+                    setExperimentFeedback(e.target.value);
+                    markFeedbackInputMode("experiment_feedback", "typed");
+                  }
+                }}
+                onFocus={() => {
+                  experienceDictationRef.current?.stopListening();
+                  styleDictationRef.current?.stopListening();
+                }}
+                onKeyDown={(e) => { if (e.key === " ") e.stopPropagation(); }}
+                placeholder="Type additional feedback if you like..."
+                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !experimentStatus.isValid ? "border-destructive" : ""}`}
+              />
+              <FeedbackProgressBar
+                wordCount={experimentStatus.count}
+                minWords={MIN_WORDS}
                 showValidationError={showValidationErrors && !experimentStatus.isValid}
                 showValidationSuccess={showValidationErrors && experimentStatus.isValid}
               />
