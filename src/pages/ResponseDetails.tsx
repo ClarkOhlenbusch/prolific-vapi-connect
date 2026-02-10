@@ -886,26 +886,35 @@ const SessionReplayPanel = ({
           <span>Markers: {markers.length}</span>
         </div>
         {markers.length > 0 && (
-          <div className="flex flex-wrap gap-2 text-xs">
-            {markers.slice(-8).map((marker) => (
-              <span
-                key={`${marker.id}-legend`}
-                className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-muted-foreground cursor-pointer hover:bg-muted/40"
-                role="button"
-                tabIndex={0}
-                onClick={() => handleMarkerClick(marker.timeMs)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    handleMarkerClick(marker.timeMs);
-                  }
-                }}
-                title={`Jump to ${marker.label} (${formatDuration(marker.timeMs)})`}
-              >
-                <span className={`inline-block h-2 w-2 rounded-full ${markerColorClass[marker.tone]}`} />
-                {marker.label}
-              </span>
-            ))}
+          <div className="max-h-48 overflow-y-auto rounded border text-xs">
+            <table className="w-full">
+              <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm">
+                <tr className="text-left text-muted-foreground">
+                  <th className="px-2 py-1 font-medium w-16">Time</th>
+                  <th className="px-2 py-1 font-medium">Event</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...markers].sort((a, b) => a.timeMs - b.timeMs).map((marker) => (
+                  <tr
+                    key={`${marker.id}-legend`}
+                    className="cursor-pointer hover:bg-muted/40 border-t border-border/50"
+                    onClick={() => handleMarkerClick(marker.timeMs)}
+                    title={`Jump to ${formatDuration(marker.timeMs)}`}
+                  >
+                    <td className="px-2 py-1 font-mono text-muted-foreground whitespace-nowrap">
+                      {formatDuration(marker.timeMs)}
+                    </td>
+                    <td className="px-2 py-1">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${markerColorClass[marker.tone]}`} />
+                        <span className="text-muted-foreground">{marker.label}</span>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -1816,9 +1825,6 @@ const ResponseDetails = () => {
         tone = 'error';
       } else if (event.event_type === 'dictation_transcript_appended') {
         label = `${labelPrefix}: ${feedbackFieldLabel} dictation transcript appended`;
-        tone = 'info';
-      } else if (event.event_type === 'feedback_draft_autosave') {
-        label = `${labelPrefix}: Feedback draft autosaved`;
         tone = 'info';
       } else if (event.event_type === 'feedback_input_mode') {
         if (metadata.mode === 'typed') {
