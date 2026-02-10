@@ -1107,6 +1107,7 @@ const ResponseDetails = () => {
             .in('event_type', [
               'mic_permission',
               'mic_audio_check',
+              'call_preflight_result',
               'call_connected',
               'call_start_failed',
               'call_quality_warning',
@@ -1258,6 +1259,12 @@ const ResponseDetails = () => {
                 diagnostics[pageKey].micPermission = permissionValue;
               }
             }
+            if (pageKey && event.event_type === 'call_preflight_result') {
+              const permissionValue = formatMicPermission(metadata.state as string | null);
+              if (shouldReplaceDiagnosticValue(diagnostics[pageKey].micPermission, permissionValue)) {
+                diagnostics[pageKey].micPermission = permissionValue;
+              }
+            }
             if (pageKey && event.event_type === 'mic_audio_check') {
               const micAudioValue = formatMicAudio(metadata.detected);
               if (shouldReplaceDiagnosticValue(diagnostics[pageKey].micAudio, micAudioValue)) {
@@ -1265,7 +1272,8 @@ const ResponseDetails = () => {
               }
             }
             if (isFeedbackPageEvent && event.event_type === 'mic_permission') {
-              const permissionValue = formatMicPermission(metadata.state as string | null);
+              const stateOrPermission = (metadata.state ?? metadata.permissionState) as string | null;
+              const permissionValue = formatMicPermission(stateOrPermission);
               if (shouldReplaceDiagnosticValue(diagnostics.feedback.micPermission, permissionValue)) {
                 diagnostics.feedback.micPermission = permissionValue;
               }
