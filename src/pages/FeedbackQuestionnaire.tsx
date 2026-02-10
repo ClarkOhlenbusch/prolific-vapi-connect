@@ -549,7 +549,7 @@ const FeedbackQuestionnaire = () => {
       .from(DICTATION_AUDIO_BUCKET)
       .upload(payload.storagePath, payload.blob, {
         contentType: payload.mimeType,
-        upsert: true,
+        upsert: false,
       });
 
     if (uploadError) {
