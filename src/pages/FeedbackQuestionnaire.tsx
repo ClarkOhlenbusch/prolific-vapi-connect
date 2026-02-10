@@ -195,6 +195,13 @@ const FeedbackQuestionnaire = () => {
     experimentDictationRef.current?.stopListening();
   }, []);
 
+  // Stop dictation for all fields except the given one (used when switching to another dictate button)
+  const stopOtherDictationSessions = useCallback((activeField: FeedbackField) => {
+    if (activeField !== "voice_assistant_feedback") experienceDictationRef.current?.stopListening();
+    if (activeField !== "communication_style_feedback") styleDictationRef.current?.stopListening();
+    if (activeField !== "experiment_feedback") experimentDictationRef.current?.stopListening();
+  }, []);
+
   const logFeedbackEvent = useCallback((eventType: string, metadata: Record<string, unknown> = {}) => {
     if (!prolificId) return;
     void logNavigationEvent({
@@ -766,6 +773,12 @@ const FeedbackQuestionnaire = () => {
     return true;
   }, [isResearcherMode, logFeedbackEvent, toast, updateDictationDebug]);
 
+  // Before starting dictation for a field: stop any other active dictation, then run mic precheck
+  const getDictationBeforeStart = useCallback((field: FeedbackField) => async () => {
+    stopOtherDictationSessions(field);
+    return runDictationMicPrecheck(field);
+  }, [stopOtherDictationSessions, runDictationMicPrecheck]);
+
   const handleDictationListeningChange = useCallback((field: FeedbackField, isListeningNow: boolean, reason?: string) => {
     logFeedbackEvent(isListeningNow ? "dictation_started" : "dictation_stopped", {
       field,
@@ -803,7 +816,10 @@ const FeedbackQuestionnaire = () => {
       lastUploadStatus: "error",
       lastError: `${errorCode}${message ? `: ${message}` : ""}`,
     });
-    void persistDictationSegment(field);
+    // Skip persist for "aborted" – we already persisted in onListeningChange(false, "external_stop") when switching dictation
+    if (errorCode !== "aborted") {
+      void persistDictationSegment(field);
+    }
   }, [logFeedbackEvent, persistDictationSegment, updateDictationDebug]);
 
   const { trackBackButtonClick } = usePageTracking({
@@ -1553,7 +1569,7 @@ const FeedbackQuestionnaire = () => {
                         setInterimExperience("");
                       }
                     }}
-                    onBeforeStart={() => runDictationMicPrecheck("voice_assistant_feedback")}
+                    onBeforeStart={getDictationBeforeStart("voice_assistant_feedback")}
                     onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("voice_assistant_feedback", isListeningNow, reason)}
                     onDictationError={(errorCode, message) => handleDictationError("voice_assistant_feedback", errorCode, message)}
                     disabled={isSubmitting}
@@ -1639,7 +1655,7 @@ const FeedbackQuestionnaire = () => {
                         setInterimStyle("");
                       }
                     }}
-                    onBeforeStart={() => runDictationMicPrecheck("communication_style_feedback")}
+                    onBeforeStart={getDictationBeforeStart("communication_style_feedback")}
                     onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("communication_style_feedback", isListeningNow, reason)}
                     onDictationError={(errorCode, message) => handleDictationError("communication_style_feedback", errorCode, message)}
                     disabled={isSubmitting}
@@ -1726,7 +1742,7 @@ const FeedbackQuestionnaire = () => {
                         setInterimExperiment("");
                       }
                     }}
-                    onBeforeStart={() => runDictationMicPrecheck("experiment_feedback")}
+                    onBeforeStart={getDictationBeforeStart("experiment_feedback")}
                     onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("experiment_feedback", isListeningNow, reason)}
                     onDictationError={(errorCode, message) => handleDictationError("experiment_feedback", errorCode, message)}
                     disabled={isSubmitting}
