@@ -972,6 +972,7 @@ const ResponseDetails = () => {
   const [replayLoadingMore, setReplayLoadingMore] = useState(false);
   const [replayBatchProgress, setReplayBatchProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [replayMarkers, setReplayMarkers] = useState<ReplayMarker[]>([]);
+  const [pendingMarkerEvents, setPendingMarkerEvents] = useState<Pick<NavigationEvent, 'call_id' | 'page_name' | 'event_type' | 'metadata' | 'created_at'>[]>([]);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
   const setMergedFieldState = useCallback((field: FeedbackFieldKey, next: MergedDictationAudioState) => {
@@ -1031,6 +1032,7 @@ const ResponseDetails = () => {
       setReplayLoadingMore(false);
       setReplayBatchProgress(null);
       setReplayMarkers([]);
+      setPendingMarkerEvents([]);
       try {
         setIsPendingRecord(false);
 
@@ -1530,62 +1532,8 @@ const ResponseDetails = () => {
               latestFeedbackDraftSavedAt = event.created_at;
             }
 
-            if (!replayStartTimestamp) return;
-            const eventTimestamp = Date.parse(event.created_at);
-            if (Number.isNaN(eventTimestamp)) return;
-
-            const timeMsRaw = eventTimestamp - replayStartTimestamp;
-            const timeMs = Math.max(0, replayDurationMs > 0 ? Math.min(replayDurationMs, timeMsRaw) : timeMsRaw);
-
-            const labelPrefix = pageLabel(event.page_name);
-            const feedbackFieldLabel = isFeedbackField(metadata.field) ? FEEDBACK_FIELD_LABELS[metadata.field] : 'Feedback';
-            let label: string | null = null;
-            let tone: MarkerTone = 'info';
-
-            if (event.event_type === 'mic_permission') {
-              const state = formatMicPermission(metadata.state as string | null) || 'Unknown';
-              const isDictationContext = event.page_name === 'feedback' || metadata.context === 'dictation';
-              label = isDictationContext
-                ? `${labelPrefix}: ${feedbackFieldLabel} dictation mic permission ${state}`
-                : `${labelPrefix}: Mic permission ${state}`;
-              tone = state === 'Denied' ? 'error' : state === 'Granted' ? 'success' : 'info';
-            } else if (event.event_type === 'mic_audio_check') {
-              const detected = formatMicAudio(metadata.detected) || 'Unknown';
-              const isDictationContext = event.page_name === 'feedback' || metadata.context === 'dictation';
-              label = isDictationContext
-                ? `${labelPrefix}: ${feedbackFieldLabel} dictation audio ${detected}`
-                : `${labelPrefix}: Mic audio ${detected}`;
-              tone = detected === 'Not detected' || detected === 'Error' ? 'warning' : 'success';
-            } else if (event.event_type === 'call_connected') {
-              label = `${labelPrefix}: Call connected`;
-              tone = 'success';
-            } else if (event.event_type === 'call_start_failed') {
-              label = `${labelPrefix}: Call start failed`;
-              tone = 'error';
-            } else if (event.event_type === 'call_quality_warning') {
-              label = `${labelPrefix}: Audio quality warning`;
-              tone = 'warning';
-            } else if (event.event_type === 'call_error') {
-              label = `${labelPrefix}: Call error`;
-              tone = 'error';
-            } else if (event.event_type === 'assistant_audio_timeout') {
-              label = `${labelPrefix}: Assistant audio timeout`;
-              tone = 'warning';
-            } else if (event.event_type === 'dictation_started') {
-              label = `${labelPrefix}: ${feedbackFieldLabel} dictation started`;
-              tone = 'info';
-            } else if (event.event_type === 'dictation_stopped') {
-              label = `${labelPrefix}: ${feedbackFieldLabel} dictation stopped`;
-              tone = 'info';
-            } else if (event.event_type === 'dictation_error' || event.event_type === 'dictation_start_blocked') {
-              label = `${labelPrefix}: ${feedbackFieldLabel} dictation issue`;
-              tone = 'warning';
-            } else if (event.event_type === 'dictation_recording_error') {
-              label = `${labelPrefix}: ${feedbackFieldLabel} recorder error`;
-              tone = 'warning';
-            } else if (event.event_type === 'dictation_recording_uploaded') {
-              label = `${labelPrefix}: ${feedbackFieldLabel} dictation audio saved`;
-              tone = 'success';
+            // Dictation upload snapshot tracking for marker events
+            if (event.event_type === 'dictation_recording_uploaded') {
               const storagePath = typeof metadata.storagePath === 'string' ? metadata.storagePath : '';
               if (feedbackField && storagePath) {
                 const snapshot: DictationUploadSnapshot = {
@@ -1604,40 +1552,18 @@ const ResponseDetails = () => {
                   dictationUploadSnapshots[feedbackField].push(snapshot);
                 }
               }
-            } else if (event.event_type === 'dictation_recording_upload_error') {
-              label = `${labelPrefix}: ${feedbackFieldLabel} dictation upload failed`;
-              tone = 'error';
-            } else if (event.event_type === 'dictation_transcript_appended') {
-              label = `${labelPrefix}: ${feedbackFieldLabel} dictation transcript appended`;
-              tone = 'info';
-            } else if (event.event_type === 'feedback_draft_autosave') {
-              label = `${labelPrefix}: Feedback draft autosaved`;
-              tone = 'info';
-            } else if (event.event_type === 'feedback_input_mode') {
-              if (metadata.mode === 'typed') {
-                label = `${labelPrefix}: ${feedbackFieldLabel} typed`;
-              } else if (metadata.mode === 'dictated') {
-                label = `${labelPrefix}: ${feedbackFieldLabel} dictated`;
-              }
-              tone = 'info';
-            }
-
-            if (label) {
-              markers.push({
-                id: `${event.event_type}-${event.created_at}-${index}`,
-                timeMs,
-                label,
-                tone,
-              });
             }
           });
+
+          // Save scoped navigation events for marker building (happens in a
+          // useEffect once replayEvents are available from background loading).
+          setPendingMarkerEvents(scopedNavigationEvents);
 
           setJourneyDiagnostics(diagnostics);
           setFeedbackInputSources(nextFeedbackInputSources);
           setDictationDiagnosticsByField(nextDictationDiagnosticsByField);
           setDictationTranscriptSegmentsByField(nextDictationTranscriptSegmentsByField);
           setFeedbackDraftSavedAt(latestFeedbackDraftSavedAt);
-          setReplayMarkers(markers.slice(0, 80));
         }
 
         try {
@@ -1802,6 +1728,119 @@ const ResponseDetails = () => {
 
     fetchData();
   }, [id, resetMergedFieldState]);
+
+  // Build replay markers once both replayEvents and navigation events are ready.
+  // Markers are placed on the replay timeline relative to the first rrweb event.
+  useEffect(() => {
+    if (!replayEvents.length || !pendingMarkerEvents.length) {
+      if (!replayEvents.length && replayMarkers.length) {
+        setReplayMarkers([]);
+      }
+      return;
+    }
+
+    const replayStart = replayEvents[0]?.timestamp || null;
+    const replayEnd = replayEvents[replayEvents.length - 1]?.timestamp || replayStart || 0;
+    const replayDuration = Math.max(0, replayEnd - (replayStart || replayEnd));
+    if (!replayStart) return;
+
+    const pageLabel = (pageName: string) => {
+      if (pageName === 'practice-conversation') return 'Practice';
+      if (pageName === 'voice-conversation') return 'Main';
+      if (pageName === 'feedback') return 'Feedback';
+      return pageName;
+    };
+
+    const markers: ReplayMarker[] = [];
+    pendingMarkerEvents.forEach((event, index) => {
+      const metadata = (event.metadata || {}) as Record<string, unknown>;
+      const feedbackField = isFeedbackField(metadata.field) ? metadata.field : null;
+
+      const eventTimestamp = Date.parse(event.created_at);
+      if (Number.isNaN(eventTimestamp)) return;
+
+      const timeMsRaw = eventTimestamp - replayStart;
+      const timeMs = Math.max(0, replayDuration > 0 ? Math.min(replayDuration, timeMsRaw) : timeMsRaw);
+
+      const labelPrefix = pageLabel(event.page_name);
+      const feedbackFieldLabel = isFeedbackField(metadata.field) ? FEEDBACK_FIELD_LABELS[metadata.field] : 'Feedback';
+      let label: string | null = null;
+      let tone: MarkerTone = 'info';
+
+      if (event.event_type === 'mic_permission') {
+        const state = formatMicPermission(metadata.state as string | null) || 'Unknown';
+        const isDictationContext = event.page_name === 'feedback' || metadata.context === 'dictation';
+        label = isDictationContext
+          ? `${labelPrefix}: ${feedbackFieldLabel} dictation mic permission ${state}`
+          : `${labelPrefix}: Mic permission ${state}`;
+        tone = state === 'Denied' ? 'error' : state === 'Granted' ? 'success' : 'info';
+      } else if (event.event_type === 'mic_audio_check') {
+        const detected = formatMicAudio(metadata.detected) || 'Unknown';
+        const isDictationContext = event.page_name === 'feedback' || metadata.context === 'dictation';
+        label = isDictationContext
+          ? `${labelPrefix}: ${feedbackFieldLabel} dictation audio ${detected}`
+          : `${labelPrefix}: Mic audio ${detected}`;
+        tone = detected === 'Not detected' || detected === 'Error' ? 'warning' : 'success';
+      } else if (event.event_type === 'call_connected') {
+        label = `${labelPrefix}: Call connected`;
+        tone = 'success';
+      } else if (event.event_type === 'call_start_failed') {
+        label = `${labelPrefix}: Call start failed`;
+        tone = 'error';
+      } else if (event.event_type === 'call_quality_warning') {
+        label = `${labelPrefix}: Audio quality warning`;
+        tone = 'warning';
+      } else if (event.event_type === 'call_error') {
+        label = `${labelPrefix}: Call error`;
+        tone = 'error';
+      } else if (event.event_type === 'assistant_audio_timeout') {
+        label = `${labelPrefix}: Assistant audio timeout`;
+        tone = 'warning';
+      } else if (event.event_type === 'dictation_started') {
+        label = `${labelPrefix}: ${feedbackFieldLabel} dictation started`;
+        tone = 'info';
+      } else if (event.event_type === 'dictation_stopped') {
+        label = `${labelPrefix}: ${feedbackFieldLabel} dictation stopped`;
+        tone = 'info';
+      } else if (event.event_type === 'dictation_error' || event.event_type === 'dictation_start_blocked') {
+        label = `${labelPrefix}: ${feedbackFieldLabel} dictation issue`;
+        tone = 'warning';
+      } else if (event.event_type === 'dictation_recording_error') {
+        label = `${labelPrefix}: ${feedbackFieldLabel} recorder error`;
+        tone = 'warning';
+      } else if (event.event_type === 'dictation_recording_uploaded') {
+        label = `${labelPrefix}: ${feedbackFieldLabel} dictation audio saved`;
+        tone = 'success';
+      } else if (event.event_type === 'dictation_recording_upload_error') {
+        label = `${labelPrefix}: ${feedbackFieldLabel} dictation upload failed`;
+        tone = 'error';
+      } else if (event.event_type === 'dictation_transcript_appended') {
+        label = `${labelPrefix}: ${feedbackFieldLabel} dictation transcript appended`;
+        tone = 'info';
+      } else if (event.event_type === 'feedback_draft_autosave') {
+        label = `${labelPrefix}: Feedback draft autosaved`;
+        tone = 'info';
+      } else if (event.event_type === 'feedback_input_mode') {
+        if (metadata.mode === 'typed') {
+          label = `${labelPrefix}: ${feedbackFieldLabel} typed`;
+        } else if (metadata.mode === 'dictated') {
+          label = `${labelPrefix}: ${feedbackFieldLabel} dictated`;
+        }
+        tone = 'info';
+      }
+
+      if (label) {
+        markers.push({
+          id: `${event.event_type}-${event.created_at}-${index}`,
+          timeMs,
+          label,
+          tone,
+        });
+      }
+    });
+
+    setReplayMarkers(markers.slice(0, 80));
+  }, [replayEvents, pendingMarkerEvents]);
 
   useEffect(() => {
     let cancelled = false;
