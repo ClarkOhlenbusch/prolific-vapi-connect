@@ -35,6 +35,8 @@ import {
   ShapiroResult,
   DescriptiveStats,
 } from '@/lib/statistics';
+import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
+import { GUEST_PARTICIPANTS, buildGuestExperimentResponse } from '@/lib/guest-dummy-data';
 
 interface DependentVariable {
   key: string;
@@ -190,6 +192,7 @@ const StatisticalAnalysis = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [responses, setResponses] = useState<ExperimentResponse[]>([]);
   const [activeTab, setActiveTab] = useState('hypotheses');
+  const { isGuestMode } = useResearcherAuth();
   const [sourceFilter, setSourceFilter] = useState<SourceFilterValue>(() => {
     const saved = sessionStorage.getItem(SOURCE_FILTER_STORAGE_KEY);
     if (saved === 'all' || saved === 'participant' || saved === 'researcher') {
@@ -205,21 +208,38 @@ const StatisticalAnalysis = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const { data, error } = await supabase
-          .from('experiment_responses')
-          .select('*');
+        if (isGuestMode) {
+          // Build synthetic experiment_responses-style data for all completed guest participants
+          const base = GUEST_PARTICIPANTS.filter((p) => p.status === 'Completed');
+          let guestResponses = base.map((p) =>
+            buildGuestExperimentResponse(p, p.response_id || p.id)
+          ) as ExperimentResponse[];
 
-        if (error) throw error;
-        
-        // Apply source filter
-        let filteredData = data || [];
-        if (sourceFilter === 'participant') {
-          filteredData = filteredData.filter(r => !isResearcherId(r.prolific_id));
-        } else if (sourceFilter === 'researcher') {
-          filteredData = filteredData.filter(r => isResearcherId(r.prolific_id));
+          // Apply source filter (guest Prolific IDs are 24 chars -> treated as participants)
+          if (sourceFilter === 'participant') {
+            guestResponses = guestResponses.filter((r) => !isResearcherId(r.prolific_id));
+          } else if (sourceFilter === 'researcher') {
+            guestResponses = guestResponses.filter((r) => isResearcherId(r.prolific_id));
+          }
+
+          setResponses(guestResponses);
+        } else {
+          const { data, error } = await supabase
+            .from('experiment_responses')
+            .select('*');
+
+          if (error) throw error;
+
+          // Apply source filter
+          let filteredData = data || [];
+          if (sourceFilter === 'participant') {
+            filteredData = filteredData.filter(r => !isResearcherId(r.prolific_id));
+          } else if (sourceFilter === 'researcher') {
+            filteredData = filteredData.filter(r => isResearcherId(r.prolific_id));
+          }
+
+          setResponses(filteredData);
         }
-        
-        setResponses(filteredData);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -228,7 +248,7 @@ const StatisticalAnalysis = () => {
     };
 
     fetchData();
-  }, [sourceFilter]);
+  }, [sourceFilter, isGuestMode]);
 
   const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults, baselineResults, progressionResults } = useMemo(() => {
     const formal = responses.filter(r => r.assistant_type === 'formal');

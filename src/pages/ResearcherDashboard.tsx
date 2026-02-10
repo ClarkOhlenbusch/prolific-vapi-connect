@@ -100,31 +100,29 @@ const ResearcherDashboard = () => {
           
           <div className="flex items-center gap-2">
             {!isGuestMode && (
-              <>
-                <Button 
-                  variant="outline" 
-                  onClick={() => navigate('/researcher/changelog')}
-                >
-                  <History className="h-4 w-4 mr-2" />
-                  Changelog
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => navigate('/researcher/statistics')}
-                >
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Statistical Analysis
-                </Button>
-                {isSuperAdmin && (
-                  <Button 
-                    variant="outline" 
-                    onClick={() => navigate('/researcher/users')}
-                  >
-                    <Settings className="h-4 w-4 mr-2" />
-                    Manage Users
-                  </Button>
-                )}
-              </>
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/researcher/changelog')}
+              >
+                <History className="h-4 w-4 mr-2" />
+                Changelog
+              </Button>
+            )}
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/researcher/statistics')}
+            >
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Statistical Analysis
+            </Button>
+            {!isGuestMode && isSuperAdmin && (
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/researcher/users')}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Manage Users
+              </Button>
             )}
             <Button variant={isGuestMode ? "default" : "ghost"} onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" />

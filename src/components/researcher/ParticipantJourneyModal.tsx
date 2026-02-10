@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
+import { buildGuestJourneyEvents, getGuestParticipantByProlificId } from '@/lib/guest-dummy-data';
 import {
   Dialog,
   DialogContent,
@@ -155,6 +157,7 @@ export const ParticipantJourneyModal = ({
 }: ParticipantJourneyModalProps) => {
   const [events, setEvents] = useState<NavigationEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isGuestMode } = useResearcherAuth();
 
   useEffect(() => {
     if (open && prolificId) {
@@ -165,6 +168,18 @@ export const ParticipantJourneyModal = ({
   const fetchJourneyData = async () => {
     setLoading(true);
     try {
+      if (isGuestMode) {
+        const participant = getGuestParticipantByProlificId(prolificId);
+        if (!participant) {
+          setEvents([]);
+          return;
+        }
+        const demoEvents = buildGuestJourneyEvents(participant) as unknown as NavigationEvent[];
+        // Mirror the real query behavior: exclude replay chunks (demo data doesn't include them anyway)
+        setEvents(demoEvents.filter((e) => e.event_type !== 'session_replay_chunk'));
+        return;
+      }
+
       const { data, error } = await supabase
         .from('navigation_events')
         .select('id, page_name, event_type, time_on_page_seconds, created_at, metadata')

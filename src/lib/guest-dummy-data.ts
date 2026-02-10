@@ -557,3 +557,463 @@ export const getGuestBatchStats = (batchName: string) => {
     avg_formality: avgFormality,
   };
 };
+
+// -----------------------------------------------------------------------------
+// Guest mode: response details + journey/replay scaffolding
+// -----------------------------------------------------------------------------
+
+export interface GuestJourneyEventDetailed {
+  id: string;
+  call_id: string | null;
+  page_name: string;
+  event_type: string;
+  time_on_page_seconds: number | null;
+  created_at: string;
+  metadata: Record<string, unknown> | null;
+}
+
+const hashStringToInt = (value: string): number => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+};
+
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
+const seededFraction = (seed: number, offset: number) => {
+  // Deterministic pseudo-random in [0, 1)
+  const x = Math.sin(seed * 999 + offset * 97) * 10000;
+  return x - Math.floor(x);
+};
+
+export const getGuestParticipantByProlificId = (prolificId: string) => {
+  return GUEST_PARTICIPANTS.find((p) => p.prolific_id === prolificId) || null;
+};
+
+export const getGuestParticipantForResponseRouteId = (routeId: string) => {
+  // In the dashboard, completed rows navigate by response_id, pending rows navigate by participant_calls.id.
+  const byResponseId = GUEST_PARTICIPANTS.find((p) => p.response_id === routeId);
+  if (byResponseId) return byResponseId;
+  const byParticipantId = GUEST_PARTICIPANTS.find((p) => p.id === routeId);
+  return byParticipantId || null;
+};
+
+export const buildGuestDemographics = (participant: GuestParticipant) => {
+  const seed = hashStringToInt(participant.prolific_id);
+  const familiarity = clamp(1 + Math.floor(seededFraction(seed, 1) * 5), 1, 5);
+  const usage = clamp(1 + Math.floor(seededFraction(seed, 2) * 5), 1, 5);
+
+  return {
+    prolific_id: participant.prolific_id,
+    created_at: participant.created_at,
+    age: participant.age || null,
+    gender: participant.gender || null,
+    voice_assistant_familiarity: familiarity,
+    voice_assistant_usage_frequency: usage,
+    // Optional placeholders used in some exports/analysis scripts
+    education: 'Some college',
+    native_language: 'English',
+  };
+};
+
+export const buildGuestExperimentResponse = (participant: GuestParticipant, responseId: string) => {
+  const seed = hashStringToInt(`${participant.prolific_id}-${responseId}`);
+  const condition = participant.assistant_type === 'formal' ? 'formal' : 'informal';
+
+  // Helper generators
+  const likert7 = (base: number, variance: number, offset: number) => {
+    const v = (seededFraction(seed, offset) - 0.5) * variance;
+    return clamp(Math.round(base + v), 1, 7);
+  };
+  const likert5 = (base: number, variance: number, offset: number) => {
+    const v = (seededFraction(seed, offset) - 0.5) * variance;
+    return clamp(Math.round(base + v), 1, 5);
+  };
+
+  // Condition shifts for a plausible demo pattern
+  const formalityBase = condition === 'formal' ? 6 : 3;
+  const trustBase = condition === 'formal' ? 6 : 5;
+  const empathyBase = condition === 'informal' ? 6 : 5;
+
+  // PETS: 10 items, 1-7 each
+  const petsEmpathyItems = Array.from({ length: 6 }, (_, i) => likert7(empathyBase, 2.2, 10 + i));
+  const petsUtilItems = Array.from({ length: 4 }, (_, i) => likert7(trustBase, 2.0, 20 + i));
+  const petsER = petsEmpathyItems.reduce((a, b) => a + b, 0);
+  const petsUT = petsUtilItems.reduce((a, b) => a + b, 0);
+  const petsTotal = petsER + petsUT;
+
+  // TIAS: 12 items, 1-7 each (reverse-scored items exist, but we just provide raw responses)
+  const tiasItems = Array.from({ length: 12 }, (_, i) => likert7(trustBase, 2.4, 40 + i));
+  const tiasTotal = tiasItems.reduce((a, b) => a + b, 0);
+
+  // Godspeed: 4 + 5 + 5 items, 1-5 each
+  const anthroItems = Array.from({ length: 4 }, (_, i) => likert5(3.2, 2.0, 70 + i));
+  const likeItems = Array.from({ length: 5 }, (_, i) => likert5(3.6, 2.0, 80 + i));
+  const intelItems = Array.from({ length: 5 }, (_, i) => likert5(3.8, 2.0, 90 + i));
+  const godspeedAnthroTotal = anthroItems.reduce((a, b) => a + b, 0);
+  const godspeedLikeTotal = likeItems.reduce((a, b) => a + b, 0);
+  const godspeedIntelTotal = intelItems.reduce((a, b) => a + b, 0);
+
+  // TIPI: 10 items, 1-7 each + 5 derived dimensions
+  const tipiItems = Array.from({ length: 10 }, (_, i) => likert7(4, 3.2, 120 + i));
+  // TIPI dimensions are typically average of two items (one reverse scored).
+  // For demo purposes we just compute a bounded average that looks plausible.
+  const tipiDim = (a: number, b: number) => clamp(Math.round((a + (8 - b)) / 2), 1, 7);
+  const tipiExtraversion = tipiDim(tipiItems[0], tipiItems[5]);
+  const tipiAgreeableness = tipiDim(tipiItems[6], tipiItems[1]);
+  const tipiConscientiousness = tipiDim(tipiItems[2], tipiItems[7]);
+  const tipiEmotionalStability = tipiDim(tipiItems[8], tipiItems[3]);
+  const tipiOpenness = tipiDim(tipiItems[4], tipiItems[9]);
+
+  const intention1 = likert7(condition === 'informal' ? 5 : 4, 2.2, 200);
+  const intention2 = likert7(condition === 'informal' ? 5 : 4, 2.2, 201);
+  const formality = likert7(formalityBase, 1.6, 210);
+  const aiFormalityScore = Math.round((condition === 'formal' ? 62 : 42) + (seededFraction(seed, 220) - 0.5) * 14);
+
+  const voiceAssistantFeedback =
+    condition === 'formal'
+      ? 'The assistant felt professional and trustworthy. I appreciated the clear structure, although it was a bit stiff at times.'
+      : 'The assistant felt friendly and supportive. The casual tone made it easier to talk, but it sometimes felt less “serious”.';
+
+  const communicationStyleFeedback =
+    condition === 'formal'
+      ? 'Formal style helped me understand what to do next, but I preferred a bit more warmth in the responses.'
+      : 'Informal style made me comfortable, though I occasionally wanted more concise, structured guidance.';
+
+  const experimentFeedback =
+    'Overall the flow was easy to follow. The voice interaction was interesting; I would suggest adding a short mic check reminder and clearer instructions on what to say if the call is quiet.';
+
+  // Build the record with the keys ResponseDetails expects.
+  const record: Record<string, unknown> = {
+    id: responseId,
+    prolific_id: participant.prolific_id,
+    call_id: participant.call_id,
+    created_at: participant.created_at,
+    assistant_type: condition,
+    batch_label: participant.batch_label || null,
+    call_attempt_number: 1,
+
+    // Totals
+    pets_er: petsER,
+    pets_ut: petsUT,
+    pets_total: petsTotal,
+    tias_total: tiasTotal,
+    godspeed_anthro_total: godspeedAnthroTotal,
+    godspeed_like_total: godspeedLikeTotal,
+    godspeed_intel_total: godspeedIntelTotal,
+    intention_1: intention1,
+    intention_2: intention2,
+    formality,
+    ai_formality_score: aiFormalityScore,
+
+    // Free-text feedback
+    voice_assistant_feedback: voiceAssistantFeedback,
+    communication_style_feedback: communicationStyleFeedback,
+    experiment_feedback: experimentFeedback,
+
+    // TIPI derived
+    tipi_extraversion: tipiExtraversion,
+    tipi_agreeableness: tipiAgreeableness,
+    tipi_conscientiousness: tipiConscientiousness,
+    tipi_emotional_stability: tipiEmotionalStability,
+    tipi_openness: tipiOpenness,
+  };
+
+  // Item-level responses + positions (stable order indices)
+  const putItems = (keys: string[], values: number[], positionOffset: number) => {
+    keys.forEach((key, index) => {
+      record[key] = values[index] ?? null;
+      record[`${key}_position`] = positionOffset + index + 1;
+    });
+  };
+
+  putItems(['e1', 'e2', 'e3', 'e4', 'e5', 'e6'], petsEmpathyItems, 0);
+  putItems(['u1', 'u2', 'u3', 'u4'], petsUtilItems, 20);
+  putItems(
+    Array.from({ length: 12 }, (_, i) => `tias_${i + 1}`),
+    tiasItems,
+    40
+  );
+  putItems(
+    Array.from({ length: 4 }, (_, i) => `godspeed_anthro_${i + 1}`),
+    anthroItems,
+    70
+  );
+  putItems(
+    Array.from({ length: 5 }, (_, i) => `godspeed_like_${i + 1}`),
+    likeItems,
+    80
+  );
+  putItems(
+    Array.from({ length: 5 }, (_, i) => `godspeed_intel_${i + 1}`),
+    intelItems,
+    90
+  );
+  putItems(
+    Array.from({ length: 10 }, (_, i) => `tipi_${i + 1}`),
+    tipiItems,
+    120
+  );
+
+  // Attention checks (placeholders)
+  record.attention_check_1 = true;
+  record.attention_check_2 = true;
+
+  return record;
+};
+
+export const buildGuestJourneyEvents = (participant: GuestParticipant): GuestJourneyEventDetailed[] => {
+  const seed = hashStringToInt(participant.prolific_id);
+  const startMs = Date.parse(participant.created_at);
+  const startTimestamp = Number.isFinite(startMs) ? startMs : Date.now() - 1000 * 60 * 45;
+
+  const pages = [
+    { page: 'consent', base: 45 },
+    { page: 'prolific-id', base: 15 },
+    { page: 'demographics', base: 60 },
+    { page: 'voice-assistant-familiarity', base: 40 },
+    { page: 'practice-conversation', base: 120 },
+    { page: 'voice-conversation', base: 240 },
+    { page: 'formality', base: 25 },
+    { page: 'pets', base: 90 },
+    { page: 'tias', base: 75 },
+    { page: 'godspeed', base: 60 },
+    { page: 'tipi', base: 55 },
+    { page: 'intention', base: 30 },
+    { page: 'feedback', base: 85 },
+    { page: 'debriefing', base: 35 },
+    { page: 'complete', base: 10 },
+  ];
+
+  const events: GuestJourneyEventDetailed[] = [];
+  let cursorMs = startTimestamp;
+
+  const push = (partial: Omit<GuestJourneyEventDetailed, 'id' | 'created_at'> & { createdAtMs?: number }) => {
+    const createdAtMs = partial.createdAtMs ?? cursorMs;
+    events.push({
+      id: `guest-nav-${participant.prolific_id}-${events.length}`,
+      call_id: partial.call_id,
+      page_name: partial.page_name,
+      event_type: partial.event_type,
+      time_on_page_seconds: partial.time_on_page_seconds,
+      created_at: new Date(createdAtMs).toISOString(),
+      metadata: partial.metadata ?? null,
+    });
+  };
+
+  // A couple of diagnostic scenarios for realism
+  const hasMicPrompt = seededFraction(seed, 1) < 0.35;
+  const hasQualityWarning = seededFraction(seed, 2) < 0.22;
+  const feedbackDictationUsed = seededFraction(seed, 3) < 0.55;
+
+  pages.forEach((p, idx) => {
+    const variance = (seededFraction(seed, 10 + idx) - 0.5) * p.base * 0.35;
+    const seconds = Math.max(5, Math.round(p.base + variance));
+
+    push({
+      call_id: participant.call_id,
+      page_name: p.page,
+      event_type: 'page_view',
+      time_on_page_seconds: seconds,
+      metadata: null,
+      createdAtMs: cursorMs,
+    });
+
+    // Add mic/call diagnostics in practice & main pages
+    if (p.page === 'practice-conversation' || p.page === 'voice-conversation') {
+      const context = p.page === 'practice-conversation' ? 'practice' : 'main';
+      push({
+        call_id: participant.call_id,
+        page_name: p.page,
+        event_type: 'mic_permission',
+        time_on_page_seconds: null,
+        metadata: { state: hasMicPrompt && context === 'practice' ? 'prompt' : 'granted' },
+        createdAtMs: cursorMs + 1000,
+      });
+      push({
+        call_id: participant.call_id,
+        page_name: p.page,
+        event_type: 'mic_audio_check',
+        time_on_page_seconds: null,
+        metadata: { detected: 'detected' },
+        createdAtMs: cursorMs + 4000,
+      });
+      push({
+        call_id: participant.call_id,
+        page_name: p.page,
+        event_type: 'call_connected',
+        time_on_page_seconds: null,
+        metadata: { provider: 'demo' },
+        createdAtMs: cursorMs + 6000,
+      });
+      if (hasQualityWarning && context === 'main') {
+        push({
+          call_id: participant.call_id,
+          page_name: p.page,
+          event_type: 'call_quality_warning',
+          time_on_page_seconds: null,
+          metadata: { reason: 'background_noise' },
+          createdAtMs: cursorMs + 25000,
+        });
+      }
+      push({
+        call_id: participant.call_id,
+        page_name: p.page,
+        event_type: 'call_end',
+        time_on_page_seconds: null,
+        metadata: { endedReason: 'completed' },
+        createdAtMs: cursorMs + (seconds * 1000) - 2000,
+      });
+    }
+
+    // Add feedback dictation events for markers
+    if (p.page === 'feedback') {
+      push({
+        call_id: participant.call_id,
+        page_name: 'feedback',
+        event_type: 'mic_permission',
+        time_on_page_seconds: null,
+        metadata: { context: 'dictation', state: 'granted' },
+        createdAtMs: cursorMs + 1200,
+      });
+
+      if (feedbackDictationUsed) {
+        const fields = ['experiment_feedback', 'voice_assistant_feedback', 'communication_style_feedback'];
+        const field = fields[seed % fields.length];
+        push({
+          call_id: participant.call_id,
+          page_name: 'feedback',
+          event_type: 'feedback_input_mode',
+          time_on_page_seconds: null,
+          metadata: { mode: 'dictated', field },
+          createdAtMs: cursorMs + 2500,
+        });
+        push({
+          call_id: participant.call_id,
+          page_name: 'feedback',
+          event_type: 'dictation_started',
+          time_on_page_seconds: null,
+          metadata: { context: 'dictation', field },
+          createdAtMs: cursorMs + 3500,
+        });
+        push({
+          call_id: participant.call_id,
+          page_name: 'feedback',
+          event_type: 'dictation_transcript_appended',
+          time_on_page_seconds: null,
+          metadata: { context: 'dictation', field, text: '...demo transcript segment...' },
+          createdAtMs: cursorMs + 8000,
+        });
+        push({
+          call_id: participant.call_id,
+          page_name: 'feedback',
+          event_type: 'dictation_stopped',
+          time_on_page_seconds: null,
+          metadata: { context: 'dictation', field },
+          createdAtMs: cursorMs + 14000,
+        });
+        push({
+          call_id: participant.call_id,
+          page_name: 'feedback',
+          event_type: 'dictation_recording_uploaded',
+          time_on_page_seconds: null,
+          metadata: { context: 'dictation', field, storagePath: 'demo/dictation.webm', attemptCount: 1, durationMs: 12500 },
+          createdAtMs: cursorMs + 16000,
+        });
+      } else {
+        push({
+          call_id: participant.call_id,
+          page_name: 'feedback',
+          event_type: 'feedback_input_mode',
+          time_on_page_seconds: null,
+          metadata: { mode: 'typed', field: 'experiment_feedback' },
+          createdAtMs: cursorMs + 2600,
+        });
+      }
+    }
+
+    cursorMs += seconds * 1000;
+  });
+
+  return events;
+};
+
+export const buildGuestReplayEvents = (startTimestampMs: number) => {
+  // Minimal rrweb replay: one FullSnapshot + a couple mouse moves to make the timeline feel alive.
+  // NOTE: These events are intentionally simple; they provide a realistic UI demo without large payloads.
+  const start = Number.isFinite(startTimestampMs) ? startTimestampMs : Date.now();
+  const end = start + 6 * 60 * 1000;
+
+  const fullSnapshot = {
+    type: 2, // EventType.FullSnapshot
+    timestamp: start,
+    data: {
+      node: {
+        type: 0, // Document
+        childNodes: [
+          { type: 1, name: 'html', publicId: '', systemId: '', id: 1 },
+          {
+            type: 2,
+            tagName: 'html',
+            attributes: {},
+            childNodes: [
+              {
+                type: 2,
+                tagName: 'head',
+                attributes: {},
+                childNodes: [
+                  { type: 2, tagName: 'title', attributes: {}, childNodes: [{ type: 3, textContent: 'Demo Replay', id: 6 }], id: 5 },
+                ],
+                id: 4,
+              },
+              {
+                type: 2,
+                tagName: 'body',
+                attributes: { style: 'margin:0;background:#0b0f19;color:#e5e7eb;font-family:ui-sans-serif,system-ui;padding:24px;' },
+                childNodes: [
+                  {
+                    type: 2,
+                    tagName: 'div',
+                    attributes: { style: 'max-width:720px;margin:0 auto;' },
+                    childNodes: [
+                      { type: 2, tagName: 'h1', attributes: { style: 'font-size:18px;margin:0 0 10px;' }, childNodes: [{ type: 3, textContent: 'Demo session replay', id: 12 }], id: 11 },
+                      { type: 2, tagName: 'p', attributes: { style: 'margin:0 0 10px;color:#93c5fd;' }, childNodes: [{ type: 3, textContent: 'This is synthetic replay data shown in Guest Mode.', id: 14 }], id: 13 },
+                      { type: 2, tagName: 'p', attributes: { style: 'margin:0;color:#9ca3af;font-size:12px;' }, childNodes: [{ type: 3, textContent: 'Use the timeline markers to jump to mic/call events.', id: 16 }], id: 15 },
+                    ],
+                    id: 10,
+                  },
+                ],
+                id: 8,
+              },
+            ],
+            id: 2,
+          },
+        ],
+        id: 0,
+      },
+      initialOffset: { left: 0, top: 0 },
+    },
+  };
+
+  const mouseMoveMid = {
+    type: 3, // EventType.IncrementalSnapshot
+    timestamp: start + 2 * 60 * 1000,
+    data: {
+      source: 1, // IncrementalSource.MouseMove
+      positions: [{ x: 280, y: 190, id: 1, timeOffset: 0 }],
+    },
+  };
+
+  const mouseMoveEnd = {
+    type: 3,
+    timestamp: end,
+    data: {
+      source: 1,
+      positions: [{ x: 520, y: 260, id: 2, timeOffset: 0 }],
+    },
+  };
+
+  return [fullSnapshot, mouseMoveMid, mouseMoveEnd];
+};

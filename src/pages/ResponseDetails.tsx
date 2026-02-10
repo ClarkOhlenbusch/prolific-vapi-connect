@@ -39,6 +39,14 @@ import { ParticipantJourneyModal } from '@/components/researcher/ParticipantJour
 import { EventType, Replayer, ReplayerEvents } from 'rrweb';
 import type { eventWithTime } from '@rrweb/types';
 import 'rrweb/dist/rrweb.min.css';
+import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
+import {
+  buildGuestDemographics,
+  buildGuestExperimentResponse,
+  buildGuestJourneyEvents,
+  buildGuestReplayEvents,
+  getGuestParticipantForResponseRouteId,
+} from '@/lib/guest-dummy-data';
 
 type Demographics = Tables<'demographics'>;
 type NavigationEvent = Tables<'navigation_events'>;
@@ -951,6 +959,7 @@ const ResponseDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isGuestMode } = useResearcherAuth();
   const [data, setData] = useState<ExperimentResponseWithDemographics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1044,6 +1053,169 @@ const ResponseDetails = () => {
       setPendingMarkerEvents([]);
       try {
         setIsPendingRecord(false);
+
+        if (isGuestMode) {
+          const guestParticipant = getGuestParticipantForResponseRouteId(id);
+          if (!guestParticipant) {
+            setError('Demo response not found');
+            setData(null);
+            return;
+          }
+
+          const response = buildGuestExperimentResponse(guestParticipant, id) as unknown as ExperimentResponseWithDemographics;
+          const demographics = buildGuestDemographics(guestParticipant) as unknown as Demographics;
+
+          // For demo mode, render a lightweight synthetic session replay and journey events.
+          const navigationEvents = buildGuestJourneyEvents(guestParticipant) as unknown as NavigationEvent[];
+          const replayStartMs = Date.parse(String(response.created_at || guestParticipant.created_at || new Date().toISOString()));
+          setReplayEvents(buildGuestReplayEvents(replayStartMs) as unknown as ReplayEvent[]);
+
+          setIsPendingRecord(guestParticipant.status !== 'Completed');
+          setFormalityCalcId(null);
+          setData({ ...response, demographics });
+
+          // Reuse the existing diagnostics + marker pipeline with the synthetic navigation events.
+          if (navigationEvents) {
+            const scopedNavigationEvents = navigationEvents.filter((event: NavigationEvent) => {
+              if (!response.call_id) return true;
+              return !event.call_id || event.call_id === response.call_id;
+            });
+            const diagnostics = {
+              practice: { micPermission: null, micAudio: null },
+              main: { micPermission: null, micAudio: null },
+              feedback: { micPermission: null, micAudio: null },
+            };
+            const nextFeedbackInputSources = createEmptyFeedbackInputSourceState();
+            const nextDictationDiagnosticsByField = createEmptyDictationDiagnosticsByField();
+            const nextDictationTranscriptSegmentsByField = createEmptyDictationTranscriptSegmentsByField();
+
+            scopedNavigationEvents.forEach((event: NavigationEvent) => {
+              const pageKey = event.page_name === 'practice-conversation'
+                ? 'practice'
+                : event.page_name === 'voice-conversation'
+                  ? 'main'
+                  : null;
+              const metadata = (event.metadata || {}) as Record<string, unknown>;
+              const feedbackField = isFeedbackField(metadata.field) ? metadata.field : null;
+
+              const isFeedbackPageEvent = event.page_name === 'feedback';
+              const isFeedbackDictationEvent = isFeedbackPageEvent
+                && (
+                  metadata.context === 'dictation'
+                  || Boolean(feedbackField)
+                );
+
+              if (feedbackField) {
+                const fieldDiagnostics = nextDictationDiagnosticsByField[feedbackField];
+                if (event.event_type === 'dictation_started') {
+                  fieldDiagnostics.started += 1;
+                } else if (event.event_type === 'dictation_stopped') {
+                  fieldDiagnostics.stopped += 1;
+                } else if (event.event_type === 'dictation_recording_uploaded') {
+                  fieldDiagnostics.uploadSaved += 1;
+                } else if (event.event_type === 'dictation_recording_upload_error') {
+                  fieldDiagnostics.uploadFailed += 1;
+                  fieldDiagnostics.issues.push({
+                    createdAt: event.created_at,
+                    eventType: event.event_type,
+                    message: typeof metadata.message === 'string' && metadata.message
+                      ? metadata.message
+                      : 'Upload failed',
+                  });
+                } else if (event.event_type === 'dictation_start_blocked') {
+                  fieldDiagnostics.blocked += 1;
+                  fieldDiagnostics.issues.push({
+                    createdAt: event.created_at,
+                    eventType: event.event_type,
+                    message: typeof metadata.reasonCode === 'string' && metadata.reasonCode
+                      ? metadata.reasonCode
+                      : 'Microphone access blocked',
+                  });
+                } else if (event.event_type === 'dictation_error' || event.event_type === 'dictation_recording_error') {
+                  if (event.event_type === 'dictation_recording_error') {
+                    fieldDiagnostics.runtimeErrors += 1;
+                  }
+                  const message = [
+                    typeof metadata.errorCode === 'string' ? metadata.errorCode : null,
+                    typeof metadata.message === 'string' ? metadata.message : null,
+                  ].filter(Boolean).join(': ');
+                  fieldDiagnostics.issues.push({
+                    createdAt: event.created_at,
+                    eventType: event.event_type,
+                    message: message || 'Dictation error',
+                  });
+                }
+
+                if (event.event_type === 'dictation_transcript_appended') {
+                  const appendedText = typeof metadata.text === 'string' ? metadata.text : '';
+                  if (appendedText) {
+                    nextDictationTranscriptSegmentsByField[feedbackField].push({
+                      createdAt: event.created_at,
+                      text: appendedText,
+                    });
+                  }
+                }
+              }
+
+              if (pageKey && event.event_type === 'mic_permission') {
+                const permissionValue = formatMicPermission(metadata.state as string | null);
+                if (shouldReplaceDiagnosticValue(diagnostics[pageKey].micPermission, permissionValue)) {
+                  diagnostics[pageKey].micPermission = permissionValue;
+                }
+              }
+              if (pageKey && event.event_type === 'call_preflight_result') {
+                const permissionValue = formatMicPermission(metadata.state as string | null);
+                if (shouldReplaceDiagnosticValue(diagnostics[pageKey].micPermission, permissionValue)) {
+                  diagnostics[pageKey].micPermission = permissionValue;
+                }
+              }
+              if (pageKey && event.event_type === 'mic_audio_check') {
+                const micAudioValue = formatMicAudio(metadata.detected);
+                if (shouldReplaceDiagnosticValue(diagnostics[pageKey].micAudio, micAudioValue)) {
+                  diagnostics[pageKey].micAudio = micAudioValue;
+                }
+              }
+              if (isFeedbackPageEvent && event.event_type === 'mic_permission') {
+                const stateOrPermission = (metadata.state ?? metadata.permissionState) as string | null;
+                const permissionValue = formatMicPermission(stateOrPermission);
+                if (shouldReplaceDiagnosticValue(diagnostics.feedback.micPermission, permissionValue)) {
+                  diagnostics.feedback.micPermission = permissionValue;
+                }
+              }
+              if (isFeedbackPageEvent && event.event_type === 'mic_audio_check') {
+                const micAudioValue = formatMicAudio(metadata.detected);
+                if (shouldReplaceDiagnosticValue(diagnostics.feedback.micAudio, micAudioValue)) {
+                  diagnostics.feedback.micAudio = micAudioValue;
+                }
+              }
+              if (isFeedbackDictationEvent && event.event_type === 'dictation_start_blocked') {
+                const blockedPermissionValue = formatMicPermission(metadata.permissionState as string | null);
+                if (shouldReplaceDiagnosticValue(diagnostics.feedback.micPermission, blockedPermissionValue)) {
+                  diagnostics.feedback.micPermission = blockedPermissionValue;
+                }
+              }
+
+              if (event.event_type === 'feedback_input_mode') {
+                const mode = metadata.mode;
+                const field = metadata.field;
+                if (isFeedbackField(field) && (mode === 'typed' || mode === 'dictated')) {
+                  nextFeedbackInputSources[field][mode] = true;
+                }
+              }
+            });
+
+            setPendingMarkerEvents(scopedNavigationEvents);
+            setJourneyDiagnostics(diagnostics);
+            setFeedbackInputSources(nextFeedbackInputSources);
+            setDictationDiagnosticsByField(nextDictationDiagnosticsByField);
+            setDictationTranscriptSegmentsByField(nextDictationTranscriptSegmentsByField);
+            setFeedbackDraftSavedAt(null);
+          }
+
+          // No dictation audio blobs in guest mode (keep UI lightweight).
+          setDictationRecordingsByField(createEmptyDictationRecordingsByField());
+          return;
+        }
 
         // Try normal completed response lookup first
         const { data: completedResponse, error: completedResponseError } = await supabase
@@ -1736,7 +1908,7 @@ const ResponseDetails = () => {
     };
 
     fetchData();
-  }, [id, resetMergedFieldState]);
+  }, [id, resetMergedFieldState, isGuestMode]);
 
   // Build replay markers once both replayEvents and navigation events are ready.
   // Markers are placed on the replay timeline relative to the first rrweb event.

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ const ResearcherLogin = () => {
   const [activeTab, setActiveTab] = useState('login');
   const { login, isAuthenticated, isLoading: authLoading, enterGuestMode } = useResearcherAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const resolveLoginEmail = async (identifier: string): Promise<{ email: string | null; error: string | null }> => {
     const trimmedIdentifier = identifier.trim();
@@ -65,6 +66,16 @@ const ResearcherLogin = () => {
       navigate('/researcher/dashboard', { replace: true });
     }
   }, [isAuthenticated, authLoading, navigate]);
+
+  // Auto-enter guest mode when ?guest=1 or ?mode=guest is present in the URL
+  useEffect(() => {
+    const guestFlag = searchParams.get('guest');
+    const mode = searchParams.get('mode');
+    if (!authLoading && !isAuthenticated && (guestFlag === '1' || guestFlag === 'true' || mode === 'guest')) {
+      enterGuestMode();
+      navigate('/researcher/dashboard', { replace: true });
+    }
+  }, [authLoading, isAuthenticated, searchParams, enterGuestMode, navigate]);
 
   // Show loading while checking auth state
   if (authLoading) {
