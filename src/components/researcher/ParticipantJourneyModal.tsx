@@ -129,7 +129,13 @@ const formatRestartIssueType = (value?: string | null): string | null => {
 
 const isCallIssueEvent = (event: NavigationEvent): boolean => {
   if (event.event_type === "call_start_failed" || event.event_type === "call_error") return true;
+  // call_end: only treat as issue when explicitly an error; normal disconnect has reason "call-end" and no isError
   if (event.event_type === "call_end") {
+    if (event.metadata?.reason === "call-end") return false; // normal end from frontend
+    return Boolean(event.metadata?.isError);
+  }
+  // call_end_report: authoritative end reason from VAPI; isError is set when reasonCode !== "none"
+  if (event.event_type === "call_end_report") {
     return Boolean(event.metadata?.isError);
   }
   return false;
@@ -144,6 +150,9 @@ const getCallIssueMessage = (event: NavigationEvent): string | null => {
   }
   if (event.event_type === "call_end" && event.metadata?.isError) {
     return event.metadata?.endedReason || "Call ended with error";
+  }
+  if (event.event_type === "call_end_report" && event.metadata?.isError) {
+    return event.metadata?.endedReason || event.metadata?.reasonCode || "Call ended with error";
   }
   return null;
 };
@@ -243,6 +252,10 @@ export const ParticipantJourneyModal = ({
         if (event.metadata?.endedReason || !pageDiag.lastCallEndReason) {
           pageDiag.lastCallEndReason = reason;
         }
+      }
+      if (event.event_type === "call_end_report") {
+        const reason = event.metadata?.endedReason || event.metadata?.reasonCode || null;
+        if (reason) pageDiag.lastCallEndReason = reason;
       }
 
       if (event.event_type === "restart_feedback_submitted") {
