@@ -1112,7 +1112,6 @@ const ResponseDetails = () => {
         const [
           { data: formalityCalc },
           { data: navigationEvents },
-          { data: replayChunks, error: replayChunksError },
         ] = await Promise.all([
           supabase
             .from('formality_calculations')
@@ -1144,7 +1143,6 @@ const ResponseDetails = () => {
               'feedback_draft_autosave',
             ])
             .order('created_at', { ascending: true }),
-          replayQuery,
         ]);
 
         let replayStartTimestamp: number | null = null;
@@ -1152,19 +1150,10 @@ const ResponseDetails = () => {
         const dictationUploadSnapshots = createEmptyDictationUploadSnapshotsByField();
         const latestFeedbackDraft: Partial<Record<FeedbackFieldKey, string>> = {};
         let latestFeedbackDraftSavedAt: string | null = null;
-        if (replayChunksError) {
-          const timeoutCode = (replayChunksError as { code?: string }).code;
-          if (timeoutCode === '57014') {
-            console.warn('[SessionReplay] Query timed out, skipping replay for this response.', {
-              prolificId: response.prolific_id,
-              callId: response.call_id,
-            });
-          } else {
-            console.warn('[SessionReplay] Error loading session replay chunks', replayChunksError);
-          }
-        } else if (replayChunks) {
+        const processReplayChunks = (chunks: { metadata: unknown; created_at: string }[] | null) => {
+          if (!chunks || chunks.length === 0) return;
           const flattenedEvents: ReplayEvent[] = [];
-          replayChunks.forEach((chunk: { metadata: unknown; created_at: string }) => {
+          chunks.forEach((chunk) => {
             const metadata = (chunk.metadata || {}) as Record<string, unknown>;
             const chunkEvents = Array.isArray(metadata.rrwebEvents)
               ? metadata.rrwebEvents
@@ -1179,12 +1168,38 @@ const ResponseDetails = () => {
               flattenedEvents.push(replayEvent as unknown as ReplayEvent);
             });
           });
+          if (!flattenedEvents.length) return;
           flattenedEvents.sort((a, b) => a.timestamp - b.timestamp);
           replayStartTimestamp = flattenedEvents[0]?.timestamp || null;
           const replayEndTimestamp = flattenedEvents[flattenedEvents.length - 1]?.timestamp || replayStartTimestamp || 0;
           replayDurationMs = Math.max(0, replayEndTimestamp - (replayStartTimestamp || replayEndTimestamp));
           setReplayEvents(flattenedEvents);
-        }
+        };
+
+        // Load session replay in the background so the rest of the page
+        // does not wait on potentially heavy queries.
+        void (async () => {
+          try {
+            const { data: replayChunks, error: replayChunksError } = await replayQuery;
+            if (replayChunksError) {
+              const timeoutCode = (replayChunksError as { code?: string }).code;
+              if (timeoutCode === '57014') {
+                console.warn('[SessionReplay] Query timed out, skipping replay for this response.', {
+                  prolificId: response.prolific_id,
+                  callId: response.call_id,
+                });
+              } else {
+                console.warn('[SessionReplay] Error loading session replay chunks', replayChunksError);
+              }
+              return;
+            }
+            if (Array.isArray(replayChunks) && replayChunks.length > 0) {
+              processReplayChunks(replayChunks);
+            }
+          } catch (err) {
+            console.warn('[SessionReplay] Unexpected error loading replay chunks', err);
+          }
+        })();
 
         if (navigationEvents) {
           const scopedNavigationEvents = navigationEvents.filter((event: NavigationEvent) => {

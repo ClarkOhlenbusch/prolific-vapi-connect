@@ -167,8 +167,10 @@ export const ParticipantJourneyModal = ({
     try {
       const { data, error } = await supabase
         .from('navigation_events')
-        .select('*')
+        .select('id, page_name, event_type, time_on_page_seconds, created_at, metadata')
         .eq('prolific_id', prolificId)
+        // Exclude heavy session replay chunks to avoid timeouts and large payloads
+        .neq('event_type', 'session_replay_chunk')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
