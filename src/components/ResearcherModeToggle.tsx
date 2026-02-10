@@ -56,6 +56,16 @@ export const ResearcherModeToggle = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't capture keys when user is typing in an input, textarea, or contenteditable
+      // (e.g. batch notes, feedback fields) so Space and R work normally there
+      const target = e.target as Node | null;
+      const isEditable =
+        target &&
+        ((target instanceof HTMLInputElement) ||
+          (target instanceof HTMLTextAreaElement) ||
+          (target instanceof HTMLElement && target.isContentEditable));
+      if (isEditable) return;
+
       // Disable on no-consent page to allow normal typing
       if (location.pathname === '/no-consent') return;
       // Disable and hide on researcher pages unless mode is already active
@@ -63,12 +73,12 @@ export const ResearcherModeToggle = () => {
         setShowControls(false);
         return;
       }
-      
+
       if (e.code === 'Space') {
         e.preventDefault();
         setSpacePressed(true);
       }
-      
+
       // Check if both spacebar and 'r' are pressed
       if (spacePressed && e.key.toLowerCase() === 'r') {
         setShowControls((prev) => {
@@ -82,6 +92,13 @@ export const ResearcherModeToggle = () => {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      const target = e.target as Node | null;
+      const isEditable =
+        target &&
+        ((target instanceof HTMLInputElement) ||
+          (target instanceof HTMLTextAreaElement) ||
+          (target instanceof HTMLElement && target.isContentEditable));
+      if (isEditable) return;
       if (e.code === 'Space') {
         setSpacePressed(false);
       }
