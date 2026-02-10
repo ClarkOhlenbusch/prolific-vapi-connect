@@ -201,16 +201,16 @@ interface ExperimentResponseWithDemographics extends Tables<'experiment_response
 
 // Question definitions
 const PETS_ITEMS = [
-  { id: "E1", text: "Cali considered my mental state.", key: "e1", subscale: "Empathy" },
-  { id: "E2", text: "Cali seemed emotionally intelligent.", key: "e2", subscale: "Empathy" },
-  { id: "E3", text: "Cali expressed emotions.", key: "e3", subscale: "Empathy" },
-  { id: "E4", text: "Cali sympathized with me.", key: "e4", subscale: "Empathy" },
-  { id: "E5", text: "Cali showed interest in me.", key: "e5", subscale: "Empathy" },
-  { id: "E6", text: "Cali supported me in coping with an emotional situation.", key: "e6", subscale: "Empathy" },
-  { id: "U1", text: "Cali understood my goals.", key: "u1", subscale: "Utilitarian" },
-  { id: "U2", text: "Cali understood my needs.", key: "u2", subscale: "Utilitarian" },
-  { id: "U3", text: "I trusted Cali.", key: "u3", subscale: "Utilitarian" },
-  { id: "U4", text: "Cali understood my intentions.", key: "u4", subscale: "Utilitarian" },
+  { id: "E1", text: "Cali considered my mental state.", key: "e1", subscale: "Emotional Responsiveness" },
+  { id: "E2", text: "Cali seemed emotionally intelligent.", key: "e2", subscale: "Emotional Responsiveness" },
+  { id: "E3", text: "Cali expressed emotions.", key: "e3", subscale: "Emotional Responsiveness" },
+  { id: "E4", text: "Cali sympathized with me.", key: "e4", subscale: "Emotional Responsiveness" },
+  { id: "E5", text: "Cali showed interest in me.", key: "e5", subscale: "Emotional Responsiveness" },
+  { id: "E6", text: "Cali supported me in coping with an emotional situation.", key: "e6", subscale: "Emotional Responsiveness" },
+  { id: "U1", text: "Cali understood my goals.", key: "u1", subscale: "Understanding and Trust" },
+  { id: "U2", text: "Cali understood my needs.", key: "u2", subscale: "Understanding and Trust" },
+  { id: "U3", text: "I trusted Cali.", key: "u3", subscale: "Understanding and Trust" },
+  { id: "U4", text: "Cali understood my intentions.", key: "u4", subscale: "Understanding and Trust" },
 ];
 
 const TIAS_ITEMS = [
@@ -2743,11 +2743,11 @@ const ResponseDetails = () => {
                   <span className="ml-1 font-bold">{formatNumber(data.pets_total)}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">ER (Empathy):</span>
+                  <span className="text-muted-foreground">ER (Emotional Responsiveness):</span>
                   <span className="ml-1 font-semibold">{formatNumber(data.pets_er)}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">UT (Utilitarian):</span>
+                  <span className="text-muted-foreground">UT (Understanding and Trust):</span>
                   <span className="ml-1 font-semibold">{formatNumber(data.pets_ut)}</span>
                 </div>
               </div>
