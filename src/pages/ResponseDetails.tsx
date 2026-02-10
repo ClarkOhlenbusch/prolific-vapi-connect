@@ -1178,26 +1178,152 @@ const ResponseDetails = () => {
 
         // Load session replay in the background so the rest of the page
         // does not wait on potentially heavy queries.
+        const prolificIdForReplay = response.prolific_id;
+        const callIdForReplay = response.call_id;
         void (async () => {
-          try {
-            const { data: replayChunks, error: replayChunksError } = await replayQuery;
-            if (replayChunksError) {
-              const timeoutCode = (replayChunksError as { code?: string }).code;
-              if (timeoutCode === '57014') {
-                console.warn('[SessionReplay] Query timed out, skipping replay for this response.', {
-                  prolificId: response.prolific_id,
-                  callId: response.call_id,
-                });
-              } else {
-                console.warn('[SessionReplay] Error loading session replay chunks', replayChunksError);
+          const replayOverallStart = performance.now();
+          const BATCH_SIZE = 25;
+
+          const log = (phase: string, extra: Record<string, unknown> = {}) => {
+            console.info(`[SessionReplay] ${phase}`, {
+              prolificId: prolificIdForReplay,
+              callId: callIdForReplay,
+              elapsedMs: Math.round(performance.now() - replayOverallStart),
+              ...extra,
+            });
+          };
+
+          // Helper: fetch replay chunks in paginated batches to avoid statement
+          // timeouts on rows with large metadata payloads.
+          const fetchChunksPaginated = async (
+            useCallId: boolean,
+            totalCount: number,
+          ): Promise<{ metadata: unknown; created_at: string }[]> => {
+            const allChunks: { metadata: unknown; created_at: string }[] = [];
+            const totalBatches = Math.ceil(totalCount / BATCH_SIZE);
+
+            for (let batch = 0; batch < totalBatches; batch++) {
+              const from = batch * BATCH_SIZE;
+              const to = from + BATCH_SIZE - 1;
+              const batchStart = performance.now();
+
+              let query = supabase
+                .from('navigation_events')
+                .select('metadata, created_at')
+                .eq('prolific_id', prolificIdForReplay)
+                .eq('event_type', 'session_replay_chunk')
+                .order('created_at', { ascending: true })
+                .range(from, to);
+
+              if (useCallId && callIdForReplay) {
+                query = query.eq('call_id', callIdForReplay);
               }
+
+              const { data, error } = await query;
+              if (error) {
+                log(`Batch ${batch + 1}/${totalBatches} failed`, {
+                  from, to,
+                  errorCode: (error as { code?: string }).code,
+                  errorMessage: error.message,
+                  batchMs: Math.round(performance.now() - batchStart),
+                });
+                throw error;
+              }
+
+              const fetched = data?.length ?? 0;
+              allChunks.push(...(data || []));
+              log(`Batch ${batch + 1}/${totalBatches}`, {
+                from, to,
+                fetched,
+                totalSoFar: allChunks.length,
+                batchMs: Math.round(performance.now() - batchStart),
+              });
+
+              if (fetched < BATCH_SIZE) break; // last page
+            }
+            return allChunks;
+          };
+
+          try {
+            // Step 1: Count chunks with call_id filter (fast, no metadata)
+            const countStart = performance.now();
+            let useCallId = Boolean(callIdForReplay);
+            let countQuery = supabase
+              .from('navigation_events')
+              .select('id', { count: 'exact', head: true })
+              .eq('prolific_id', prolificIdForReplay)
+              .eq('event_type', 'session_replay_chunk');
+            if (useCallId) {
+              countQuery = countQuery.eq('call_id', callIdForReplay);
+            }
+
+            const { count: callScopedCount, error: countError } = await countQuery;
+            log('Step 1: count (call-scoped)', {
+              count: callScopedCount ?? 0,
+              errorCode: countError ? (countError as { code?: string }).code : null,
+              durationMs: Math.round(performance.now() - countStart),
+            });
+
+            if (countError) {
+              log('Count query failed, skipping replay.');
               return;
             }
-            if (Array.isArray(replayChunks) && replayChunks.length > 0) {
-              processReplayChunks(replayChunks);
+
+            // Step 2: If call-scoped found nothing, try without call_id (legacy data)
+            let totalChunks = callScopedCount ?? 0;
+            if (totalChunks === 0 && callIdForReplay) {
+              const fallbackCountStart = performance.now();
+              const { count: fallbackCount, error: fallbackCountError } = await supabase
+                .from('navigation_events')
+                .select('id', { count: 'exact', head: true })
+                .eq('prolific_id', prolificIdForReplay)
+                .eq('event_type', 'session_replay_chunk');
+
+              log('Step 2: count (prolific-only fallback)', {
+                count: fallbackCount ?? 0,
+                errorCode: fallbackCountError ? (fallbackCountError as { code?: string }).code : null,
+                durationMs: Math.round(performance.now() - fallbackCountStart),
+              });
+
+              if (fallbackCountError || !fallbackCount) {
+                if (fallbackCount === 0 || fallbackCount === null) {
+                  log('No replay chunks exist for this participant.');
+                }
+                return;
+              }
+              totalChunks = fallbackCount;
+              useCallId = false;
             }
+
+            if (totalChunks === 0) {
+              log('No replay chunks found.');
+              return;
+            }
+
+            const MAX_REPLAY_CHUNKS = 2000;
+            if (totalChunks > MAX_REPLAY_CHUNKS) {
+              log(`Too many replay chunks (${totalChunks}), skipping.`, {
+                totalChunks,
+                maxAllowed: MAX_REPLAY_CHUNKS,
+              });
+              return;
+            }
+
+            // Step 3: Fetch in batches
+            log(`Step 3: Fetching ${totalChunks} chunks in batches of ${BATCH_SIZE}`, {
+              useCallId,
+              totalChunks,
+            });
+
+            const chunks = await fetchChunksPaginated(useCallId, totalChunks);
+            processReplayChunks(chunks);
+            log('Done', {
+              totalChunks: chunks.length,
+            });
           } catch (err) {
-            console.warn('[SessionReplay] Unexpected error loading replay chunks', err);
+            log('Failed', {
+              error: err instanceof Error ? err.message : String(err),
+            });
           }
         })();
 

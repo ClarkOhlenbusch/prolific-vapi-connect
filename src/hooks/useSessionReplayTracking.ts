@@ -7,15 +7,15 @@ const SESSION_REPLAY_VERSION = 2;
 const SESSION_REPLAY_EVENT_TYPE = "session_replay_chunk";
 const SESSION_REPLAY_CALL_STATE_EVENT = "session-replay-call-state";
 
-const FLUSH_INTERVAL_MS = 8000;
-const FLUSH_EVENT_COUNT = 40;
+const FLUSH_INTERVAL_MS = 10000;
+const FLUSH_EVENT_COUNT = 80;
 const MAX_QUEUE_EVENTS = 1200;
-const MAX_CHUNK_BYTES = 700000;
+const MAX_CHUNK_BYTES = 900000;
 
-const DEFAULT_MOUSE_SAMPLE_MS = 110;
-const DEFAULT_SCROLL_SAMPLE_MS = 260;
-const ACTIVE_CALL_MOUSE_SAMPLE_MS = 280;
-const ACTIVE_CALL_SCROLL_SAMPLE_MS = 900;
+const DEFAULT_MOUSE_SAMPLE_MS = 250;
+const DEFAULT_SCROLL_SAMPLE_MS = 400;
+const ACTIVE_CALL_MOUSE_SAMPLE_MS = 500;
+const ACTIVE_CALL_SCROLL_SAMPLE_MS = 1500;
 
 const EXCLUDED_PATHS = new Set(["/", "/consent"]);
 const EXCLUDED_PREFIXES = ["/researcher", "/no-consent"];
@@ -277,12 +277,12 @@ const initializeReplay = async () => {
     const stop = rrwebRecordFn({
       emit: (event) => queueEvent(event),
       maskAllInputs: false,
-      inlineStylesheet: true,
-      checkoutEveryNms: 30000,
-      checkoutEveryNth: 500,
+      inlineStylesheet: false,
+      checkoutEveryNms: 90000,
+      checkoutEveryNth: 800,
       sampling: {
-        mousemove: 60,
-        scroll: 150,
+        mousemove: 200,
+        scroll: 300,
         input: "last",
       },
       recordCanvas: false,
