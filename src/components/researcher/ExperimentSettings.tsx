@@ -13,6 +13,12 @@ import { toast } from "sonner";
 import { useResearcherAuth } from "@/contexts/ResearcherAuthContext";
 import { RefreshCw, RotateCcw, Users, Filter } from "lucide-react";
 import { BatchManager } from "./BatchManager";
+import type { SourceFilterValue } from "./GlobalSourceFilter";
+
+// Prolific participant IDs are 24 chars; researcher/demo IDs are not
+const isResearcherId = (prolificId: string | null): boolean => {
+  return prolificId != null && prolificId.length !== 24;
+};
 
 const ASSISTANT_IDS = {
   formal: "77569740-f001-4419-92f8-78a6ed2dde70",
@@ -26,7 +32,11 @@ const PRACTICE_ASSISTANT_IDS = {
 
 import { GUEST_EXPERIMENT_SETTINGS } from "@/lib/guest-dummy-data";
 
-export const ExperimentSettings = () => {
+interface ExperimentSettingsProps {
+  sourceFilter?: SourceFilterValue;
+}
+
+export const ExperimentSettings = ({ sourceFilter = "all" }: ExperimentSettingsProps) => {
   const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const [assistantType, setAssistantType] = useState<"formal" | "informal">("informal");
   const [isLoading, setIsLoading] = useState(true);
@@ -77,7 +87,7 @@ export const ExperimentSettings = () => {
     if (!isGuestMode) {
       fetchBatchCounts();
     }
-  }, [selectedBatches, isGuestMode]);
+  }, [selectedBatches, sourceFilter, isGuestMode]);
 
   const fetchSettings = async () => {
     try {
@@ -149,7 +159,7 @@ export const ExperimentSettings = () => {
     try {
       let query = supabase
         .from("experiment_responses")
-        .select("assistant_type");
+        .select("prolific_id, assistant_type, batch_label");
 
       if (selectedBatches.length > 0) {
         query = query.in("batch_label", selectedBatches);
@@ -162,8 +172,15 @@ export const ExperimentSettings = () => {
         return;
       }
 
-      const formal = data?.filter(r => r.assistant_type === "formal").length || 0;
-      const informal = data?.filter(r => r.assistant_type === "informal").length || 0;
+      let rows = data ?? [];
+      if (sourceFilter === "participant") {
+        rows = rows.filter((r) => !isResearcherId(r.prolific_id ?? null));
+      } else if (sourceFilter === "researcher") {
+        rows = rows.filter((r) => isResearcherId(r.prolific_id ?? null));
+      }
+
+      const formal = rows.filter((r) => r.assistant_type === "formal").length;
+      const informal = rows.filter((r) => r.assistant_type === "informal").length;
       setBatchCounts({ formal, informal });
     } catch (error) {
       console.error("Error:", error);
@@ -602,7 +619,7 @@ export const ExperimentSettings = () => {
                 Completed Responses by Batch
               </CardTitle>
               <CardDescription>
-                View actual completed response counts filtered by batch
+                View actual completed response counts filtered by batch. Counts respect the Data Source filter (Participants / Researchers / All) at the top of the page.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

@@ -255,7 +255,7 @@ const ResearcherDashboard = () => {
 
           {isSuperAdmin && (
             <TabsContent value="settings">
-              <ExperimentSettings />
+              <ExperimentSettings sourceFilter={sourceFilter} />
             </TabsContent>
           )}
         </Tabs>
