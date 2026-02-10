@@ -968,6 +968,9 @@ const ResponseDetails = () => {
   const [mergedDictationByField, setMergedDictationByField] = useState<MergedDictationByField>(createEmptyMergedDictationByField());
   const mergedAudioUrlsRef = useRef<Partial<Record<FeedbackFieldKey, string>>>({});
   const [replayEvents, setReplayEvents] = useState<ReplayEvent[]>([]);
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [replayLoadingMore, setReplayLoadingMore] = useState(false);
+  const [replayBatchProgress, setReplayBatchProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [replayMarkers, setReplayMarkers] = useState<ReplayMarker[]>([]);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
@@ -1024,6 +1027,9 @@ const ResponseDetails = () => {
       setResolvedClipDurationsById({});
       resetMergedFieldState();
       setReplayEvents([]);
+      setReplayLoading(false);
+      setReplayLoadingMore(false);
+      setReplayBatchProgress(null);
       setReplayMarkers([]);
       try {
         setIsPendingRecord(false);
@@ -1181,6 +1187,7 @@ const ResponseDetails = () => {
         const prolificIdForReplay = response.prolific_id;
         const callIdForReplay = response.call_id;
         void (async () => {
+          setReplayLoading(true);
           const replayOverallStart = performance.now();
           const BATCH_SIZE = 25;
 
@@ -1193,8 +1200,30 @@ const ResponseDetails = () => {
             });
           };
 
-          // Helper: fetch replay chunks in paginated batches to avoid statement
-          // timeouts on rows with large metadata payloads.
+          // Helper: flatten raw chunks into sorted rrweb events.
+          const flattenChunks = (chunks: { metadata: unknown; created_at: string }[]): ReplayEvent[] => {
+            const events: ReplayEvent[] = [];
+            chunks.forEach((chunk) => {
+              const md = (chunk.metadata || {}) as Record<string, unknown>;
+              const arr = Array.isArray(md.rrwebEvents)
+                ? md.rrwebEvents
+                : Array.isArray(md.events)
+                  ? md.events
+                  : [];
+              arr.forEach((e) => {
+                const re = e as Record<string, unknown>;
+                if (typeof re.type === 'number' && typeof re.timestamp === 'number') {
+                  events.push(re as unknown as ReplayEvent);
+                }
+              });
+            });
+            events.sort((a, b) => a.timestamp - b.timestamp);
+            return events;
+          };
+
+          // Helper: fetch replay chunks in paginated batches, streaming events
+          // to the player after the first batch so the user can start watching
+          // immediately while remaining batches load in the background.
           const fetchChunksPaginated = async (
             useCallId: boolean,
             totalCount: number,
@@ -1232,12 +1261,24 @@ const ResponseDetails = () => {
 
               const fetched = data?.length ?? 0;
               allChunks.push(...(data || []));
+              setReplayBatchProgress({ loaded: allChunks.length, total: totalCount });
               log(`Batch ${batch + 1}/${totalBatches}`, {
                 from, to,
                 fetched,
                 totalSoFar: allChunks.length,
                 batchMs: Math.round(performance.now() - batchStart),
               });
+
+              // After the first batch, show what we have so the user can
+              // start watching while remaining batches load.
+              if (batch === 0 && fetched > 0 && totalBatches > 1) {
+                const partial = flattenChunks(allChunks);
+                if (partial.length > 0) {
+                  setReplayEvents(partial);
+                  setReplayLoading(false);
+                  setReplayLoadingMore(true);
+                }
+              }
 
               if (fetched < BATCH_SIZE) break; // last page
             }
@@ -1316,6 +1357,7 @@ const ResponseDetails = () => {
             });
 
             const chunks = await fetchChunksPaginated(useCallId, totalChunks);
+            // Final update with all chunks (replayer resets once with full data)
             processReplayChunks(chunks);
             log('Done', {
               totalChunks: chunks.length,
@@ -1324,6 +1366,10 @@ const ResponseDetails = () => {
             log('Failed', {
               error: err instanceof Error ? err.message : String(err),
             });
+          } finally {
+            setReplayLoading(false);
+            setReplayLoadingMore(false);
+            setReplayBatchProgress(null);
           }
         })();
 
@@ -2228,13 +2274,44 @@ const ResponseDetails = () => {
               <CardTitle className="flex items-center gap-2">
                 <MousePointer2 className="h-5 w-5 text-sky-500" />
                 Session Replay
+                {(replayLoading || replayLoadingMore) && (
+                  <span className="ml-2 inline-flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                    {replayLoading
+                      ? 'Loading...'
+                      : replayBatchProgress
+                        ? `Loading more data (${replayBatchProgress.loaded}/${replayBatchProgress.total} chunks)...`
+                        : 'Loading more data...'}
+                  </span>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
                 This replay is powered by rrweb event capture and includes DOM changes, cursor movement, clicks, and scrolling as they occurred during the participant session.
               </p>
-              <SessionReplayPanel events={replayEvents} markers={replayMarkers} />
+              {replayLoading && replayEvents.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
+                  <span className="h-8 w-8 animate-spin rounded-full border-4 border-muted-foreground/30 border-t-muted-foreground" />
+                  <p className="text-sm">
+                    {replayBatchProgress
+                      ? `Loading session replay data (${replayBatchProgress.loaded}/${replayBatchProgress.total} chunks)...`
+                      : 'Loading session replay data...'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {replayLoadingMore && (
+                    <div className="mb-3 flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+                      Partial replay loaded — still fetching remaining data
+                      {replayBatchProgress ? ` (${replayBatchProgress.loaded}/${replayBatchProgress.total} chunks)` : ''}...
+                      The full timeline will update automatically.
+                    </div>
+                  )}
+                  <SessionReplayPanel events={replayEvents} markers={replayMarkers} />
+                </>
+              )}
             </CardContent>
           </Card>
         </section>
