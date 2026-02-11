@@ -89,7 +89,7 @@ export type Database = {
         Row: {
           active_batch_label: string | null
           created_at: string
-          created_by: string
+          created_by: string | null
           description: string | null
           flagged: boolean
           id: string
@@ -101,7 +101,7 @@ export type Database = {
         Insert: {
           active_batch_label?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string | null
           description?: string | null
           flagged?: boolean
           id?: string
@@ -121,6 +121,21 @@ export type Database = {
           reviewed?: boolean
           updated_at?: string
           version?: string
+        }
+        Relationships: []
+      }
+      changelog_imported_sources: {
+        Row: {
+          source_key: string
+          imported_at: string
+        }
+        Insert: {
+          source_key: string
+          imported_at?: string
+        }
+        Update: {
+          source_key?: string
+          imported_at?: string
         }
         Relationships: []
       }

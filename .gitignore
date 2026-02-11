@@ -22,3 +22,6 @@ dist-ssr
 *.sln
 *.sw?
 
+# Changelog JSONs copied from docs/ at build time (source of truth: docs/)
+public/changelog
+

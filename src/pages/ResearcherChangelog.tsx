@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 
-const GITHUB_REPO = 'ClarkOhlenbusch/prolific-vapi-connect';
+const GITHUB_REPO = (import.meta.env.VITE_GITHUB_REPO as string) || 'ClarkOhlenbusch/prolific-vapi-connect';
 const VISITED_COMMITS_KEY = 'changelog-visited-commit-ids';
 const LAST_ENTRY_KEY = 'changelog-last-clicked-entry-id';
 
@@ -178,6 +178,15 @@ const ResearcherChangelog = () => {
     },
   });
 
+  const { data: importedSourceKeys = [] } = useQuery({
+    queryKey: ['changelog-imported-sources'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('changelog_imported_sources').select('source_key');
+      if (error) throw error;
+      return (data ?? []).map((r) => r.source_key);
+    },
+  });
+
   const getBatchActiveOnDate = useMemo(() => {
     if (experimentBatches.length === 0) return (_: string) => null as string | null;
     const sorted = [...experimentBatches].sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -201,6 +210,110 @@ const ResearcherChangelog = () => {
     });
     return Array.from(labels).sort();
   }, [entries, experimentBatches]);
+
+  // Auto-import new changelog JSON files (copied from docs/ to public/changelog at build time; Lovable deploys them with the site)
+  useEffect(() => {
+    if (!user || isGuestMode) return;
+    const run = async () => {
+      let list: string[];
+      try {
+        const res = await fetch('/changelog/manifest.json');
+        if (!res.ok) return;
+        list = (await res.json()) as string[];
+      } catch {
+        return;
+      }
+      const changelogFiles = Array.isArray(list) ? list.filter((n) => typeof n === 'string' && n.startsWith('changelog-import-') && n.endsWith('.json')) : [];
+      const newFiles = changelogFiles.filter((name) => !importedSourceKeys.includes(name));
+      if (newFiles.length === 0) return;
+
+      const validScopes = ['participant', 'researcher', 'both'] as const;
+      type ImportChange = { type: string; description: string; scope?: string; commit_hash?: string };
+      const normalizeEntry = (obj: { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }) => {
+        const version = typeof obj.version === 'string' ? obj.version.trim() : '';
+        const release_date = typeof obj.release_date === 'string' ? obj.release_date.trim() : '';
+        const description = typeof obj.description === 'string' ? obj.description.trim() : undefined;
+        const active_batch_label = typeof obj.active_batch_label === 'string' ? obj.active_batch_label.trim() : undefined;
+        const rawChanges = Array.isArray(obj.changes) ? obj.changes : [];
+        const changes = rawChanges
+          .filter((c): c is ImportChange & { type: ChangeType } =>
+            c && typeof c.type === 'string' && ['added', 'changed', 'fixed', 'removed'].includes(c.type) && typeof c.description === 'string'
+          )
+          .map((c) => ({
+            type: c.type as ChangeType,
+            description: String(c.description).trim(),
+            scope: (validScopes.includes(c.scope as ChangeScope) ? c.scope : 'both') as ChangeScope,
+            commit_hash: typeof c.commit_hash === 'string' ? (c.commit_hash.trim() || undefined) : undefined
+          }))
+          .filter((c) => c.description.length > 0);
+        return { version, release_date, description, active_batch_label, changes };
+      };
+
+      let importedCount = 0;
+      for (const name of newFiles) {
+        let raw: string;
+        try {
+          const r = await fetch(`/changelog/${encodeURIComponent(name)}`);
+          if (!r.ok) continue;
+          raw = await r.text();
+        } catch {
+          continue;
+        }
+        let data: unknown;
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        const entries = Array.isArray(data) ? data.map(normalizeEntry) : [normalizeEntry(data as Parameters<typeof normalizeEntry>[0])];
+        const valid = entries.filter((e) => e.version && e.release_date);
+        let ok = true;
+        for (const { version, release_date, description, active_batch_label, changes } of valid) {
+          const { data: entry, error: entryError } = await supabase
+            .from('changelog_entries')
+            .insert({
+              version,
+              release_date,
+              description: description?.trim() || null,
+              active_batch_label: active_batch_label?.trim() || null,
+              created_by: user?.id ?? null
+            })
+            .select('id')
+            .single();
+          if (entryError) {
+            ok = false;
+            break;
+          }
+          if (entry && changes.length > 0) {
+            const { error: chErr } = await supabase.from('changelog_changes').insert(
+              changes.map((c, i) => ({
+                entry_id: entry.id,
+                change_type: c.type,
+                description: c.description,
+                display_order: i,
+                scope: c.scope ?? 'both',
+                commit_hash: c.commit_hash ?? null
+              }))
+            );
+            if (chErr) {
+              ok = false;
+              break;
+            }
+          }
+        }
+        if (ok) {
+          await supabase.from('changelog_imported_sources').insert({ source_key: name });
+          importedCount += 1;
+        }
+      }
+      if (importedCount > 0) {
+        queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+        queryClient.invalidateQueries({ queryKey: ['changelog-imported-sources'] });
+        toast.success(importedCount === 1 ? '1 changelog file imported' : `${importedCount} changelog files imported`);
+      }
+    };
+    run();
+  }, [user, isGuestMode, importedSourceKeys, queryClient]);
 
   const filteredAndSortedEntries = useMemo(() => {
     let list = entries.map(entry => ({
@@ -253,7 +366,7 @@ const ResearcherChangelog = () => {
           release_date: data.release_date,
           description: data.description?.trim() || null,
           active_batch_label: data.active_batch_label?.trim() || null,
-          created_by: user!.id
+          created_by: user?.id ?? null
         })
         .select()
         .single();
