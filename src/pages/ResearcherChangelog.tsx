@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -58,6 +58,8 @@ interface ChangelogEntry {
   changes: ChangelogChange[];
 }
 
+type ChangelogEntryWithInferred = ChangelogEntry & { inferredBatchLabel: string | null };
+
 const typeColors: Record<ChangeType, string> = {
   added: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   changed: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
@@ -90,6 +92,9 @@ const ResearcherChangelog = () => {
   const [editingEntry, setEditingEntry] = useState<ChangelogEntry | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'entry' | 'change'; id: string } | null>(null);
   const [checklistOpen, setChecklistOpen] = useState(true);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'participant' | 'researcher'>('all');
+  const [batchFilter, setBatchFilter] = useState<string>('all');
   
   // Form state for new/edit entry
   const [entryForm, setEntryForm] = useState({ version: '', release_date: '', description: '', active_batch_label: '' });
@@ -99,7 +104,7 @@ const ResearcherChangelog = () => {
   const [editingChange, setEditingChange] = useState<{ id: string; type: ChangeType; description: string; scope: ChangeScope } | null>(null);
 
   // Fetch changelog entries with changes
-  const { data: entries = [], isLoading } = useQuery({
+  const { data: entriesRaw = [], isLoading } = useQuery({
     queryKey: ['changelog-entries'],
     queryFn: async () => {
       const { data: entriesData, error: entriesError } = await supabase
@@ -122,6 +127,85 @@ const ResearcherChangelog = () => {
       })) as ChangelogEntry[];
     }
   });
+
+  const entries = entriesRaw;
+
+  const { data: experimentBatches = [] } = useQuery({
+    queryKey: ['experiment-batches-for-changelog'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('experiment_batches')
+        .select('name, created_at')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as { name: string; created_at: string }[];
+    },
+  });
+
+  const getBatchActiveOnDate = useMemo(() => {
+    if (experimentBatches.length === 0) return (_: string) => null as string | null;
+    const sorted = [...experimentBatches].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return (releaseDate: string) => {
+      const d = releaseDate.slice(0, 10);
+      for (let i = 0; i < sorted.length; i++) {
+        const batchDate = sorted[i].created_at.slice(0, 10);
+        const nextDate = i + 1 < sorted.length ? sorted[i + 1].created_at.slice(0, 10) : null;
+        if (d >= batchDate && (nextDate === null || d < nextDate)) return sorted[i].name;
+      }
+      return null;
+    };
+  }, [experimentBatches]);
+
+  const batchOptions = useMemo(() => {
+    const labels = new Set<string>();
+    experimentBatches.forEach(b => labels.add(b.name));
+    entries.forEach(e => {
+      const v = e.active_batch_label?.trim();
+      if (v) labels.add(v);
+    });
+    return Array.from(labels).sort();
+  }, [entries, experimentBatches]);
+
+  const filteredAndSortedEntries = useMemo(() => {
+    let list = entries.map(entry => ({
+      ...entry,
+      inferredBatchLabel: getBatchActiveOnDate(entry.release_date),
+    }));
+    if (batchFilter !== 'all') {
+      if (batchFilter === '__none__') {
+        list = list.filter(e => !e.active_batch_label?.trim() && !e.inferredBatchLabel);
+      } else {
+        list = list.filter(e =>
+          (e.active_batch_label?.trim() ?? '') === batchFilter ||
+          e.inferredBatchLabel === batchFilter
+        );
+      }
+    }
+    list = list.map(entry => {
+      let changes = entry.changes;
+      if (scopeFilter === 'participant') {
+        changes = changes.filter(c => c.scope === 'participant' || c.scope === 'both');
+      } else if (scopeFilter === 'researcher') {
+        changes = changes.filter(c => c.scope === 'researcher' || c.scope === 'both');
+      }
+      return { ...entry, changes };
+    }) as ChangelogEntryWithInferred[];
+    if (scopeFilter !== 'all') {
+      list = list.filter(e => e.changes.length > 0);
+    }
+    const sorted = [...list].sort((a, b) => {
+      // Primary: release_date (desc = newest first, asc = oldest first)
+      const d = sortOrder === 'desc' ? -1 : 1;
+      if (a.release_date !== b.release_date) {
+        return a.release_date < b.release_date ? -d : d;
+      }
+      // Same date: tie-break by version (numeric-aware), then created_at
+      const versionCmp = (a.version || '').localeCompare(b.version || '', undefined, { numeric: true });
+      if (versionCmp !== 0) return versionCmp;
+      return (a.created_at || '').localeCompare(b.created_at || '');
+    });
+    return sorted;
+  }, [entries, batchFilter, scopeFilter, sortOrder, getBatchActiveOnDate]);
 
   // Add entry mutation
   const addEntryMutation = useMutation({
@@ -434,7 +518,51 @@ const ResearcherChangelog = () => {
               Track all changes, improvements, and fixes to the research platform
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {entries.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Sort by date</span>
+                  <Select value={sortOrder} onValueChange={(v: 'asc' | 'desc') => setSortOrder(v)}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="desc">Newest first</SelectItem>
+                      <SelectItem value="asc">Oldest first</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Scope</span>
+                  <Select value={scopeFilter} onValueChange={(v: 'all' | 'participant' | 'researcher') => setScopeFilter(v)}>
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="participant">Participant</SelectItem>
+                      <SelectItem value="researcher">Researcher</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Batch</span>
+                  <Select value={batchFilter} onValueChange={setBatchFilter}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="All batches" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All batches</SelectItem>
+                      <SelectItem value="__none__">No batch</SelectItem>
+                      {batchOptions.map(label => (
+                        <SelectItem key={label} value={label}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
@@ -443,10 +571,14 @@ const ResearcherChangelog = () => {
               <div className="text-center py-8 text-muted-foreground">
                 No changelog entries yet. Click "Add Entry" to create one.
               </div>
+            ) : filteredAndSortedEntries.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No entries match the current filters.
+              </div>
             ) : (
-              <ScrollArea className="h-[calc(100vh-350px)]">
+              <ScrollArea className="h-[calc(100vh-380px)]">
                 <div className="space-y-8">
-                  {entries.map((entry) => (
+                  {filteredAndSortedEntries.map((entry) => (
                     <div key={entry.id} className="border-l-2 border-primary/20 pl-4">
                       <div className="flex items-center gap-3 mb-3">
                         {editingEntry?.id === entry.id ? (
@@ -509,7 +641,14 @@ const ResearcherChangelog = () => {
                       ) : (
                         <>
                           {entry.description ? <p className="text-sm text-muted-foreground mb-1">{entry.description}</p> : null}
-                          {entry.active_batch_label ? <p className="text-sm text-muted-foreground mb-2">Active batch: <span className="font-medium">{entry.active_batch_label}</span></p> : null}
+                          {(entry.active_batch_label?.trim() ?? entry.inferredBatchLabel) ? (
+                            <p className="text-sm text-muted-foreground mb-2">
+                              Active batch: <span className="font-medium">{entry.active_batch_label?.trim() ?? entry.inferredBatchLabel}</span>
+                              {!entry.active_batch_label?.trim() && entry.inferredBatchLabel ? (
+                                <span className="ml-1 text-muted-foreground/80 italic">(from batch dates)</span>
+                              ) : null}
+                            </p>
+                          ) : null}
                         </>
                       )}
                       <ul className="space-y-2">
