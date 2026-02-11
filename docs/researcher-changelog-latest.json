@@ -1,0 +1,15 @@
+{
+  "version": "1.2.1",
+  "release_date": "2025-02-11",
+  "description": "Experiment settings filter, feedback UX, replay and input fixes",
+  "active_batch_label": "",
+  "changes": [
+    { "type": "changed", "description": "Experiment Settings: batch response counts respect Data Source filter", "scope": "researcher" },
+    { "type": "changed", "description": "Show recording length as minutes:seconds only (no decimals)", "scope": "participant" },
+    { "type": "changed", "description": "Feedback: recording-first UX, cumulative 20s, scroll hint, toast improvements", "scope": "participant" },
+    { "type": "fixed", "description": "Only mark call error for actual errors, not normal call end", "scope": "participant" },
+    { "type": "changed", "description": "Allow Space in inputs/textareas; skip Space+R shortcut when focus is in editable field", "scope": "participant" },
+    { "type": "changed", "description": "PETS subtitles: ER = Emotional Responsiveness, UT = Understanding and Trust", "scope": "participant" },
+    { "type": "added", "description": "Changelog: version description, active batch per version, participant/researcher/both scope per change", "scope": "researcher" }
+  ]
+}

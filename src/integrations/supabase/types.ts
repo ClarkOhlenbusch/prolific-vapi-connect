@@ -52,6 +52,7 @@ export type Database = {
           display_order: number
           entry_id: string
           id: string
+          scope: string
         }
         Insert: {
           change_type: string
@@ -60,6 +61,7 @@ export type Database = {
           display_order?: number
           entry_id: string
           id?: string
+          scope?: string
         }
         Update: {
           change_type?: string
@@ -68,6 +70,7 @@ export type Database = {
           display_order?: number
           entry_id?: string
           id?: string
+          scope?: string
         }
         Relationships: [
           {
@@ -81,24 +84,30 @@ export type Database = {
       }
       changelog_entries: {
         Row: {
+          active_batch_label: string | null
           created_at: string
           created_by: string
+          description: string | null
           id: string
           release_date: string
           updated_at: string
           version: string
         }
         Insert: {
+          active_batch_label?: string | null
           created_at?: string
           created_by: string
+          description?: string | null
           id?: string
           release_date: string
           updated_at?: string
           version: string
         }
         Update: {
+          active_batch_label?: string | null
           created_at?: string
           created_by?: string
+          description?: string | null
           id?: string
           release_date?: string
           updated_at?: string
