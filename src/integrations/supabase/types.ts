@@ -187,6 +187,47 @@ export type Database = {
         }
         Relationships: []
       }
+      prolific_export_demographics: {
+        Row: {
+          prolific_id: string
+          age: number | null
+          gender: string | null
+          ethnicity_simplified: string | null
+          country_of_residence: string | null
+          employment_status: string | null
+          language: string | null
+          raw_columns: Json | null
+          imported_at: string
+          imported_by: string | null
+        }
+        Insert: {
+          prolific_id: string
+          age?: number | null
+          gender?: string | null
+          ethnicity_simplified?: string | null
+          country_of_residence?: string | null
+          employment_status?: string | null
+          language?: string | null
+          raw_columns?: Json | null
+          imported_at?: string
+          imported_by?: string | null
+        }
+        Update: {
+          prolific_id?: string
+          age?: number | null
+          gender?: string | null
+          ethnicity_simplified?: string | null
+          country_of_residence?: string | null
+          employment_status?: string | null
+          language?: string | null
+          raw_columns?: Json | null
+          imported_at?: string
+          imported_by?: string | null
+        }
+        Relationships: [
+          { foreignKeyName: "prolific_export_demographics_imported_by_fkey"; columns: ["imported_by"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
+        ]
+      }
       dictation_recordings: {
         Row: {
           attempt_count: number

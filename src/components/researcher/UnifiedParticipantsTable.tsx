@@ -30,8 +30,10 @@ import {
   Archive,
   Route,
   Check,
-  Flag
+  Flag,
+  AlertTriangle
 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import { DownloadConfirmDialog } from './DownloadConfirmDialog';
@@ -69,9 +71,12 @@ interface UnifiedParticipant {
   formality?: number | null;
   reviewed_by_researcher?: boolean;
   flagged?: boolean;
-  // From demographics (optional)
-  age?: string | null;
+  // From demographics (in-app) or prolific_export_demographics (preferred when present)
+  age?: string | number | null;
   gender?: string | null;
+  ethnicity_simplified?: string | null;
+  /** True when both in-app and Prolific export exist and age or gender differ */
+  demographics_mismatch?: boolean;
   // Derived
   status: 'Completed' | 'Pending';
 }
@@ -149,24 +154,47 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
       if (responsesError) throw responsesError;
 
-      // Fetch demographics
+      // Fetch in-app demographics
       const { data: demographics, error: demographicsError } = await supabase
         .from('demographics')
         .select('prolific_id, age, gender');
 
       if (demographicsError) throw demographicsError;
 
+      // Fetch Prolific export demographics (researcher upload)
+      const { data: prolificDemo, error: prolificDemoError } = await supabase
+        .from('prolific_export_demographics')
+        .select('prolific_id, age, gender, ethnicity_simplified');
+
+      if (prolificDemoError) throw prolificDemoError;
+
       // Create lookup maps
-      const responseMap = new Map<string, typeof responses[0]>();
+      const responseMap = new Map<string, (typeof responses)[0]>();
       responses?.forEach(r => responseMap.set(r.call_id, r));
 
-      const demographicsMap = new Map<string, typeof demographics[0]>();
+      const demographicsMap = new Map<string, (typeof demographics)[0]>();
       demographics?.forEach(d => demographicsMap.set(d.prolific_id, d));
 
-      // Combine data
+      const prolificDemoMap = new Map<string, (typeof prolificDemo)[0]>();
+      prolificDemo?.forEach(d => prolificDemoMap.set(d.prolific_id, d));
+
+      // Combine data: prefer Prolific export demographics when present; flag mismatch when both exist and differ
+      const norm = (s: string | null | undefined) => (s ?? '').toString().trim().toLowerCase();
       const unified: UnifiedParticipant[] = (calls || []).map(call => {
         const response = responseMap.get(call.call_id);
         const demo = demographicsMap.get(call.prolific_id);
+        const pDemo = prolificDemoMap.get(call.prolific_id);
+        const age = pDemo?.age != null ? String(pDemo.age) : demo?.age;
+        const gender = pDemo?.gender ?? demo?.gender;
+
+        let demographics_mismatch = false;
+        if (demo && pDemo) {
+          const inAppAge = (demo.age ?? '').toString().trim();
+          const prolificAge = pDemo.age != null ? String(pDemo.age) : '';
+          const ageDiff = inAppAge !== prolificAge;
+          const genderDiff = norm(demo.gender) !== norm(pDemo.gender ?? '');
+          demographics_mismatch = ageDiff || genderDiff;
+        }
 
         return {
           id: call.id,
@@ -182,8 +210,10 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           formality: response?.formality,
           reviewed_by_researcher: response?.reviewed_by_researcher ?? false,
           flagged: response?.flagged ?? false,
-          age: demo?.age,
-          gender: demo?.gender,
+          age: age ?? null,
+          gender: gender ?? null,
+          ethnicity_simplified: pDemo?.ethnicity_simplified ?? null,
+          demographics_mismatch,
           status: call.is_completed ? 'Completed' : 'Pending',
         };
       });
@@ -412,8 +442,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const exportToCSV = async () => {
     const headers = [
       'Prolific ID', 'Status', 'Created At', 'Call ID', 
-      'Condition', 'Batch', 'PETS Total', 'TIAS Total', 
-      'Formality', 'Age', 'Gender'
+      'Condition', 'Batch', 'Age', 'Gender', 'Ethnicity', 'Demographics mismatch',
+      'PETS Total', 'TIAS Total', 'Formality'
     ];
     
     const csvContent = [
@@ -425,11 +455,13 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         row.call_id,
         row.assistant_type || '',
         row.batch_label || '',
+        row.age ?? '',
+        row.gender || '',
+        row.ethnicity_simplified || '',
+        row.demographics_mismatch ? 'Yes' : 'No',
         row.pets_total ?? '',
         row.tias_total ?? '',
         row.formality ?? '',
-        row.age || '',
-        row.gender || '',
       ].join(','))
     ].join('\n');
 
@@ -557,6 +589,10 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
               <TableHead>Created At</TableHead>
               <TableHead>Condition</TableHead>
               <TableHead>Batch</TableHead>
+              <TableHead>Age</TableHead>
+              <TableHead>Gender</TableHead>
+              <TableHead>Ethnicity</TableHead>
+              <TableHead className="w-[60px] text-center" title="In-app vs Prolific demographics mismatch">Demo</TableHead>
               <TableHead className="w-[80px] text-center" title="Reviewed by researcher">Reviewed</TableHead>
               <TableHead className="w-[80px] text-center" title="Flagged">Flag</TableHead>
               <TableHead className="text-right">PETS</TableHead>
@@ -567,7 +603,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           <TableBody>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isSuperAdmin ? 11 : 10} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isSuperAdmin ? 15 : 14} className="text-center py-8 text-muted-foreground">
                   No participants found
                 </TableCell>
               </TableRow>
@@ -608,6 +644,27 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                   <TableCell>
                     {row.batch_label ? (
                       <Badge variant="outline">{row.batch_label}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm">{row.age ?? '-'}</TableCell>
+                  <TableCell className="text-sm">{row.gender ?? '-'}</TableCell>
+                  <TableCell className="text-sm max-w-[120px] truncate" title={row.ethnicity_simplified ?? undefined}>
+                    {row.ethnicity_simplified ?? '-'}
+                  </TableCell>
+                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                    {row.demographics_mismatch ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center justify-center text-amber-600 dark:text-amber-500" aria-label="In-app demographics differ from Prolific export">
+                            <AlertTriangle className="h-4 w-4" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[220px]">
+                          In-app demographics (questionnaire) don&apos;t match Prolific export for this participant.
+                        </TooltipContent>
+                      </Tooltip>
                     ) : (
                       <span className="text-muted-foreground">-</span>
                     )}

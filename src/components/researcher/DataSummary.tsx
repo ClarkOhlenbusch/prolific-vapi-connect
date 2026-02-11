@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, Phone, Archive, ArrowUpDown } from 'lucide-react';
+import { FileText, Phone, Archive, ArrowUpDown, Users } from 'lucide-react';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -31,6 +31,7 @@ interface SummaryData {
   totalResponses: number;
   totalCalls: number;
   totalArchived: number;
+  prolificDemographicsCount: number;
   avgPetsTotal: number;
   avgPetsER: number;
   avgPetsUT: number;
@@ -160,6 +161,7 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
         totalResponses: GUEST_SUMMARY_STATS.totalResponses,
         totalCalls: GUEST_SUMMARY_STATS.totalCalls,
         totalArchived: GUEST_SUMMARY_STATS.totalArchived,
+        prolificDemographicsCount: 0,
         avgPetsTotal: GUEST_SUMMARY_STATS.avgPetsTotal,
         avgPetsER: GUEST_SUMMARY_STATS.avgPetsER,
         avgPetsUT: GUEST_SUMMARY_STATS.avgPetsUT,
@@ -178,12 +180,13 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
     const fetchSummary = async () => {
       try {
         // Fetch counts in parallel
-        const [responsesRes, callsRes, archivedRes] = await Promise.all([
+        const [responsesRes, callsRes, archivedRes, prolificDemoRes] = await Promise.all([
           supabase.from('experiment_responses').select('*', { count: 'exact', head: false }),
           supabase.from('participant_calls').select('*', { count: 'exact', head: true }),
           isSuperAdmin 
             ? supabase.from('archived_responses').select('*', { count: 'exact', head: true })
             : Promise.resolve({ count: 0 }),
+          supabase.from('prolific_export_demographics').select('*', { count: 'exact', head: true }),
         ]);
 
         const responses = responsesRes.data || [];
@@ -207,6 +210,7 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
           totalResponses: responsesRes.count || 0,
           totalCalls: callsRes.count || 0,
           totalArchived: archivedRes.count || 0,
+          prolificDemographicsCount: prolificDemoRes.count ?? 0,
           ...stats,
         });
       } catch (error) {
@@ -411,6 +415,17 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data?.totalCalls || 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Prolific Demographics</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{data?.prolificDemographicsCount ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Participants with uploaded CSV</p>
           </CardContent>
         </Card>
 

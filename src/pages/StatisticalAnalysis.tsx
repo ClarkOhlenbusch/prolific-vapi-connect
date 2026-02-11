@@ -29,6 +29,7 @@ import {
   descriptiveStats,
   interpretCohensD,
   interpretRankBiserial,
+  chiSquare2xK,
   TTestResult,
   MannWhitneyResult,
   LeveneResult,
@@ -187,10 +188,13 @@ const toFiniteNumber = (value: unknown): number | null => {
 
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
 
+type ProlificDemographicRow = { prolific_id: string; age: number | null; gender: string | null; ethnicity_simplified: string | null };
+
 const StatisticalAnalysis = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [responses, setResponses] = useState<ExperimentResponse[]>([]);
+  const [prolificDemographics, setProlificDemographics] = useState<ProlificDemographicRow[]>([]);
   const [activeTab, setActiveTab] = useState('hypotheses');
   const { isGuestMode } = useResearcherAuth();
   const [sourceFilter, setSourceFilter] = useState<SourceFilterValue>(() => {
@@ -223,6 +227,7 @@ const StatisticalAnalysis = () => {
           }
 
           setResponses(guestResponses);
+          setProlificDemographics([]);
         } else {
           const { data, error } = await supabase
             .from('experiment_responses')
@@ -239,6 +244,11 @@ const StatisticalAnalysis = () => {
           }
 
           setResponses(filteredData);
+
+          const { data: demoData } = await supabase
+            .from('prolific_export_demographics')
+            .select('prolific_id, age, gender, ethnicity_simplified');
+          setProlificDemographics((demoData as ProlificDemographicRow[]) ?? []);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -250,7 +260,7 @@ const StatisticalAnalysis = () => {
     fetchData();
   }, [sourceFilter, isGuestMode]);
 
-  const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults, baselineResults, progressionResults } = useMemo(() => {
+  const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults, baselineResults, demographicBaselineResults, progressionResults } = useMemo(() => {
     const formal = responses.filter(r => r.assistant_type === 'formal');
     const informal = responses.filter(r => r.assistant_type === 'informal');
 
@@ -349,6 +359,49 @@ const StatisticalAnalysis = () => {
     // Compute directly from the same formal/informal splits instead of relying on ALL_DVS.
     const baseResults = BASELINE_DVS.map((dv) => computeResult(dv));
 
+    // Demographic baseline (Prolific export: age, gender, ethnicity)
+    const demoMap = new Map<string, ProlificDemographicRow>();
+    prolificDemographics.forEach((d) => demoMap.set(d.prolific_id, d));
+    const formalWithDemo = formal.filter((r) => demoMap.has(r.prolific_id));
+    const informalWithDemo = informal.filter((r) => demoMap.has(r.prolific_id));
+    const ageFormal = formalWithDemo.map((r) => demoMap.get(r.prolific_id)!.age).filter((v): v is number => v != null && Number.isFinite(v));
+    const ageInformal = informalWithDemo.map((r) => demoMap.get(r.prolific_id)!.age).filter((v): v is number => v != null && Number.isFinite(v));
+    const ageResult =
+      ageFormal.length >= 2 && ageInformal.length >= 2
+        ? {
+            label: 'Age (Prolific)',
+            formalStats: descriptiveStats(ageFormal),
+            informalStats: descriptiveStats(ageInformal),
+            tTest: welchTTest(ageFormal, ageInformal),
+            formalN: ageFormal.length,
+            informalN: ageInformal.length,
+          }
+        : null;
+    const countByCategory = (
+      group: typeof formalWithDemo,
+      key: 'gender' | 'ethnicity_simplified'
+    ): Record<string, number> => {
+      const out: Record<string, number> = {};
+      group.forEach((r) => {
+        const val = (demoMap.get(r.prolific_id)?.[key] ?? '').trim() || 'Unknown';
+        out[val] = (out[val] ?? 0) + 1;
+      });
+      return out;
+    };
+    const genderFormalCounts = countByCategory(formalWithDemo, 'gender');
+    const genderInformalCounts = countByCategory(informalWithDemo, 'gender');
+    const ethnicityFormalCounts = countByCategory(formalWithDemo, 'ethnicity_simplified');
+    const ethnicityInformalCounts = countByCategory(informalWithDemo, 'ethnicity_simplified');
+    const genderChi = chiSquare2xK(genderFormalCounts, genderInformalCounts);
+    const ethnicityChi = chiSquare2xK(ethnicityFormalCounts, ethnicityInformalCounts);
+    const demographicBaselineResults = {
+      ageResult,
+      demographicN: formalWithDemo.length + informalWithDemo.length,
+      totalN: formal.length + informal.length,
+      gender: { formalCounts: genderFormalCounts, informalCounts: genderInformalCounts, chi: genderChi },
+      ethnicity: { formalCounts: ethnicityFormalCounts, informalCounts: ethnicityInformalCounts, chi: ethnicityChi },
+    };
+
     const conditionResponses = responses.filter(
       (r) => r.assistant_type === 'formal' || r.assistant_type === 'informal'
     );
@@ -435,9 +488,10 @@ const StatisticalAnalysis = () => {
       manipulationResults: manipResults,
       exploratoryResults: expResults,
       baselineResults: baseResults,
+      demographicBaselineResults,
       progressionResults: progressionByMeasure,
     };
-  }, [responses]);
+  }, [responses, prolificDemographics]);
 
   const generatePythonScript = () => {
     const script = `"""
@@ -1206,6 +1260,85 @@ run_moderation_analysis <- function(df) {
                     </p>
                   </>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Demographic baseline (Prolific export) */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Demographics by Condition (Prolific export)</CardTitle>
+                <CardDescription>
+                  Age, gender, and ethnicity from researcher-uploaded Prolific demographic export. Use the Responses tab to upload a CSV.
+                  {demographicBaselineResults.demographicN < demographicBaselineResults.totalN && (
+                    <span className="block mt-1 text-amber-600 dark:text-amber-500">
+                      {demographicBaselineResults.totalN - demographicBaselineResults.demographicN} of {demographicBaselineResults.totalN} participants have no Prolific demographics.
+                    </span>
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {demographicBaselineResults.ageResult ? (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Age</p>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Formal (M ± SD)</TableHead>
+                          <TableHead>Informal (M ± SD)</TableHead>
+                          <TableHead>t</TableHead>
+                          <TableHead>p</TableHead>
+                          <TableHead>Cohen&apos;s d</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell className="bg-blue-50/30 dark:bg-blue-950/10">
+                            {demographicBaselineResults.ageResult.formalStats.mean.toFixed(2)} ± {demographicBaselineResults.ageResult.formalStats.std.toFixed(2)} (n={demographicBaselineResults.ageResult.formalN})
+                          </TableCell>
+                          <TableCell className="bg-amber-50/30 dark:bg-amber-950/10">
+                            {demographicBaselineResults.ageResult.informalStats.mean.toFixed(2)} ± {demographicBaselineResults.ageResult.informalStats.std.toFixed(2)} (n={demographicBaselineResults.ageResult.informalN})
+                          </TableCell>
+                          <TableCell className="font-mono">{demographicBaselineResults.ageResult.tTest.t.toFixed(2)}</TableCell>
+                          <TableCell className="font-mono">{formatP(demographicBaselineResults.ageResult.tTest.pValue)}</TableCell>
+                          <TableCell>
+                            <span className="font-mono">{demographicBaselineResults.ageResult.tTest.cohensD.toFixed(2)}</span>
+                            <Badge variant="outline" className="ml-2 text-xs">{interpretCohensD(demographicBaselineResults.ageResult.tTest.cohensD)}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No age data available. Upload a Prolific demographic CSV with an &quot;Age&quot; column.</p>
+                )}
+                <div>
+                  <p className="text-sm font-medium mb-2">Gender (χ²)</p>
+                  {Object.keys(demographicBaselineResults.gender.formalCounts).length > 0 || Object.keys(demographicBaselineResults.gender.informalCounts).length > 0 ? (
+                    <>
+                      <p className="text-xs text-muted-foreground mb-1">
+                        Formal: {Object.entries(demographicBaselineResults.gender.formalCounts).map(([k, v]) => `${k}: ${v}`).join(', ')} — 
+                        Informal: {Object.entries(demographicBaselineResults.gender.informalCounts).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                      </p>
+                      <p className="text-sm font-mono">χ² = {demographicBaselineResults.gender.chi.chi2.toFixed(2)}, df = {demographicBaselineResults.gender.chi.df}, p = {formatP(demographicBaselineResults.gender.chi.pValue)}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No gender data. Upload a Prolific CSV with &quot;Gender&quot; or &quot;Sex&quot;.</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-medium mb-2">Ethnicity (χ²)</p>
+                  {Object.keys(demographicBaselineResults.ethnicity.formalCounts).length > 0 || Object.keys(demographicBaselineResults.ethnicity.informalCounts).length > 0 ? (
+                    <>
+                      <p className="text-xs text-muted-foreground mb-1">
+                        Formal: {Object.entries(demographicBaselineResults.ethnicity.formalCounts).map(([k, v]) => `${k}: ${v}`).join(', ')} — 
+                        Informal: {Object.entries(demographicBaselineResults.ethnicity.informalCounts).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                      </p>
+                      <p className="text-sm font-mono">χ² = {demographicBaselineResults.ethnicity.chi.chi2.toFixed(2)}, df = {demographicBaselineResults.ethnicity.chi.df}, p = {formatP(demographicBaselineResults.ethnicity.chi.pValue)}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No ethnicity data. Upload a Prolific CSV with &quot;Ethnicity simplified&quot;.</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

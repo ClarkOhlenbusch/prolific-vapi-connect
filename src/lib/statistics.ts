@@ -415,3 +415,64 @@ export const descriptiveStats = (data: number[]): DescriptiveStats => {
     q3: getQuantile(0.75)
   };
 };
+
+/** Chi-square test for 2 (conditions) x K (categories). Returns chi2, df, pValue. */
+export interface ChiSquareResult {
+  chi2: number;
+  df: number;
+  pValue: number;
+}
+
+export function chiSquare2xK(
+  formalCounts: Record<string, number>,
+  informalCounts: Record<string, number>
+): ChiSquareResult {
+  const categories = [...new Set([...Object.keys(formalCounts), ...Object.keys(informalCounts)])].filter(Boolean);
+  if (categories.length === 0) {
+    return { chi2: 0, df: 0, pValue: 1 };
+  }
+
+  const nFormal = Object.values(formalCounts).reduce((a, b) => a + b, 0);
+  const nInformal = Object.values(informalCounts).reduce((a, b) => a + b, 0);
+  const n = nFormal + nInformal;
+  if (n === 0) return { chi2: 0, df: 0, pValue: 1 };
+
+  let chi2 = 0;
+  for (const cat of categories) {
+    const obsFormal = formalCounts[cat] ?? 0;
+    const obsInformal = informalCounts[cat] ?? 0;
+    const colTotal = obsFormal + obsInformal;
+    const expFormal = (nFormal * colTotal) / n;
+    const expInformal = (nInformal * colTotal) / n;
+    if (expFormal > 0) chi2 += (obsFormal - expFormal) ** 2 / expFormal;
+    if (expInformal > 0) chi2 += (obsInformal - expInformal) ** 2 / expInformal;
+  }
+  const df = Math.max(0, (2 - 1) * (categories.length - 1));
+  // p-value from chi-square CDF (approximate for df >= 1)
+  const pValue = df === 0 ? 1 : 1 - chiSquareCDF(chi2, df);
+  return { chi2, df, pValue };
+}
+
+/** Incomplete gamma P(s, x) = lower regularized gamma. Used for chi-square p-value. */
+function chiSquareCDF(x: number, df: number): number {
+  if (x <= 0) return 0;
+  return lowerRegularizedGamma(df / 2, x / 2);
+}
+
+function lowerRegularizedGamma(s: number, x: number): number {
+  if (x < 0) return 0;
+  if (x === 0) return 0;
+  if (s <= 0) return 1;
+  const g = Math.exp(-x + s * Math.log(x) - gammaLn(s));
+  if (g === 0) return 1;
+  let sum = 1;
+  let term = 1;
+  let k = 1;
+  while (k < 200) {
+    term *= x / (s + k);
+    sum += term;
+    if (Math.abs(term) < 1e-14 * sum) break;
+    k++;
+  }
+  return (g / s) * sum;
+}

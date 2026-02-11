@@ -29,6 +29,7 @@ import { TimeAnalysis } from '@/components/researcher/TimeAnalysis';
 import { NoConsentFeedbackTable } from '@/components/researcher/NoConsentFeedbackTable';
 import { ActivityLogsTable } from '@/components/researcher/ActivityLogsTable';
 import { GlobalSourceFilter } from '@/components/researcher/GlobalSourceFilter';
+import { ProlificDemographicsImport } from '@/components/researcher/ProlificDemographicsImport';
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
@@ -205,6 +206,10 @@ const ResearcherDashboard = () => {
                 <CardDescription>
                   View all participant and researcher responses with completion status, experiment data, and journey timelines
                 </CardDescription>
+                <div className="mt-3 pt-3 border-t">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Prolific demographics</p>
+                  <ProlificDemographicsImport />
+                </div>
               </CardHeader>
               <CardContent>
                 <UnifiedParticipantsTable sourceFilter={sourceFilter} />
