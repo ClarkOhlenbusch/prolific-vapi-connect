@@ -28,7 +28,8 @@ import {
   Maximize2,
   Minimize2,
   Check,
-  Flag
+  Flag,
+  AlertTriangle
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import { cn } from '@/lib/utils';
@@ -207,8 +208,11 @@ const createEmptyFeedbackDraftUsage = (): FeedbackDraftUsage => ({
   experiment_feedback: false,
 });
 
+type ProlificExportDemographics = Pick<Tables<'prolific_export_demographics'>['Row'], 'age' | 'gender' | 'ethnicity_simplified'>;
+
 interface ExperimentResponseWithDemographics extends Tables<'experiment_responses'> {
   demographics?: Demographics | null;
+  prolificExportDemographics?: ProlificExportDemographics | null;
 }
 
 // Question definitions
@@ -1291,12 +1295,22 @@ const ResponseDetails = () => {
           }
         }
 
-        // Fetch demographics
-        const { data: demographics } = await supabase
-          .from('demographics')
-          .select('*')
-          .eq('prolific_id', response.prolific_id)
-          .maybeSingle();
+        // Fetch demographics and Prolific export demographics
+        const [
+          { data: demographics },
+          { data: prolificExportDemographics },
+        ] = await Promise.all([
+          supabase
+            .from('demographics')
+            .select('*')
+            .eq('prolific_id', response.prolific_id)
+            .maybeSingle(),
+          supabase
+            .from('prolific_export_demographics')
+            .select('age, gender, ethnicity_simplified')
+            .eq('prolific_id', response.prolific_id)
+            .maybeSingle(),
+        ]);
 
         // Build session replay query with the most specific filters available
         let replayQuery = supabase
@@ -1905,7 +1919,7 @@ const ResponseDetails = () => {
         });
         setFeedbackDraftUsage(nextFeedbackDraftUsage);
 
-        setData({ ...mergedResponse, demographics });
+        setData({ ...mergedResponse, demographics, prolificExportDemographics });
         setFormalityCalcId(formalityCalc?.id || null);
       } catch (err) {
         console.error('Error fetching response details:', err);
@@ -2621,45 +2635,104 @@ const ResponseDetails = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {data.demographics ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-sm text-muted-foreground">Age</label>
-                    <p className="font-medium">{data.demographics.age}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Gender</label>
-                    <p className="font-medium">{data.demographics.gender}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">Native English Speaker</label>
-                    <p className="font-medium">{data.demographics.native_english}</p>
-                  </div>
-                  <div className="col-span-2 md:col-span-3">
-                    <label className="text-sm text-muted-foreground">Ethnicity</label>
-                    <p className="font-medium">
-                      {Array.isArray(data.demographics.ethnicity) 
-                        ? (data.demographics.ethnicity as string[]).join(', ')
-                        : String(data.demographics.ethnicity)}
-                    </p>
-                  </div>
-                  {data.demographics.voice_assistant_familiarity != null && (
-                    <div>
-                      <label className="text-sm text-muted-foreground">Voice Assistant Familiarity</label>
-                      <p className="font-medium">
-                        {formatWholeNumber(data.demographics.voice_assistant_familiarity)} - {FAMILIARITY_LABELS[data.demographics.voice_assistant_familiarity] || "Unknown"}
-                      </p>
-                    </div>
-                  )}
-                  {data.demographics.voice_assistant_usage_frequency != null && (
-                    <div>
-                      <label className="text-sm text-muted-foreground">Voice Assistant Usage Frequency</label>
-                      <p className="font-medium">
-                        {formatWholeNumber(data.demographics.voice_assistant_usage_frequency)} - {USAGE_FREQUENCY_LABELS[data.demographics.voice_assistant_usage_frequency] || "Unknown"}
-                      </p>
-                    </div>
-                  )}
-                </div>
+              {data.demographics || data.prolificExportDemographics ? (
+                <>
+                  {(() => {
+                    const demo = data.demographics;
+                    const prolific = data.prolificExportDemographics;
+                    const norm = (s: string | null | undefined) => (s ?? '').toString().trim().toLowerCase();
+                    const birthYearRaw = (demo?.age ?? '').toString().trim();
+                    const birthYear = /^\d{4}$/.test(birthYearRaw) ? parseInt(birthYearRaw, 10) : null;
+                    const surveyYear = demo?.created_at ? new Date(demo.created_at).getUTCFullYear() : null;
+                    const ageAtSurvey = birthYear != null && surveyYear != null ? surveyYear - birthYear : null;
+                    const prolificAge = prolific?.age != null && Number.isFinite(Number(prolific.age)) ? Number(prolific.age) : null;
+                    const ageMismatch = ageAtSurvey != null && prolificAge != null && Math.abs(ageAtSurvey - prolificAge) > 1;
+                    const genderMismatch = demo && prolific && norm(demo.gender) !== norm(prolific.gender ?? '');
+                    const anyMismatch = ageMismatch || genderMismatch;
+                    const hasBoth = Boolean(demo && prolific);
+                    return (
+                      <div className="space-y-4">
+                        {hasBoth && (
+                          <div className="flex items-center gap-2">
+                            {anyMismatch ? (
+                              <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50/80 dark:bg-amber-950/30 dark:border-amber-700 dark:text-amber-400">
+                                <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+                                Mismatch with Prolific export
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-green-700 border-green-300 bg-green-50/80 dark:bg-green-950/30 dark:border-green-700 dark:text-green-400">
+                                <Check className="h-3.5 w-3.5 mr-1" />
+                                Matches Prolific export
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          <div>
+                            <label className="text-sm text-muted-foreground">Age</label>
+                            <p className="font-medium">
+                              {ageMismatch && prolificAge != null && ageAtSurvey != null
+                                ? `Prolific: ${prolificAge} | In-app (at survey): ${ageAtSurvey}`
+                                : prolificAge != null
+                                  ? String(prolificAge)
+                                  : ageAtSurvey != null
+                                    ? `${ageAtSurvey} (from birth year at survey)`
+                                    : demo
+                                      ? (demo.age ?? '–')
+                                      : '–'}
+                            </p>
+                          </div>
+                          <div>
+                            <label className="text-sm text-muted-foreground">Gender</label>
+                            <p className="font-medium">
+                              {genderMismatch && prolific?.gender != null && demo?.gender != null
+                                ? `Prolific: ${prolific.gender} | In-app: ${demo.gender}`
+                                : (prolific?.gender ?? demo?.gender ?? '–')}
+                            </p>
+                          </div>
+                          {prolific?.ethnicity_simplified != null && (
+                            <div>
+                              <label className="text-sm text-muted-foreground">Ethnicity (Prolific)</label>
+                              <p className="font-medium">{prolific.ethnicity_simplified}</p>
+                            </div>
+                          )}
+                          {demo && (
+                            <>
+                              <div>
+                                <label className="text-sm text-muted-foreground">Native English Speaker</label>
+                                <p className="font-medium">{demo.native_english}</p>
+                              </div>
+                              <div className="col-span-2 md:col-span-3">
+                                <label className="text-sm text-muted-foreground">Ethnicity (in-app)</label>
+                                <p className="font-medium">
+                                  {Array.isArray(demo.ethnicity)
+                                    ? (demo.ethnicity as string[]).join(', ')
+                                    : String(demo.ethnicity)}
+                                </p>
+                              </div>
+                              {demo.voice_assistant_familiarity != null && (
+                                <div>
+                                  <label className="text-sm text-muted-foreground">Voice Assistant Familiarity</label>
+                                  <p className="font-medium">
+                                    {formatWholeNumber(demo.voice_assistant_familiarity)} - {FAMILIARITY_LABELS[demo.voice_assistant_familiarity] || "Unknown"}
+                                  </p>
+                                </div>
+                              )}
+                              {demo.voice_assistant_usage_frequency != null && (
+                                <div>
+                                  <label className="text-sm text-muted-foreground">Voice Assistant Usage Frequency</label>
+                                  <p className="font-medium">
+                                    {formatWholeNumber(demo.voice_assistant_usage_frequency)} - {USAGE_FREQUENCY_LABELS[demo.voice_assistant_usage_frequency] || "Unknown"}
+                                  </p>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
               ) : (
                 <p className="text-muted-foreground italic">No demographic data available</p>
               )}
