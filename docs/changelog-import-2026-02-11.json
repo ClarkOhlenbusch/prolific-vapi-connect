@@ -1,0 +1,14 @@
+[
+  {
+    "version": "1.1.2",
+    "release_date": "2026-02-11",
+    "description": "Archived filtering, Prolific demographics in Response Details, changelog auto-import",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "changed", "description": "Exclude archived responses from all researcher views, add archived filter source", "scope": "researcher", "commit_hash": "bc54e71" },
+      { "type": "added", "description": "Show Prolific export demographics in Response Details", "scope": "researcher", "commit_hash": "f04cc6b" },
+      { "type": "added", "description": "Changelog auto-import from build (manifest + same-origin fetch)", "scope": "researcher", "commit_hash": "0d38b0e" },
+      { "type": "changed", "description": "Add changelog import file for January 2026", "scope": "researcher", "commit_hash": "d4856cf" }
+    ]
+  }
+]
