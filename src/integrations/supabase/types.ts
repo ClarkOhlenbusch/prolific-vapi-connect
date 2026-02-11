@@ -47,6 +47,7 @@ export type Database = {
       changelog_changes: {
         Row: {
           change_type: string
+          commit_hash: string | null
           created_at: string
           description: string
           display_order: number
@@ -56,6 +57,7 @@ export type Database = {
         }
         Insert: {
           change_type: string
+          commit_hash?: string | null
           created_at?: string
           description: string
           display_order?: number
@@ -65,6 +67,7 @@ export type Database = {
         }
         Update: {
           change_type?: string
+          commit_hash?: string | null
           created_at?: string
           description?: string
           display_order?: number
@@ -88,8 +91,10 @@ export type Database = {
           created_at: string
           created_by: string
           description: string | null
+          flagged: boolean
           id: string
           release_date: string
+          reviewed: boolean
           updated_at: string
           version: string
         }
@@ -98,8 +103,10 @@ export type Database = {
           created_at?: string
           created_by: string
           description?: string | null
+          flagged?: boolean
           id?: string
           release_date: string
+          reviewed?: boolean
           updated_at?: string
           version: string
         }
@@ -108,8 +115,10 @@ export type Database = {
           created_at?: string
           created_by?: string
           description?: string | null
+          flagged?: boolean
           id?: string
           release_date?: string
+          reviewed?: boolean
           updated_at?: string
           version?: string
         }

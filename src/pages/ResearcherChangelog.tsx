@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,8 +32,38 @@ import {
   Loader2,
   FileJson,
   ChevronDown,
-  Package
+  Package,
+  ExternalLink,
+  Flag,
+  Eye
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+
+const GITHUB_REPO = 'ClarkOhlenbusch/prolific-vapi-connect';
+const VISITED_COMMITS_KEY = 'changelog-visited-commit-ids';
+const LAST_ENTRY_KEY = 'changelog-last-clicked-entry-id';
+
+function commitUrl(hash: string) {
+  const clean = hash.trim().replace(/^https:\/\/github\.com\/[^/]+\/[^/]+\/commit\//i, '').split('/')[0];
+  return `https://github.com/${GITHUB_REPO}/commit/${clean}`;
+}
+
+function getVisitedSet(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(VISITED_COMMITS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function markVisited(changeId: string) {
+  const set = getVisitedSet();
+  set.add(changeId);
+  try {
+    sessionStorage.setItem(VISITED_COMMITS_KEY, JSON.stringify([...set]));
+  } catch {}
+}
 import { toast } from 'sonner';
 
 type ChangeType = 'added' | 'changed' | 'fixed' | 'removed';
@@ -46,6 +76,7 @@ interface ChangelogChange {
   description: string;
   display_order: number;
   scope: ChangeScope;
+  commit_hash?: string | null;
 }
 
 interface ChangelogEntry {
@@ -56,6 +87,8 @@ interface ChangelogEntry {
   active_batch_label: string | null;
   created_at: string;
   changes: ChangelogChange[];
+  reviewed?: boolean;
+  flagged?: boolean;
 }
 
 type ChangelogEntryWithInferred = ChangelogEntry & { inferredBatchLabel: string | null };
@@ -95,13 +128,16 @@ const ResearcherChangelog = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'participant' | 'researcher'>('all');
   const [batchFilter, setBatchFilter] = useState<string>('all');
-  
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
+  const [visitedCommitIds, setVisitedCommitIds] = useState<Set<string>>(getVisitedSet);
+  const entryRefsMap = useRef<Record<string, HTMLDivElement | null>>({});
+
   // Form state for new/edit entry
   const [entryForm, setEntryForm] = useState({ version: '', release_date: '', description: '', active_batch_label: '' });
-  const [newChanges, setNewChanges] = useState<{ type: ChangeType; description: string; scope: ChangeScope }[]>([]);
+  const [newChanges, setNewChanges] = useState<{ type: ChangeType; description: string; scope: ChangeScope; commit_hash?: string | null }[]>([]);
   
   // Inline editing state
-  const [editingChange, setEditingChange] = useState<{ id: string; type: ChangeType; description: string; scope: ChangeScope } | null>(null);
+  const [editingChange, setEditingChange] = useState<{ id: string; type: ChangeType; description: string; scope: ChangeScope; commit_hash?: string | null } | null>(null);
 
   // Fetch changelog entries with changes
   const { data: entriesRaw = [], isLoading } = useQuery({
@@ -209,7 +245,7 @@ const ResearcherChangelog = () => {
 
   // Add entry mutation
   const addEntryMutation = useMutation({
-    mutationFn: async (data: { version: string; release_date: string; description?: string | null; active_batch_label?: string | null; changes: { type: ChangeType; description: string; scope?: ChangeScope }[] }) => {
+    mutationFn: async (data: { version: string; release_date: string; description?: string | null; active_batch_label?: string | null; changes: { type: ChangeType; description: string; scope?: ChangeScope; commit_hash?: string | null }[] }) => {
       const { data: entry, error: entryError } = await supabase
         .from('changelog_entries')
         .insert({
@@ -232,7 +268,8 @@ const ResearcherChangelog = () => {
             change_type: c.type,
             description: c.description,
             display_order: i,
-            scope: c.scope ?? 'both'
+            scope: c.scope ?? 'both',
+            commit_hash: c.commit_hash?.trim() || null
           })));
         
         if (changesError) throw changesError;
@@ -252,15 +289,18 @@ const ResearcherChangelog = () => {
 
   // Update entry mutation
   const updateEntryMutation = useMutation({
-    mutationFn: async (data: { id: string; version: string; release_date: string; description?: string | null; active_batch_label?: string | null }) => {
+    mutationFn: async (data: { id: string; version: string; release_date: string; description?: string | null; active_batch_label?: string | null; reviewed?: boolean; flagged?: boolean }) => {
+      const payload: Record<string, unknown> = {
+        version: data.version,
+        release_date: data.release_date,
+        description: data.description?.trim() ?? null,
+        active_batch_label: data.active_batch_label?.trim() ?? null
+      };
+      if (data.reviewed !== undefined) payload.reviewed = data.reviewed;
+      if (data.flagged !== undefined) payload.flagged = data.flagged;
       const { error } = await supabase
         .from('changelog_entries')
-        .update({
-          version: data.version,
-          release_date: data.release_date,
-          description: data.description?.trim() || null,
-          active_batch_label: data.active_batch_label?.trim() || null
-        })
+        .update(payload)
         .eq('id', data.id);
       
       if (error) throw error;
@@ -271,6 +311,27 @@ const ResearcherChangelog = () => {
       toast.success('Entry updated');
     },
     onError: () => toast.error('Failed to update entry')
+  });
+
+  // Batch update entries (reviewed/flagged)
+  const batchUpdateEntriesMutation = useMutation({
+    mutationFn: async (data: { ids: string[]; reviewed?: boolean; flagged?: boolean }) => {
+      if (data.ids.length === 0) return;
+      const payload: Record<string, unknown> = {};
+      if (data.reviewed !== undefined) payload.reviewed = data.reviewed;
+      if (data.flagged !== undefined) payload.flagged = data.flagged;
+      const { error } = await supabase
+        .from('changelog_entries')
+        .update(payload)
+        .in('id', data.ids);
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+      setSelectedEntryIds(new Set());
+      toast.success(`${variables.ids.length} entr${variables.ids.length === 1 ? 'y' : 'ies'} updated`);
+    },
+    onError: () => toast.error('Failed to update entries')
   });
 
   // Delete entry mutation
@@ -289,10 +350,10 @@ const ResearcherChangelog = () => {
 
   // Add change mutation
   const addChangeMutation = useMutation({
-    mutationFn: async (data: { entry_id: string; type: ChangeType; description: string; scope?: ChangeScope }) => {
+    mutationFn: async (data: { entry_id: string; type: ChangeType; description: string; scope?: ChangeScope; commit_hash?: string | null }) => {
       const { error } = await supabase
         .from('changelog_changes')
-        .insert({ entry_id: data.entry_id, change_type: data.type, description: data.description, display_order: 999, scope: data.scope ?? 'both' });
+        .insert({ entry_id: data.entry_id, change_type: data.type, description: data.description, display_order: 999, scope: data.scope ?? 'both', commit_hash: data.commit_hash?.trim() || null });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -304,10 +365,10 @@ const ResearcherChangelog = () => {
 
   // Update change mutation
   const updateChangeMutation = useMutation({
-    mutationFn: async (data: { id: string; type: ChangeType; description: string; scope: ChangeScope }) => {
+    mutationFn: async (data: { id: string; type: ChangeType; description: string; scope: ChangeScope; commit_hash?: string | null }) => {
       const { error } = await supabase
         .from('changelog_changes')
-        .update({ change_type: data.type, description: data.description, scope: data.scope })
+        .update({ change_type: data.type, description: data.description, scope: data.scope, commit_hash: data.commit_hash?.trim() || null })
         .eq('id', data.id);
       if (error) throw error;
     },
@@ -336,6 +397,17 @@ const ResearcherChangelog = () => {
   const handleAddNewChange = () => {
     setNewChanges([...newChanges, { type: 'added', description: '', scope: 'both' }]);
   };
+
+  // Scroll to last-clicked entry when returning from external commit link
+  useEffect(() => {
+    const lastId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(LAST_ENTRY_KEY) : null;
+    if (!lastId || !entryRefsMap.current[lastId]) return;
+    const t = setTimeout(() => {
+      entryRefsMap.current[lastId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      try { sessionStorage.removeItem(LAST_ENTRY_KEY); } catch {}
+    }, 100);
+    return () => clearTimeout(t);
+  }, [filteredAndSortedEntries.length]);
 
   const createBatchMutation = useMutation({
     mutationFn: async (data: { name: string; notes: string }) => {
@@ -408,37 +480,51 @@ const ResearcherChangelog = () => {
       release_date: entryForm.release_date,
       description: entryForm.description.trim() || undefined,
       active_batch_label: entryForm.active_batch_label.trim() || undefined,
-      changes: newChanges.filter(c => c.description.trim()).map(c => ({ type: c.type, description: c.description.trim(), scope: c.scope }))
+      changes: newChanges.filter(c => c.description.trim()).map(c => ({ type: c.type, description: c.description.trim(), scope: c.scope, commit_hash: c.commit_hash?.trim() || undefined }))
     });
   };
 
-  const handleImportJson = () => {
+  const handleImportJson = async () => {
     try {
-      const parsed = JSON.parse(importJsonText) as { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: { type: string; description: string; scope?: string }[] };
-      const version = typeof parsed.version === 'string' ? parsed.version.trim() : '';
-      const release_date = typeof parsed.release_date === 'string' ? parsed.release_date.trim() : '';
-      const description = typeof parsed.description === 'string' ? parsed.description.trim() : undefined;
-      const active_batch_label = typeof parsed.active_batch_label === 'string' ? parsed.active_batch_label.trim() : undefined;
-      const rawChanges = Array.isArray(parsed.changes) ? parsed.changes : [];
+      type ImportChange = { type: string; description: string; scope?: string; commit_hash?: string };
+      const parsed = JSON.parse(importJsonText) as
+        | { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }
+        | { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }[];
       const validScopes = ['participant', 'researcher', 'both'] as const;
-      const changes = rawChanges
-        .filter((c): c is { type: ChangeType; description: string; scope?: string } =>
-          c && typeof c.type === 'string' && ['added', 'changed', 'fixed', 'removed'].includes(c.type) && typeof c.description === 'string'
-        )
-        .map((c) => ({ type: c.type as ChangeType, description: String(c.description).trim(), scope: (validScopes.includes(c.scope as ChangeScope) ? c.scope : 'both') as ChangeScope }))
-        .filter((c) => c.description.length > 0);
-      if (!version || !release_date) {
-        toast.error('JSON must include "version" and "release_date"');
+      const normalizeEntry = (obj: { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }) => {
+        const version = typeof obj.version === 'string' ? obj.version.trim() : '';
+        const release_date = typeof obj.release_date === 'string' ? obj.release_date.trim() : '';
+        const description = typeof obj.description === 'string' ? obj.description.trim() : undefined;
+        const active_batch_label = typeof obj.active_batch_label === 'string' ? obj.active_batch_label.trim() : undefined;
+        const rawChanges = Array.isArray(obj.changes) ? obj.changes : [];
+        const changes = rawChanges
+          .filter((c): c is ImportChange & { type: ChangeType } =>
+            c && typeof c.type === 'string' && ['added', 'changed', 'fixed', 'removed'].includes(c.type) && typeof c.description === 'string'
+          )
+          .map((c) => ({
+            type: c.type as ChangeType,
+            description: String(c.description).trim(),
+            scope: (validScopes.includes(c.scope as ChangeScope) ? c.scope : 'both') as ChangeScope,
+            commit_hash: typeof c.commit_hash === 'string' ? (c.commit_hash.trim() || undefined) : undefined
+          }))
+          .filter((c) => c.description.length > 0);
+        return { version, release_date, description, active_batch_label, changes };
+      };
+      const entries = Array.isArray(parsed) ? parsed.map(normalizeEntry) : [normalizeEntry(parsed)];
+      const valid = entries.filter((e) => e.version && e.release_date);
+      if (valid.length === 0) {
+        toast.error('JSON must include at least one entry with "version" and "release_date"');
         return;
       }
-      addEntryMutation.mutate({ version, release_date, description: description || undefined, active_batch_label: active_batch_label || undefined, changes }, {
-        onSuccess: () => {
-          setShowImportDialog(false);
-          setImportJsonText('');
-        }
-      });
-    } catch {
-      toast.error('Invalid JSON. Expected: { "version": "...", "release_date": "YYYY-MM-DD", "changes": [ { "type": "added"|"changed"|"fixed"|"removed", "description": "..." } ] }');
+      for (const { version, release_date, description, active_batch_label, changes } of valid) {
+        await addEntryMutation.mutateAsync({ version, release_date, description: description || undefined, active_batch_label: active_batch_label || undefined, changes });
+      }
+      setShowImportDialog(false);
+      setImportJsonText('');
+      toast.success(valid.length === 1 ? '1 entry imported' : `${valid.length} entries imported`);
+    } catch (e) {
+      if (e && typeof (e as { message?: string }).message === 'string') toast.error((e as Error).message);
+      else toast.error('Invalid JSON. Use a single entry object or an array of entries with "version", "release_date", "changes".');
     }
   };
 
@@ -576,11 +662,45 @@ const ResearcherChangelog = () => {
                 No entries match the current filters.
               </div>
             ) : (
+              <>
+                {selectedEntryIds.size > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 py-2 px-3 mb-2 rounded-md bg-muted/50 border">
+                    <span className="text-sm font-medium">{selectedEntryIds.size} selected</span>
+                    <Button size="sm" variant="outline" onClick={() => batchUpdateEntriesMutation.mutate({ ids: [...selectedEntryIds], reviewed: true })} disabled={batchUpdateEntriesMutation.isPending}>
+                      Mark reviewed
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => batchUpdateEntriesMutation.mutate({ ids: [...selectedEntryIds], flagged: true })} disabled={batchUpdateEntriesMutation.isPending}>
+                      Flag
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => batchUpdateEntriesMutation.mutate({ ids: [...selectedEntryIds], flagged: false })} disabled={batchUpdateEntriesMutation.isPending}>
+                      Clear flag
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedEntryIds(new Set())}>
+                      Deselect all
+                    </Button>
+                  </div>
+                )}
               <ScrollArea className="h-[calc(100vh-380px)]">
                 <div className="space-y-8">
                   {filteredAndSortedEntries.map((entry) => (
-                    <div key={entry.id} className="border-l-2 border-primary/20 pl-4">
-                      <div className="flex items-center gap-3 mb-3">
+                    <div
+                      key={entry.id}
+                      ref={(el) => { entryRefsMap.current[entry.id] = el; }}
+                      data-entry-id={entry.id}
+                      className={entry.flagged ? 'border-l-2 border-l-destructive pl-4' : 'border-l-2 border-primary/20 pl-4'}
+                    >
+                      <div className="flex items-center gap-3 mb-3 flex-wrap">
+                        <Checkbox
+                          checked={selectedEntryIds.has(entry.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedEntryIds(prev => {
+                              const next = new Set(prev);
+                              if (checked) next.add(entry.id); else next.delete(entry.id);
+                              return next;
+                            });
+                          }}
+                          aria-label={`Select ${entry.version}`}
+                        />
                         {editingEntry?.id === entry.id ? (
                           <>
                             <Input
@@ -606,6 +726,25 @@ const ResearcherChangelog = () => {
                           <>
                             <span className="text-lg font-semibold">v{entry.version}</span>
                             <span className="text-sm text-muted-foreground">{entry.release_date}</span>
+                            <Button
+                              size="sm"
+                              variant={entry.reviewed ? 'secondary' : 'ghost'}
+                              className={entry.reviewed ? 'opacity-100' : 'opacity-70'}
+                              onClick={() => updateEntryMutation.mutate({ id: entry.id, version: entry.version, release_date: entry.release_date, description: entry.description ?? null, active_batch_label: entry.active_batch_label ?? null, reviewed: !entry.reviewed })}
+                              title={entry.reviewed ? 'Reviewed' : 'Mark reviewed'}
+                            >
+                              <Eye className="h-3.5 w-3.5 mr-1" />
+                              {entry.reviewed ? 'Reviewed' : 'Review'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={entry.flagged ? 'destructive' : 'ghost'}
+                              onClick={() => updateEntryMutation.mutate({ id: entry.id, version: entry.version, release_date: entry.release_date, description: entry.description ?? null, active_batch_label: entry.active_batch_label ?? null, flagged: !entry.flagged })}
+                              title={entry.flagged ? 'Flagged' : 'Flag'}
+                            >
+                              <Flag className="h-3.5 w-3.5 mr-1" />
+                              {entry.flagged ? 'Flagged' : 'Flag'}
+                            </Button>
                             <Button size="sm" variant="ghost" onClick={() => setEditingEntry(entry)}>
                               <Pencil className="h-3 w-3" />
                             </Button>
@@ -682,6 +821,13 @@ const ResearcherChangelog = () => {
                                   onChange={(e) => setEditingChange({ ...editingChange, description: e.target.value })}
                                   className="flex-1"
                                 />
+                                <Input
+                                  placeholder="Commit hash"
+                                  value={editingChange.commit_hash ?? ''}
+                                  onChange={(e) => setEditingChange({ ...editingChange, commit_hash: e.target.value || undefined })}
+                                  className="w-32 font-mono text-xs"
+                                  title="Git commit hash (e.g. abc123f)"
+                                />
                                 <Button size="sm" variant="ghost" onClick={() => updateChangeMutation.mutate(editingChange)}>
                                   <Check className="h-4 w-4" />
                                 </Button>
@@ -698,7 +844,24 @@ const ResearcherChangelog = () => {
                                   {scopeLabels[(change.scope as ChangeScope) || 'both']}
                                 </span>
                                 <span className="text-sm flex-1">{change.description}</span>
-                                <Button size="sm" variant="ghost" onClick={() => setEditingChange({ id: change.id, type: change.change_type as ChangeType, description: change.description, scope: (change.scope as ChangeScope) || 'both' })}>
+                                {change.commit_hash ? (
+                                  <a
+                                    href={commitUrl(change.commit_hash)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`shrink-0 flex items-center gap-1 ${visitedCommitIds.has(change.id) ? 'text-muted-foreground/60 visited:opacity-70' : 'text-muted-foreground hover:text-foreground'}`}
+                                    title={visitedCommitIds.has(change.id) ? 'Viewed · View commit' : 'View commit'}
+                                    onClick={() => {
+                                      markVisited(change.id);
+                                      try { sessionStorage.setItem(LAST_ENTRY_KEY, entry.id); } catch {}
+                                      setVisitedCommitIds(getVisitedSet());
+                                    }}
+                                  >
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                    {visitedCommitIds.has(change.id) && <span className="text-[10px] text-muted-foreground">Viewed</span>}
+                                  </a>
+                                ) : null}
+                                <Button size="sm" variant="ghost" onClick={() => setEditingChange({ id: change.id, type: change.change_type as ChangeType, description: change.description, scope: (change.scope as ChangeScope) || 'both', commit_hash: change.commit_hash ?? undefined })}>
                                   <Pencil className="h-3 w-3" />
                                 </Button>
                                 {isSuperAdmin && (
@@ -724,6 +887,7 @@ const ResearcherChangelog = () => {
                   ))}
                 </div>
               </ScrollArea>
+              </>
             )}
           </CardContent>
         </Card>
@@ -886,6 +1050,17 @@ const ResearcherChangelog = () => {
                         setNewChanges(updated);
                       }}
                       className="flex-1"
+                    />
+                    <Input
+                      placeholder="Commit"
+                      value={change.commit_hash ?? ''}
+                      onChange={(e) => {
+                        const updated = [...newChanges];
+                        updated[idx].commit_hash = e.target.value || undefined;
+                        setNewChanges(updated);
+                      }}
+                      className="w-24 font-mono text-xs"
+                      title="Git commit hash"
                     />
                     <Button size="icon" variant="ghost" onClick={() => setNewChanges(newChanges.filter((_, i) => i !== idx))}>
                       <X className="h-4 w-4" />

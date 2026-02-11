@@ -1,0 +1,91 @@
+[
+  {
+    "version": "0.9.27",
+    "release_date": "2026-01-27",
+    "description": "No-consent feedback: UI, Prolific ID, 10-word min, required feedback",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "No-consent UI and display", "scope": "participant", "commit_hash": "c6ffd84" },
+      { "type": "added", "description": "Add Prolific ID to no-consent", "scope": "researcher", "commit_hash": "c6ffd84" },
+      { "type": "changed", "description": "Enforced 10-word minimum for no-consent feedback", "scope": "participant", "commit_hash": "3910871" },
+      { "type": "changed", "description": "Require feedback in NoConsent flow", "scope": "participant", "commit_hash": "9d7883e" }
+    ]
+  },
+  {
+    "version": "0.9.29",
+    "release_date": "2026-01-29",
+    "description": "Admin and viewer auth: export CSV, user creation, password reset, activity logs",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "Allow viewers to export CSV", "scope": "researcher", "commit_hash": "1e03ebf" },
+      { "type": "added", "description": "Admin user creation support", "scope": "researcher", "commit_hash": "59f2e24" },
+      { "type": "added", "description": "Admin password reset for others", "scope": "researcher", "commit_hash": "cdbce75" },
+      { "type": "added", "description": "Activity logs and dialogs", "scope": "researcher", "commit_hash": "94ddab5" },
+      { "type": "added", "description": "Change password flow", "scope": "researcher", "commit_hash": "f472c30" },
+      { "type": "fixed", "description": "Repeated signup edge case", "scope": "both", "commit_hash": "ff0db33" }
+    ]
+  },
+  {
+    "version": "1.0.6",
+    "release_date": "2026-02-06",
+    "description": "Branding, changelog page, voice dictation, unified participants, batches in settings",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "changed", "description": "HTML metadata and Prolific favicon (replace FlaskConical icons)", "scope": "participant", "commit_hash": "2db57f1" },
+      { "type": "changed", "description": "Removed text on homepage", "scope": "participant", "commit_hash": "b91f673" },
+      { "type": "added", "description": "Changelog page and editable changelog pages", "scope": "researcher", "commit_hash": "4e98569" },
+      { "type": "added", "description": "Voice dictation for feedback", "scope": "participant", "commit_hash": "b60c42f" },
+      { "type": "changed", "description": "Enhance voice dictation UX", "scope": "participant", "commit_hash": "e37a43a" },
+      { "type": "fixed", "description": "Voice dictation stability", "scope": "participant", "commit_hash": "9459b14" },
+      { "type": "changed", "description": "Improve feedback UI validation", "scope": "participant", "commit_hash": "85e25d7" },
+      { "type": "added", "description": "Unified participants view", "scope": "researcher", "commit_hash": "b842db6" },
+      { "type": "changed", "description": "Rename tab to Responses", "scope": "researcher", "commit_hash": "21c539c" },
+      { "type": "fixed", "description": "Researcher filter and UI", "scope": "researcher", "commit_hash": "8bda43b" },
+      { "type": "changed", "description": "Merge batches into settings; star to mark active batch", "scope": "researcher", "commit_hash": "94bbbf7" },
+      { "type": "changed", "description": "Refactor batch manager removal", "scope": "researcher", "commit_hash": "0e136f5" },
+      { "type": "added", "description": "Global source filter", "scope": "researcher", "commit_hash": "c0479e3" },
+      { "type": "changed", "description": "Make guest act as super admin UI", "scope": "researcher", "commit_hash": "32c7a27" },
+      { "type": "added", "description": "Guest mode data", "scope": "researcher", "commit_hash": "4af34c8" },
+      { "type": "fixed", "description": "Guest data prolific_id", "scope": "researcher", "commit_hash": "91b2592" }
+    ]
+  },
+  {
+    "version": "1.0.7",
+    "release_date": "2026-02-07",
+    "description": "Researcher UX, dictation upload, replay, auth and diagnostics",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "changed", "description": "Able to hide researcher controls", "scope": "researcher", "commit_hash": "8abbaa7" },
+      { "type": "added", "description": "Login lockout after repeated failed attempts", "scope": "researcher", "commit_hash": "88c391e" },
+      { "type": "added", "description": "P-value progress chart", "scope": "researcher", "commit_hash": "6230500" },
+      { "type": "added", "description": "Dictation audio storage", "scope": "participant", "commit_hash": "366d803" },
+      { "type": "added", "description": "Internal session replay (removed Hotjar)", "scope": "researcher", "commit_hash": "75f19a3" },
+      { "type": "changed", "description": "Researcher navigation, feedback render fix, and username functionality", "scope": "researcher", "commit_hash": "efff79a" },
+      { "type": "added", "description": "Call attempt diagnostics and participant issue feedback", "scope": "both", "commit_hash": "b1e0d69" },
+      { "type": "fixed", "description": "Researcher username refresh and paginate auth user listing", "scope": "researcher", "commit_hash": "7351b62" },
+      { "type": "fixed", "description": "Auto-recover from Vite dynamic import chunk load failures", "scope": "both", "commit_hash": "cca8b9c" },
+      { "type": "fixed", "description": "Uploading dictation audio (mostly)", "scope": "participant", "commit_hash": "a6fcdda" },
+      { "type": "changed", "description": "More call diagnostics", "scope": "researcher", "commit_hash": "d5490b6" },
+      { "type": "changed", "description": "Prefill reset password email for selected user", "scope": "researcher", "commit_hash": "86bafdf" },
+      { "type": "fixed", "description": "Researcher ID handling", "scope": "researcher", "commit_hash": "affee6e" },
+      { "type": "changed", "description": "Researcher Prolific ID automatically increased", "scope": "researcher", "commit_hash": "0b7050e" },
+      { "type": "changed", "description": "Show text in session replay", "scope": "researcher", "commit_hash": "e57d49a" },
+      { "type": "changed", "description": "User management", "scope": "researcher", "commit_hash": "7fe8d5b" }
+    ]
+  },
+  {
+    "version": "1.0.8",
+    "release_date": "2026-02-08",
+    "description": "Researcher mode submission, dictation and token_used rename",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "changed", "description": "Fix researcher-mode submit defaults and same-call response reuse", "scope": "researcher", "commit_hash": "7a39796" },
+      { "type": "fixed", "description": "Prevent stale researcher state and duplicate feedback submits", "scope": "researcher", "commit_hash": "b90c01c" },
+      { "type": "changed", "description": "Rename token_used to is_completed across app and edge functions", "scope": "both", "commit_hash": "ae0924d" },
+      { "type": "fixed", "description": "Reset dictation storage policies for researcher IDs", "scope": "researcher", "commit_hash": "7bc7136" },
+      { "type": "changed", "description": "Improved dictation", "scope": "participant", "commit_hash": "657f1c0" },
+      { "type": "changed", "description": "Improved saving/completing flow", "scope": "participant", "commit_hash": "4ab3767" },
+      { "type": "changed", "description": "Simplified researcher mode submission", "scope": "researcher", "commit_hash": "dd380dd" }
+    ]
+  }
+]

@@ -1,0 +1,47 @@
+[
+  {
+    "version": "1.0.9",
+    "release_date": "2026-02-09",
+    "description": "Mic checks, dictation fix, p-value chart batch markers",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "fixed", "description": "Response summary mic checks: use call_preflight_result for main/practice, state or permissionState for feedback", "scope": "researcher", "commit_hash": "ad33fe1" },
+      { "type": "fixed", "description": "Dictation: stop previous on switch, avoid double upload on aborted", "scope": "participant", "commit_hash": "bcb2e91" },
+      { "type": "changed", "description": "Stat analysis: p-value progress chart N on x-axis with batch markers", "scope": "researcher", "commit_hash": "797a936" }
+    ]
+  },
+  {
+    "version": "1.1.0",
+    "release_date": "2026-02-10",
+    "description": "Changelog scope & batch, reviewed/flagged, replay, feedback UX, guest mode, RLS",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "Changelog: description, active batch, scope; release checklist; create batch from changelog", "scope": "researcher", "commit_hash": "f9376df" },
+      { "type": "changed", "description": "Allow archiving no-consent feedback; fix delete with RLS policy", "scope": "researcher", "commit_hash": "2a95c6d" },
+      { "type": "added", "description": "Reviewed/flagged per response, batch reviewed badge, create-new-batch prompt", "scope": "researcher", "commit_hash": "12b255b" },
+      { "type": "changed", "description": "Experiment Settings: batch response counts respect Data Source filter", "scope": "researcher", "commit_hash": "374cf3d" },
+      { "type": "changed", "description": "Show recording length as minutes:seconds only (no decimals)", "scope": "participant", "commit_hash": "aa69101" },
+      { "type": "changed", "description": "Feedback: recording-first UX, cumulative 20s, scroll hint, toast improvements", "scope": "participant", "commit_hash": "49699ec" },
+      { "type": "fixed", "description": "Only mark call error for actual errors, not normal call_end", "scope": "participant", "commit_hash": "8f5319b" },
+      { "type": "changed", "description": "Allow Space in inputs/textareas; skip Space+R shortcut when focus in editable field", "scope": "participant", "commit_hash": "0738aa1" },
+      { "type": "changed", "description": "PETS subtitles: ER = Emotional Responsiveness, UT = Understanding and Trust", "scope": "participant", "commit_hash": "34fa53f" },
+      { "type": "added", "description": "Rich guest mode experience with demo responses and statistics", "scope": "researcher", "commit_hash": "be3c837" },
+      { "type": "added", "description": "Source filter and baseline balance diagnostics on statistics page", "scope": "researcher", "commit_hash": "5faafd8" },
+      { "type": "changed", "description": "Replay marker list: remove draft autosave, show all markers with timestamps", "scope": "researcher", "commit_hash": "0ddec7e" },
+      { "type": "fixed", "description": "Replay timeline markers not showing after background loading refactor", "scope": "researcher", "commit_hash": "f8fd30b" },
+      { "type": "added", "description": "Progressive session replay loading with streaming batches", "scope": "researcher", "commit_hash": "de63339" },
+      { "type": "fixed", "description": "Session replay loading for heavy participants with paginated fetching", "scope": "researcher", "commit_hash": "608c203" },
+      { "type": "fixed", "description": "Session replay & journey timeline timeouts for heavy participants", "scope": "researcher", "commit_hash": "e71045c" },
+      { "type": "changed", "description": "ResponseDetails performance and logging", "scope": "researcher", "commit_hash": "d7be8aa" }
+    ]
+  },
+  {
+    "version": "1.1.1",
+    "release_date": "2026-02-11",
+    "description": "Changelog: link release date to active batch, sort by date + tie-break",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "changed", "description": "Changelog: link release date to active batch (from experiment_batches), fix sort by date + tie-break by version/created_at", "scope": "researcher", "commit_hash": "f514375" }
+    ]
+  }
+]
