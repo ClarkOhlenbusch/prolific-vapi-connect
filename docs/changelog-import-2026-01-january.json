@@ -1,0 +1,149 @@
+[
+  {
+    "version": "0.9.7",
+    "release_date": "2026-01-07",
+    "description": "Consent flow, no-consent page, questionnaire UX, practice and mic",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "changed", "description": "Adjust consent text and section order; make consent content scrollable", "scope": "participant", "commit_hash": "d7ca360" },
+      { "type": "changed", "description": "Update consent flow text", "scope": "participant", "commit_hash": "65e156a" },
+      { "type": "added", "description": "Confirm popup for no-consent", "scope": "participant", "commit_hash": "8ada206" },
+      { "type": "changed", "description": "Rename NotEligible to NoConsent", "scope": "both", "commit_hash": "66ab09f" },
+      { "type": "changed", "description": "Enhance no-consent page behavior", "scope": "participant", "commit_hash": "a1ee8f0" },
+      { "type": "changed", "description": "Improve questionnaire validation on PETS and TIAS", "scope": "participant", "commit_hash": "270a693" },
+      { "type": "changed", "description": "Improve questionnaire popups UX; add questionnaire positions", "scope": "participant", "commit_hash": "24de206" },
+      { "type": "changed", "description": "Make Intention validate on click", "scope": "participant", "commit_hash": "6405258" },
+      { "type": "changed", "description": "Update practice instruction text", "scope": "participant", "commit_hash": "d2bd71e" },
+      { "type": "changed", "description": "Handle practice timeout display", "scope": "participant", "commit_hash": "1358ba4" },
+      { "type": "changed", "description": "Handle timeout by recognizing more error patterns", "scope": "participant", "commit_hash": "7ca184f" },
+      { "type": "changed", "description": "Restart call stays on page", "scope": "participant", "commit_hash": "d030ac3" },
+      { "type": "changed", "description": "Enhance mic button visuals", "scope": "participant", "commit_hash": "b7918e0" },
+      { "type": "changed", "description": "Hide scroll hint at bottom", "scope": "participant", "commit_hash": "898dd0f" },
+      { "type": "changed", "description": "Remove active call check", "scope": "researcher", "commit_hash": "70acee9" },
+      { "type": "changed", "description": "Differentiate by badge and color", "scope": "researcher", "commit_hash": "d1fb6ba" }
+    ]
+  },
+  {
+    "version": "0.9.9",
+    "release_date": "2026-01-09",
+    "description": "Feedback UX, questionnaire, demographics, experiment progress",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "changed", "description": "Replace Cali references on feedback; update Cali label", "scope": "participant", "commit_hash": "1cb767d" },
+      { "type": "changed", "description": "Refine feedback prompts", "scope": "participant", "commit_hash": "dc691f8" },
+      { "type": "changed", "description": "Improve feedback UI and spacing", "scope": "participant", "commit_hash": "497989e" },
+      { "type": "changed", "description": "Update final feedback page layout", "scope": "participant", "commit_hash": "294dffc" },
+      { "type": "changed", "description": "Hide feedback char counts", "scope": "participant", "commit_hash": "2e7a54c" },
+      { "type": "changed", "description": "Increase feedback limit to 2500", "scope": "participant", "commit_hash": "355d26d" },
+      { "type": "changed", "description": "Handle null intention data in feedback", "scope": "participant", "commit_hash": "963134d" },
+      { "type": "changed", "description": "Update feedback fields handling", "scope": "participant", "commit_hash": "2c068e8" },
+      { "type": "changed", "description": "Enhance questionnaire UX", "scope": "participant", "commit_hash": "200d82a" },
+      { "type": "changed", "description": "Convert age field to year of birth in demographics", "scope": "participant", "commit_hash": "37094f4" },
+      { "type": "changed", "description": "Change demographics to exact age", "scope": "participant", "commit_hash": "533bda6" },
+      { "type": "changed", "description": "Use numeric input for year of birth; update year placeholder", "scope": "participant", "commit_hash": "41e0c42" },
+      { "type": "added", "description": "Experiment progress bar", "scope": "participant", "commit_hash": "b7ec8c8" },
+      { "type": "fixed", "description": "Intention data on load", "scope": "researcher", "commit_hash": "fa26f01" },
+      { "type": "changed", "description": "Replace loading with skeleton", "scope": "both", "commit_hash": "bf48d4b" },
+      { "type": "changed", "description": "Include metadata for VAPI calls", "scope": "researcher", "commit_hash": "2679223" }
+    ]
+  },
+  {
+    "version": "0.9.13",
+    "release_date": "2026-01-13",
+    "description": "Researcher auth, table UX, batch filter, Godspeed, formality",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "Researcher auth route and user mgmt page", "scope": "researcher", "commit_hash": "9d31967" },
+      { "type": "fixed", "description": "Researcher auth flow and login redirect/loop", "scope": "researcher", "commit_hash": "09e6875" },
+      { "type": "changed", "description": "Show login button for researcher", "scope": "researcher", "commit_hash": "25fe82f" },
+      { "type": "added", "description": "Viewer user via edge function", "scope": "researcher", "commit_hash": "072a743" },
+      { "type": "added", "description": "Activation key gate", "scope": "researcher", "commit_hash": "6f8f960" },
+      { "type": "added", "description": "Godspeed questionnaire", "scope": "participant", "commit_hash": "0a34681" },
+      { "type": "changed", "description": "Move formality rating up", "scope": "participant", "commit_hash": "05c15e7" },
+      { "type": "changed", "description": "Add formal informal toggle on summary", "scope": "researcher", "commit_hash": "0d3cfde" },
+      { "type": "changed", "description": "Add compare formal informal", "scope": "researcher", "commit_hash": "4c640b3" },
+      { "type": "changed", "description": "Remove demographics tab", "scope": "researcher", "commit_hash": "0eed998" },
+      { "type": "changed", "description": "Add demographics and godspeed data", "scope": "researcher", "commit_hash": "baf1b20" },
+      { "type": "changed", "description": "Refactor experiment table UX; reorder and filter table UI", "scope": "researcher", "commit_hash": "1f92a94" },
+      { "type": "changed", "description": "Enable multi-batch select; enhance batch label support", "scope": "researcher", "commit_hash": "0b8f4c4" },
+      { "type": "changed", "description": "Add batch filter to summary", "scope": "researcher", "commit_hash": "9af7a7b" },
+      { "type": "changed", "description": "Export filtered columns in CSV", "scope": "researcher", "commit_hash": "234af5a" },
+      { "type": "changed", "description": "Switch to direct assistant selection; add vapi assistant toggle", "scope": "researcher", "commit_hash": "346cd4f" },
+      { "type": "changed", "description": "Improve experiment responses UI", "scope": "researcher", "commit_hash": "2d7e4be" },
+      { "type": "changed", "description": "Truncate prolific id display", "scope": "researcher", "commit_hash": "4850d77" },
+      { "type": "changed", "description": "Remove mic icon from sessions", "scope": "researcher", "commit_hash": "25e0a86" },
+      { "type": "added", "description": "Bootstrap admin endpoint", "scope": "researcher", "commit_hash": "95182f3" },
+      { "type": "changed", "description": "Change admin password function", "scope": "researcher", "commit_hash": "27bcfe4" },
+      { "type": "fixed", "description": "Batch edit issue", "scope": "researcher", "commit_hash": "310b88c" }
+    ]
+  },
+  {
+    "version": "0.9.15",
+    "release_date": "2026-01-15",
+    "description": "Prompts lab, formality calculator, merge compare, stats",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "Prompts lab UI", "scope": "researcher", "commit_hash": "633e968" },
+      { "type": "added", "description": "Multi-text compare input; live compute f-score while typing", "scope": "researcher", "commit_hash": "1ac7a11" },
+      { "type": "changed", "description": "Merge prompts diffs update; merge all from side; inline merge checkmarks", "scope": "researcher", "commit_hash": "9d51136" },
+      { "type": "changed", "description": "Add undo and persist tabs; fix save as new prompt flow", "scope": "researcher", "commit_hash": "94a6af5" },
+      { "type": "changed", "description": "Make Dialog available always", "scope": "researcher", "commit_hash": "0378c95" },
+      { "type": "added", "description": "Formality Calculator tab", "scope": "researcher", "commit_hash": "8f96beb" },
+      { "type": "changed", "description": "Add F-score to summary; rename saved calc columns to F-score and Perceived Formality", "scope": "researcher", "commit_hash": "41d87e9" },
+      { "type": "added", "description": "Statistical analysis page", "scope": "researcher", "commit_hash": "1788876" },
+      { "type": "added", "description": "Formal breakdown page; link results to breakdown page", "scope": "researcher", "commit_hash": "3caedb4" },
+      { "type": "changed", "description": "Link AI formality to responses; organize results by RQ and hypotheses", "scope": "researcher", "commit_hash": "5d7693c" },
+      { "type": "changed", "description": "Sync practice IDs with formality", "scope": "researcher", "commit_hash": "eadca0f" },
+      { "type": "changed", "description": "Toggle AI by default; toggle linked calculations filter", "scope": "researcher", "commit_hash": "4776c5f" },
+      { "type": "fixed", "description": "Tooltips and unify colors; style unify and add sort filters", "scope": "researcher", "commit_hash": "086da0f" },
+      { "type": "changed", "description": "Add compare history dropdown; localStorage save for compare mode", "scope": "researcher", "commit_hash": "edf0c33" },
+      { "type": "changed", "description": "Color-code live compare tokens; improve F-score input handling", "scope": "researcher", "commit_hash": "dd269ba" },
+      { "type": "changed", "description": "Skip user turns in CSV parsing; improve AI turns extraction", "scope": "researcher", "commit_hash": "7284ba3" },
+      { "type": "changed", "description": "Show AI and user formality; include assistant type in saved", "scope": "researcher", "commit_hash": "c8b4f27" }
+    ]
+  },
+  {
+    "version": "0.9.17",
+    "release_date": "2026-01-17",
+    "description": "Time analysis, ResponseDetails, godspeed alignment, participant flow",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "Time analysis tab and page", "scope": "researcher", "commit_hash": "4cea64e" },
+      { "type": "changed", "description": "Add page tracking to all pages; show missing pages in time analysis", "scope": "researcher", "commit_hash": "50a3ea4" },
+      { "type": "added", "description": "View details page and links", "scope": "researcher", "commit_hash": "24cd675" },
+      { "type": "changed", "description": "Reorder ResponseDetails sections", "scope": "researcher", "commit_hash": "e4b64ee" },
+      { "type": "changed", "description": "Modularize Godspeed blocks", "scope": "researcher", "commit_hash": "ab38910" },
+      { "type": "changed", "description": "Align godspeed labels to radios; align attention check radios", "scope": "participant", "commit_hash": "a40dece" },
+      { "type": "changed", "description": "Align godspeed labels left", "scope": "participant", "commit_hash": "df0a624" },
+      { "type": "changed", "description": "Show both value and label for familiarity; show familiarity labels on demo", "scope": "researcher", "commit_hash": "0eb2226" },
+      { "type": "added", "description": "Mic permission note", "scope": "participant", "commit_hash": "0529b0c" },
+      { "type": "changed", "description": "Improve participant speed flow", "scope": "participant", "commit_hash": "ad8e459" }
+    ]
+  },
+  {
+    "version": "0.9.18",
+    "release_date": "2026-01-18",
+    "description": "Practice flow, alternating assignment, sync practice to main",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "changed", "description": "Improve practice flow timing", "scope": "participant", "commit_hash": "2254362" },
+      { "type": "changed", "description": "Sync practice to main condition", "scope": "participant", "commit_hash": "922e698" },
+      { "type": "changed", "description": "Toggle alternating assignment", "scope": "researcher", "commit_hash": "5b912f1" },
+      { "type": "changed", "description": "Toggle alternating mode UI", "scope": "participant", "commit_hash": "103fab5" }
+    ]
+  },
+  {
+    "version": "0.9.19",
+    "release_date": "2026-01-19",
+    "description": "TIPI questionnaire, batches support, mic permission UX",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "TIPI questionnaire", "scope": "participant", "commit_hash": "31fc925" },
+      { "type": "added", "description": "TIPI and batches support", "scope": "researcher", "commit_hash": "2e494a4" },
+      { "type": "added", "description": "TIPI data display", "scope": "researcher", "commit_hash": "07086ac" },
+      { "type": "changed", "description": "Order batches by activity", "scope": "researcher", "commit_hash": "806b7f6" },
+      { "type": "changed", "description": "Improve mic permission UX", "scope": "participant", "commit_hash": "7ea98d7" },
+      { "type": "changed", "description": "Show researcher mode Vapi debug", "scope": "researcher", "commit_hash": "f1c38c0" }
+    ]
+  }
+]
