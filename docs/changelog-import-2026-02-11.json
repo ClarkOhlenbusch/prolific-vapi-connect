@@ -10,5 +10,16 @@
       { "type": "added", "description": "Changelog auto-import from build (manifest + same-origin fetch)", "scope": "researcher", "commit_hash": "0d38b0e" },
       { "type": "changed", "description": "Add changelog import file for January 2026", "scope": "researcher", "commit_hash": "d4856cf" }
     ]
+  },
+  {
+    "version": "1.1.3",
+    "release_date": "2026-02-11",
+    "description": "Import history and logging, remove-duplicates RPC, HTML response check",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "Changelog import attempt logging and remove-duplicates RPC (migrations + types)", "scope": "researcher", "commit_hash": "3a37b42" },
+      { "type": "added", "description": "Import history UI, HTML response check, remove-duplicates button in Release History", "scope": "researcher", "commit_hash": "2a1a39a" },
+      { "type": "changed", "description": "README local .env exclude note; one-off SQL script for duplicate changelog entries", "scope": "researcher", "commit_hash": "18a252d" }
+    ]
   }
 ]
