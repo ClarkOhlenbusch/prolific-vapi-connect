@@ -11,8 +11,21 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Archive } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { GUEST_NO_CONSENT_FEEDBACK } from '@/lib/guest-dummy-data';
 import { SourceFilterValue } from './GlobalSourceFilter';
 
@@ -36,7 +49,9 @@ interface NoConsentFeedbackTableProps {
 export const NoConsentFeedbackTable = ({ sourceFilter }: NoConsentFeedbackTableProps) => {
   const [feedbackData, setFeedbackData] = useState<NoConsentFeedback[]>([]);
   const [loading, setLoading] = useState(true);
-  const { isGuestMode } = useResearcherAuth();
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [itemToArchive, setItemToArchive] = useState<NoConsentFeedback | null>(null);
+  const { isGuestMode, isSuperAdmin, user } = useResearcherAuth();
 
   // Filter feedback based on source filter
   const filteredFeedbackData = feedbackData.filter(item => {
@@ -72,6 +87,48 @@ export const NoConsentFeedbackTable = ({ sourceFilter }: NoConsentFeedbackTableP
       console.error('Error fetching no-consent feedback:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleArchive = (item: NoConsentFeedback) => {
+    setItemToArchive(item);
+    setShowArchiveDialog(true);
+  };
+
+  const handleArchiveConfirm = async () => {
+    if (!user || !itemToArchive) return;
+
+    if (isGuestMode) {
+      setFeedbackData((prev) => prev.filter((i) => i.id !== itemToArchive.id));
+      setShowArchiveDialog(false);
+      setItemToArchive(null);
+      toast.success('No-consent feedback archived (demo mode - changes not saved)');
+      return;
+    }
+
+    try {
+      const { error: archiveError } = await supabase.from('archived_responses').insert({
+        original_table: 'no_consent_feedback',
+        original_id: itemToArchive.id,
+        archived_data: JSON.parse(JSON.stringify(itemToArchive)),
+        archived_by: user.id,
+        archive_reason: 'Archived by researcher',
+      });
+      if (archiveError) throw archiveError;
+
+      const { error: deleteError } = await supabase
+        .from('no_consent_feedback')
+        .delete()
+        .eq('id', itemToArchive.id);
+      if (deleteError) throw deleteError;
+
+      toast.success('No-consent feedback archived');
+      setShowArchiveDialog(false);
+      setItemToArchive(null);
+      fetchFeedback();
+    } catch (error) {
+      console.error('Error archiving no-consent feedback:', error);
+      toast.error('Failed to archive feedback');
     }
   };
 
@@ -111,6 +168,7 @@ export const NoConsentFeedbackTable = ({ sourceFilter }: NoConsentFeedbackTableP
                   <TableHead className="w-[180px]">Date</TableHead>
                   <TableHead className="w-[200px]">Prolific ID</TableHead>
                   <TableHead>Feedback</TableHead>
+                  {isSuperAdmin && <TableHead className="w-[80px] text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -125,6 +183,19 @@ export const NoConsentFeedbackTable = ({ sourceFilter }: NoConsentFeedbackTableP
                     <TableCell>
                       {item.feedback || <span className="text-muted-foreground italic">No feedback provided</span>}
                     </TableCell>
+                    {isSuperAdmin && (
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleArchive(item)}
+                          className="text-destructive hover:text-destructive"
+                          title="Archive"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -132,6 +203,27 @@ export const NoConsentFeedbackTable = ({ sourceFilter }: NoConsentFeedbackTableP
           </div>
         )}
       </CardContent>
+
+      <AlertDialog
+        open={showArchiveDialog}
+        onOpenChange={(open) => {
+          setShowArchiveDialog(open);
+          if (!open) setItemToArchive(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive this no-consent feedback?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will move the feedback to the archive. It will no longer appear in this list but can be viewed in Archived Responses.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setItemToArchive(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleArchiveConfirm}>Archive</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };

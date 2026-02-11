@@ -158,6 +158,8 @@ export const ArchivedResponsesTable = () => {
         return 'bg-green-100 text-green-800';
       case 'participant_calls':
         return 'bg-purple-100 text-purple-800';
+      case 'no_consent_feedback':
+        return 'bg-amber-100 text-amber-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
