@@ -36,6 +36,15 @@ npm i
 npm run dev
 ```
 
+**Local environment (.env)**
+
+- Copy `.env.example` to `.env` and fill in your values (Supabase, Vapi, etc.). See `.env.example` for which variables are needed.
+- **Keeping .env out of Git (optional):** The repo’s `.gitignore` does not include `.env`, so the project works the same for everyone. If you want Git to ignore your local `.env` only on your machine (so you never accidentally commit it), run this once in your clone:
+  ```sh
+  echo '.env' >> .git/info/exclude
+  ```
+  That adds `.env` to Git’s *local* exclude file (`.git/info/exclude`), which is never committed. Other collaborators can do the same if they want. Lovable uses its own Secrets in the dashboard; it does not read `.env` from the repo.
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).
