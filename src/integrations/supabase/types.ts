@@ -139,6 +139,30 @@ export type Database = {
         }
         Relationships: []
       }
+      changelog_import_attempts: {
+        Row: {
+          id: string
+          source_key: string
+          status: string
+          error_message: string | null
+          attempted_at: string
+        }
+        Insert: {
+          id?: string
+          source_key: string
+          status: string
+          error_message?: string | null
+          attempted_at?: string
+        }
+        Update: {
+          id?: string
+          source_key?: string
+          status?: string
+          error_message?: string | null
+          attempted_at?: string
+        }
+        Relationships: []
+      }
       data_withdrawal_requests: {
         Row: {
           call_id: string
@@ -1227,6 +1251,7 @@ export type Database = {
       is_researcher: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       next_researcher_prolific_id: { Args: never; Returns: string }
+      remove_duplicate_changelog_entries: { Args: never; Returns: number }
     }
     Enums: {
       researcher_role: "super_admin" | "viewer"
