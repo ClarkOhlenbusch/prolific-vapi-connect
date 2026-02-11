@@ -35,7 +35,9 @@ import {
   Package,
   ExternalLink,
   Flag,
-  Eye
+  Eye,
+  Download,
+  History
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -123,12 +125,13 @@ const ResearcherChangelog = () => {
   const [newBatchName, setNewBatchName] = useState('');
   const [newBatchNotes, setNewBatchNotes] = useState('');
   const [editingEntry, setEditingEntry] = useState<ChangelogEntry | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'entry' | 'change'; id: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'entry' | 'change'; id: string } | { type: 'entries'; ids: string[] } | null>(null);
   const [checklistOpen, setChecklistOpen] = useState(true);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'participant' | 'researcher'>('all');
   const [batchFilter, setBatchFilter] = useState<string>('all');
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
+  const [lastRemovedDuplicates, setLastRemovedDuplicates] = useState<number | null>(null);
   const [visitedCommitIds, setVisitedCommitIds] = useState<Set<string>>(getVisitedSet);
   const entryRefsMap = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -178,14 +181,16 @@ const ResearcherChangelog = () => {
     },
   });
 
-  const { data: importedSourceKeys = [] } = useQuery({
+  const { data: importedSourceKeys = [], isError: importedSourceKeysQueryError, isSuccess: importedSourceKeysQuerySuccess } = useQuery({
     queryKey: ['changelog-imported-sources'],
     queryFn: async () => {
       const { data, error } = await supabase.from('changelog_imported_sources').select('source_key');
       if (error) throw error;
       return (data ?? []).map((r) => r.source_key);
     },
+    retry: false,
   });
+  const autoImportRunOnceRef = useRef(false);
 
   const getBatchActiveOnDate = useMemo(() => {
     if (experimentBatches.length === 0) return (_: string) => null as string | null;
@@ -211,9 +216,128 @@ const ResearcherChangelog = () => {
     return Array.from(labels).sort();
   }, [entries, experimentBatches]);
 
-  // Auto-import new changelog JSON files (copied from docs/ to public/changelog at build time; Lovable deploys them with the site)
+  const logImportAttempt = async (sourceKey: string, status: 'success' | 'failure', errorMessage: string | null) => {
+    await supabase.from('changelog_import_attempts').insert({ source_key: sourceKey, status, error_message: errorMessage });
+  };
+
+  const { data: importAttempts = [] } = useQuery({
+    queryKey: ['changelog-import-attempts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('changelog_import_attempts')
+        .select('id, source_key, status, error_message, attempted_at')
+        .order('attempted_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []) as { id: string; source_key: string; status: string; error_message: string | null; attempted_at: string }[];
+    },
+  });
+
+  const validScopes = ['participant', 'researcher', 'both'] as const;
+  type ImportChange = { type: string; description: string; scope?: string; commit_hash?: string };
+  const normalizeChangelogEntry = (obj: { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }) => {
+    const version = typeof obj.version === 'string' ? obj.version.trim() : '';
+    const release_date = typeof obj.release_date === 'string' ? obj.release_date.trim() : '';
+    const description = typeof obj.description === 'string' ? obj.description.trim() : undefined;
+    const active_batch_label = typeof obj.active_batch_label === 'string' ? obj.active_batch_label.trim() : undefined;
+    const rawChanges = Array.isArray(obj.changes) ? obj.changes : [];
+    const changes = rawChanges
+      .filter((c): c is ImportChange & { type: ChangeType } =>
+        c && typeof c.type === 'string' && ['added', 'changed', 'fixed', 'removed'].includes(c.type) && typeof c.description === 'string'
+      )
+      .map((c) => ({
+        type: c.type as ChangeType,
+        description: String(c.description).trim(),
+        scope: (validScopes.includes(c.scope as ChangeScope) ? c.scope : 'both') as ChangeScope,
+        commit_hash: typeof c.commit_hash === 'string' ? (c.commit_hash.trim() || undefined) : undefined
+      }))
+      .filter((c) => c.description.length > 0);
+    return { version, release_date, description, active_batch_label, changes };
+  };
+
+  const runImportForFile = async (name: string): Promise<{ ok: boolean; errorMessage: string | null }> => {
+    let raw: string;
+    try {
+      const r = await fetch(`/changelog/${encodeURIComponent(name)}`);
+      if (!r.ok) return { ok: false, errorMessage: `Fetch failed: ${r.status} ${r.statusText}` };
+      raw = await r.text();
+    } catch (e) {
+      return { ok: false, errorMessage: e instanceof Error ? e.message : 'Fetch failed' };
+    }
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('<')) {
+      return { ok: false, errorMessage: 'Server returned HTML (file not found or wrong path), not JSON. Restart dev server or redeploy so /changelog/ files are served.' };
+    }
+    let data: unknown;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      return { ok: false, errorMessage: e instanceof Error ? e.message : 'Invalid JSON' };
+    }
+    const parsedEntries = Array.isArray(data) ? data.map(normalizeChangelogEntry) : [normalizeChangelogEntry(data as Parameters<typeof normalizeChangelogEntry>[0])];
+    const valid = parsedEntries.filter((e) => e.version && e.release_date);
+    if (valid.length === 0) return { ok: false, errorMessage: 'No entries with version and release_date' };
+    for (const { version, release_date, description, active_batch_label, changes } of valid) {
+      const { data: entry, error: entryError } = await supabase
+        .from('changelog_entries')
+        .insert({
+          version,
+          release_date,
+          description: description?.trim() || null,
+          active_batch_label: active_batch_label?.trim() || null,
+          created_by: user?.id ?? null
+        })
+        .select('id')
+        .single();
+      if (entryError) {
+        return { ok: false, errorMessage: entryError.message };
+      }
+      if (entry && changes.length > 0) {
+        const { error: chErr } = await supabase.from('changelog_changes').insert(
+          changes.map((c, i) => ({
+            entry_id: entry.id,
+            change_type: c.type,
+            description: c.description,
+            display_order: i,
+            scope: c.scope ?? 'both',
+            commit_hash: c.commit_hash ?? null
+          }))
+        );
+        if (chErr) return { ok: false, errorMessage: chErr.message };
+      }
+    }
+    return { ok: true, errorMessage: null };
+  };
+
+  const retryImportMutation = useMutation({
+    mutationFn: async (sourceKey: string) => {
+      const result = await runImportForFile(sourceKey);
+      if (!result.ok) throw new Error(result.errorMessage ?? 'Import failed');
+      await supabase.from('changelog_imported_sources').insert({ source_key: sourceKey });
+      await logImportAttempt(sourceKey, 'success', null);
+    },
+    onSuccess: (sourceKey) => {
+      queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['changelog-imported-sources'] });
+      queryClient.invalidateQueries({ queryKey: ['changelog-import-attempts'] });
+      toast.success(`Imported ${sourceKey}`);
+    },
+    onError: async (err: Error, sourceKey) => {
+      await logImportAttempt(sourceKey, 'failure', err.message);
+      queryClient.invalidateQueries({ queryKey: ['changelog-import-attempts'] });
+      toast.error(err.message);
+    },
+  });
+
+  // Auto-import new changelog JSON files (copied from docs/ to public/changelog at build time; Lovable deploys them with the site).
+  // Run at most once per page load to avoid a loop when changelog_imported_sources is missing or invalidated.
   useEffect(() => {
     if (!user || isGuestMode) return;
+    if (importedSourceKeysQueryError) return; // Table may not exist (404); don't run or retry in a loop
+    if (!importedSourceKeysQuerySuccess) return; // Wait until we have the real list (or know it failed)
+    if (autoImportRunOnceRef.current) return;
+    autoImportRunOnceRef.current = true;
+
     const run = async () => {
       let list: string[];
       try {
@@ -227,93 +351,52 @@ const ResearcherChangelog = () => {
       const newFiles = changelogFiles.filter((name) => !importedSourceKeys.includes(name));
       if (newFiles.length === 0) return;
 
-      const validScopes = ['participant', 'researcher', 'both'] as const;
-      type ImportChange = { type: string; description: string; scope?: string; commit_hash?: string };
-      const normalizeEntry = (obj: { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }) => {
-        const version = typeof obj.version === 'string' ? obj.version.trim() : '';
-        const release_date = typeof obj.release_date === 'string' ? obj.release_date.trim() : '';
-        const description = typeof obj.description === 'string' ? obj.description.trim() : undefined;
-        const active_batch_label = typeof obj.active_batch_label === 'string' ? obj.active_batch_label.trim() : undefined;
-        const rawChanges = Array.isArray(obj.changes) ? obj.changes : [];
-        const changes = rawChanges
-          .filter((c): c is ImportChange & { type: ChangeType } =>
-            c && typeof c.type === 'string' && ['added', 'changed', 'fixed', 'removed'].includes(c.type) && typeof c.description === 'string'
-          )
-          .map((c) => ({
-            type: c.type as ChangeType,
-            description: String(c.description).trim(),
-            scope: (validScopes.includes(c.scope as ChangeScope) ? c.scope : 'both') as ChangeScope,
-            commit_hash: typeof c.commit_hash === 'string' ? (c.commit_hash.trim() || undefined) : undefined
-          }))
-          .filter((c) => c.description.length > 0);
-        return { version, release_date, description, active_batch_label, changes };
-      };
-
       let importedCount = 0;
       for (const name of newFiles) {
-        let raw: string;
-        try {
-          const r = await fetch(`/changelog/${encodeURIComponent(name)}`);
-          if (!r.ok) continue;
-          raw = await r.text();
-        } catch {
-          continue;
-        }
-        let data: unknown;
-        try {
-          data = JSON.parse(raw);
-        } catch {
-          continue;
-        }
-        const entries = Array.isArray(data) ? data.map(normalizeEntry) : [normalizeEntry(data as Parameters<typeof normalizeEntry>[0])];
-        const valid = entries.filter((e) => e.version && e.release_date);
-        let ok = true;
-        for (const { version, release_date, description, active_batch_label, changes } of valid) {
-          const { data: entry, error: entryError } = await supabase
-            .from('changelog_entries')
-            .insert({
-              version,
-              release_date,
-              description: description?.trim() || null,
-              active_batch_label: active_batch_label?.trim() || null,
-              created_by: user?.id ?? null
-            })
-            .select('id')
-            .single();
-          if (entryError) {
-            ok = false;
-            break;
-          }
-          if (entry && changes.length > 0) {
-            const { error: chErr } = await supabase.from('changelog_changes').insert(
-              changes.map((c, i) => ({
-                entry_id: entry.id,
-                change_type: c.type,
-                description: c.description,
-                display_order: i,
-                scope: c.scope ?? 'both',
-                commit_hash: c.commit_hash ?? null
-              }))
-            );
-            if (chErr) {
-              ok = false;
-              break;
-            }
-          }
-        }
-        if (ok) {
+        const result = await runImportForFile(name);
+        if (result.ok) {
           await supabase.from('changelog_imported_sources').insert({ source_key: name });
+          await logImportAttempt(name, 'success', null);
           importedCount += 1;
+        } else {
+          await logImportAttempt(name, 'failure', result.errorMessage);
         }
       }
       if (importedCount > 0) {
         queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
         queryClient.invalidateQueries({ queryKey: ['changelog-imported-sources'] });
+        queryClient.invalidateQueries({ queryKey: ['changelog-import-attempts'] });
         toast.success(importedCount === 1 ? '1 changelog file imported' : `${importedCount} changelog files imported`);
       }
     };
     run();
-  }, [user, isGuestMode, importedSourceKeys, queryClient]);
+  }, [user, isGuestMode, importedSourceKeysQueryError, importedSourceKeysQuerySuccess, importedSourceKeys, queryClient]);
+
+  const [availableChangelogFiles, setAvailableChangelogFiles] = useState<string[]>([]);
+  const fetchManifestForDownload = async () => {
+    try {
+      const res = await fetch('/changelog/manifest.json');
+      if (!res.ok) return;
+      const list = (await res.json()) as string[];
+      const files = Array.isArray(list) ? list.filter((n) => typeof n === 'string' && n.endsWith('.json')) : [];
+      files.sort((a, b) => b.localeCompare(a));
+      setAvailableChangelogFiles(files);
+    } catch {
+      setAvailableChangelogFiles([]);
+    }
+  };
+  const downloadChangelogJson = (filename: string) => {
+    fetch(`/changelog/${encodeURIComponent(filename)}`)
+      .then((r) => r.text())
+      .then((text) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch(() => toast.error('Failed to download'));
+  };
 
   const filteredAndSortedEntries = useMemo(() => {
     let list = entries.map(entry => ({
@@ -459,6 +542,37 @@ const ResearcherChangelog = () => {
       toast.success('Entry deleted');
     },
     onError: () => toast.error('Failed to delete entry')
+  });
+
+  // Batch delete entries (selected release dates)
+  const batchDeleteEntriesMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const { error } = await supabase.from('changelog_entries').delete().in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: (_, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+      setSelectedEntryIds(new Set());
+      setDeleteConfirm(null);
+      toast.success(ids.length === 1 ? '1 entry deleted' : `${ids.length} entries deleted`);
+    },
+    onError: () => toast.error('Failed to delete entries')
+  });
+
+  const removeDuplicateEntriesMutation = useMutation({
+    mutationFn: async () => {
+      // RPC added in migration 20260211140000_rpc_remove_duplicate_changelog_entries
+      const { data, error } = await (supabase as unknown as { rpc: (n: string) => Promise<{ data: number | null; error: { message: string } | null }> }).rpc('remove_duplicate_changelog_entries');
+      if (error) throw error;
+      return typeof data === 'number' ? data : 0;
+    },
+    onSuccess: (deletedCount) => {
+      queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+      setLastRemovedDuplicates(deletedCount);
+      toast.success(deletedCount === 0 ? 'No duplicate entries found' : `${deletedCount} duplicate ${deletedCount === 1 ? 'entry' : 'entries'} removed`);
+    },
+    onError: () => toast.error('Failed to remove duplicates')
   });
 
   // Add change mutation
@@ -710,12 +824,112 @@ const ResearcherChangelog = () => {
           </Card>
         </Collapsible>
 
+        <Collapsible>
+          <Card>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-muted/30 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <History className="h-5 w-5" />
+                      Import history &amp; debug
+                    </CardTitle>
+                    <CardDescription>
+                      Log of auto-import attempts and download JSON to retry manually (e.g. v1.1.2)
+                    </CardDescription>
+                  </div>
+                  <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="pt-0 space-y-4">
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Import attempts (last 100)</h4>
+                  {importAttempts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No import attempts recorded yet.</p>
+                  ) : (
+                    <div className="border rounded-md overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-muted/50 border-b">
+                            <th className="text-left p-2">File</th>
+                            <th className="text-left p-2">Status</th>
+                            <th className="text-left p-2">Error</th>
+                            <th className="text-left p-2">Time</th>
+                            <th className="text-left p-2">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importAttempts.map((a) => (
+                            <tr key={a.id} className="border-b last:border-0">
+                              <td className="p-2 font-mono text-xs">{a.source_key}</td>
+                              <td className="p-2">
+                                <span className={a.status === 'success' ? 'text-green-600' : 'text-destructive'}>{a.status}</span>
+                              </td>
+                              <td className="p-2 text-muted-foreground max-w-xs truncate" title={a.error_message ?? ''}>{a.error_message ?? '—'}</td>
+                              <td className="p-2 text-muted-foreground">{new Date(a.attempted_at).toLocaleString()}</td>
+                              <td className="p-2 flex gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => downloadChangelogJson(a.source_key)} title="Download JSON to paste into Import from JSON">
+                                  <Download className="h-3 w-3 mr-1" /> Download
+                                </Button>
+                                {a.status === 'failure' && (
+                                  <Button size="sm" variant="outline" onClick={() => retryImportMutation.mutate(a.source_key)} disabled={retryImportMutation.isPending}>
+                                    {retryImportMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                                    Retry
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Latest JSON from build</h4>
+                  <p className="text-sm text-muted-foreground mb-2">Fetch the list of changelog files deployed with this app and download any file (e.g. changelog-import-2026-02-11.json for v1.1.2) to paste into Import from JSON.</p>
+                  <Button size="sm" variant="outline" onClick={fetchManifestForDownload}>Load available files</Button>
+                  {availableChangelogFiles.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {availableChangelogFiles.map((name) => (
+                        <li key={name} className="flex items-center gap-2">
+                          <span className="font-mono text-xs">{name}</span>
+                          <Button size="sm" variant="ghost" onClick={() => downloadChangelogJson(name)}>
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+
         <Card>
-          <CardHeader>
-            <CardTitle>Release History</CardTitle>
-            <CardDescription>
-              Track all changes, improvements, and fixes to the research platform
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-4">
+            <div>
+              <CardTitle>Release History</CardTitle>
+              <CardDescription>
+                Track all changes, improvements, and fixes to the research platform
+              </CardDescription>
+            </div>
+            {isSuperAdmin && (
+              <div className="flex flex-col items-end gap-1">
+                <Button variant="outline" size="sm" onClick={() => removeDuplicateEntriesMutation.mutate()} disabled={removeDuplicateEntriesMutation.isPending} title="Remove duplicate entries (same version + release date)">
+                  {removeDuplicateEntriesMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Remove duplicates
+                </Button>
+                {lastRemovedDuplicates !== null && (
+                  <span className="text-xs text-muted-foreground">
+                    {lastRemovedDuplicates === 0 ? 'No duplicates found' : `${lastRemovedDuplicates} duplicate${lastRemovedDuplicates === 1 ? '' : 's'} removed`}
+                  </span>
+                )}
+              </div>
+            )}
           </CardHeader>
           <CardContent className="space-y-4">
             {entries.length > 0 && (
@@ -790,6 +1004,9 @@ const ResearcherChangelog = () => {
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setSelectedEntryIds(new Set())}>
                       Deselect all
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => setDeleteConfirm({ type: 'entries', ids: [...selectedEntryIds] })} disabled={batchDeleteEntriesMutation.isPending}>
+                      Delete {selectedEntryIds.size} {selectedEntryIds.size === 1 ? 'entry' : 'entries'}
                     </Button>
                   </div>
                 )}
@@ -1203,7 +1420,9 @@ const ResearcherChangelog = () => {
           <DialogHeader>
             <DialogTitle>Confirm Delete</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this {deleteConfirm?.type}? This action cannot be undone.
+              {deleteConfirm?.type === 'entries'
+                ? `Delete ${deleteConfirm.ids.length} ${deleteConfirm.ids.length === 1 ? 'entry' : 'entries'}? This action cannot be undone.`
+                : `Are you sure you want to delete this ${deleteConfirm?.type}? This action cannot be undone.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1215,6 +1434,8 @@ const ResearcherChangelog = () => {
                   deleteEntryMutation.mutate(deleteConfirm.id);
                 } else if (deleteConfirm?.type === 'change') {
                   deleteChangeMutation.mutate(deleteConfirm.id);
+                } else if (deleteConfirm?.type === 'entries') {
+                  batchDeleteEntriesMutation.mutate(deleteConfirm.ids);
                 }
               }}
             >
