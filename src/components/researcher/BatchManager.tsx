@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 import { Plus, Edit, Trash2, Star, StickyNote } from 'lucide-react';
 import { format } from 'date-fns';
 import { GUEST_BATCHES, getGuestBatchStats } from '@/lib/guest-dummy-data';
+import { fetchArchivedFilters } from '@/lib/archived-responses';
 import type { SourceFilterValue } from './GlobalSourceFilter';
 
 const isResearcherId = (prolificId: string | null): boolean =>
@@ -121,14 +122,19 @@ export const BatchManager = ({ sourceFilter = 'all', openBatchCreate, onBatchCre
 
       setBatches(batchData || []);
 
-      // Fetch stats for all batches from experiment_responses
-      const { data: rawResponses, error: responseError } = await supabase
-        .from('experiment_responses')
-        .select('prolific_id, batch_label, assistant_type, created_at, pets_total, tias_total, formality, reviewed_by_researcher');
+      // Fetch stats for all batches from experiment_responses (exclude archived)
+      const [{ data: rawResponses, error: responseError }, { archivedResponseKeys }] = await Promise.all([
+        supabase
+          .from('experiment_responses')
+          .select('prolific_id, call_id, batch_label, assistant_type, created_at, pets_total, tias_total, formality, reviewed_by_researcher'),
+        fetchArchivedFilters(),
+      ]);
 
       if (responseError) throw responseError;
 
-      let responses = rawResponses ?? [];
+      let responses = (rawResponses ?? []).filter(
+        (r) => !archivedResponseKeys.has(`${r.prolific_id}|${r.call_id}`)
+      );
       if (sourceFilter === 'participant') {
         responses = responses.filter((r) => !isResearcherId(r.prolific_id ?? null));
       } else if (sourceFilter === 'researcher') {

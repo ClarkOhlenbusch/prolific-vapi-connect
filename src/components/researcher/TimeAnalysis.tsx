@@ -11,6 +11,7 @@ import { Clock, Users, TrendingUp, Search, X, Route } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { ParticipantJourneyModal } from './ParticipantJourneyModal';
 import { GUEST_NAVIGATION_EVENTS } from '@/lib/guest-dummy-data';
+import { fetchArchivedFilters } from '@/lib/archived-responses';
 import { SourceFilterValue } from './GlobalSourceFilter';
 
 interface PageTimeData {
@@ -26,6 +27,7 @@ interface NavigationEvent {
   page_name: string;
   time_on_page_seconds: number | null;
   prolific_id: string;
+  call_id?: string | null;
 }
 
 // Page order with display names - keys match database page_name values (lowercase)
@@ -92,14 +94,19 @@ export const TimeAnalysis = ({ sourceFilter }: TimeAnalysisProps) => {
       if (isGuestMode) {
         events = GUEST_NAVIGATION_EVENTS;
       } else {
-        // Fetch navigation events with time data
-        const { data: fetchedEvents, error } = await supabase
-          .from('navigation_events')
-          .select('page_name, time_on_page_seconds, prolific_id')
-          .not('time_on_page_seconds', 'is', null);
+        const [{ data: fetchedEvents, error }, { archivedResponseKeys }] = await Promise.all([
+          supabase
+            .from('navigation_events')
+            .select('page_name, time_on_page_seconds, prolific_id, call_id')
+            .not('time_on_page_seconds', 'is', null),
+          fetchArchivedFilters(),
+        ]);
 
         if (error) throw error;
-        events = fetchedEvents || [];
+        const raw = fetchedEvents || [];
+        events = raw.filter(
+          (e) => e.call_id == null || !archivedResponseKeys.has(`${e.prolific_id}|${e.call_id}`)
+        );
       }
 
       // Apply source filter

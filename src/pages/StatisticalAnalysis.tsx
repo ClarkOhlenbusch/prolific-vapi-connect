@@ -38,6 +38,7 @@ import {
 } from '@/lib/statistics';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { GUEST_PARTICIPANTS, buildGuestExperimentResponse } from '@/lib/guest-dummy-data';
+import { fetchArchivedFilters } from '@/lib/archived-responses';
 
 interface DependentVariable {
   key: string;
@@ -229,14 +230,18 @@ const StatisticalAnalysis = () => {
           setResponses(guestResponses);
           setProlificDemographics([]);
         } else {
-          const { data, error } = await supabase
-            .from('experiment_responses')
-            .select('*');
+          const [{ data, error }, { archivedResponseKeys }] = await Promise.all([
+            supabase.from('experiment_responses').select('*'),
+            fetchArchivedFilters(),
+          ]);
 
           if (error) throw error;
 
-          // Apply source filter
-          let filteredData = data || [];
+          const excludeArchived = (data || []).filter(
+            (r) => !archivedResponseKeys.has(`${r.prolific_id}|${r.call_id}`)
+          );
+
+          let filteredData = excludeArchived;
           if (sourceFilter === 'participant') {
             filteredData = filteredData.filter(r => !isResearcherId(r.prolific_id));
           } else if (sourceFilter === 'researcher') {

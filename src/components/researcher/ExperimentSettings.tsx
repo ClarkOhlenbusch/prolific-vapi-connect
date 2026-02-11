@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useResearcherAuth } from "@/contexts/ResearcherAuthContext";
 import { RefreshCw, RotateCcw, Users, Filter } from "lucide-react";
 import { BatchManager } from "./BatchManager";
+import { fetchArchivedFilters } from "@/lib/archived-responses";
 import type { SourceFilterValue } from "./GlobalSourceFilter";
 
 // Prolific participant IDs are 24 chars; researcher/demo IDs are not
@@ -161,20 +162,25 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
     try {
       let query = supabase
         .from("experiment_responses")
-        .select("prolific_id, assistant_type, batch_label");
+        .select("prolific_id, call_id, assistant_type, batch_label");
 
       if (selectedBatches.length > 0) {
         query = query.in("batch_label", selectedBatches);
       }
 
-      const { data, error } = await query;
+      const [{ data, error }, { archivedResponseKeys }] = await Promise.all([
+        query,
+        fetchArchivedFilters(),
+      ]);
 
       if (error) {
         console.error("Error fetching batch counts:", error);
         return;
       }
 
-      let rows = data ?? [];
+      let rows = (data ?? []).filter(
+        (r) => !archivedResponseKeys.has(`${r.prolific_id}|${r.call_id}`)
+      );
       if (sourceFilter === "participant") {
         rows = rows.filter((r) => !isResearcherId(r.prolific_id ?? null));
       } else if (sourceFilter === "researcher") {

@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Tables } from '@/integrations/supabase/types';
 import { GUEST_PARTICIPANTS } from '@/lib/guest-dummy-data';
+import { fetchArchivedFilters } from '@/lib/archived-responses';
 
 type ParticipantCall = Tables<'participant_calls'>;
 type ExperimentResponse = Tables<'experiment_responses'>;
@@ -77,6 +78,8 @@ interface UnifiedParticipant {
   ethnicity_simplified?: string | null;
   /** True when both in-app and Prolific export exist and age or gender differ */
   demographics_mismatch?: boolean;
+  /** What differs (for tooltip): age and/or gender */
+  demographics_mismatch_reasons?: ('age' | 'gender')[];
   // Derived
   status: 'Completed' | 'Pending';
 }
@@ -147,6 +150,9 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
       if (callsError) throw callsError;
 
+      const { archivedParticipantCallIds } = await fetchArchivedFilters();
+      const callsFiltered = (calls || []).filter((c) => !archivedParticipantCallIds.has(c.id));
+
       // Fetch experiment_responses
       const { data: responses, error: responsesError } = await supabase
         .from('experiment_responses')
@@ -154,10 +160,10 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
       if (responsesError) throw responsesError;
 
-      // Fetch in-app demographics
+      // Fetch in-app demographics (age column stores year of birth; created_at = survey response time)
       const { data: demographics, error: demographicsError } = await supabase
         .from('demographics')
-        .select('prolific_id, age, gender');
+        .select('prolific_id, age, gender, created_at');
 
       if (demographicsError) throw demographicsError;
 
@@ -179,8 +185,9 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       prolificDemo?.forEach(d => prolificDemoMap.set(d.prolific_id, d));
 
       // Combine data: prefer Prolific export demographics when present; flag mismatch when both exist and differ
+      // In-app stores birth year in demographics.age; Prolific export has age. Use survey response year for age-at-survey, ±1 year tolerance.
       const norm = (s: string | null | undefined) => (s ?? '').toString().trim().toLowerCase();
-      const unified: UnifiedParticipant[] = (calls || []).map(call => {
+      const unified: UnifiedParticipant[] = callsFiltered.map(call => {
         const response = responseMap.get(call.call_id);
         const demo = demographicsMap.get(call.prolific_id);
         const pDemo = prolificDemoMap.get(call.prolific_id);
@@ -188,12 +195,25 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         const gender = pDemo?.gender ?? demo?.gender;
 
         let demographics_mismatch = false;
+        const demographics_mismatch_reasons: ('age' | 'gender')[] = [];
         if (demo && pDemo) {
-          const inAppAge = (demo.age ?? '').toString().trim();
-          const prolificAge = pDemo.age != null ? String(pDemo.age) : '';
-          const ageDiff = inAppAge !== prolificAge;
           const genderDiff = norm(demo.gender) !== norm(pDemo.gender ?? '');
-          demographics_mismatch = ageDiff || genderDiff;
+          if (genderDiff) {
+            demographics_mismatch = true;
+            demographics_mismatch_reasons.push('gender');
+          }
+          // In-app age = birth year (string). Survey year from demographics.created_at. Prolific = age (integer).
+          const birthYearRaw = (demo.age ?? '').toString().trim();
+          const birthYear = /^\d{4}$/.test(birthYearRaw) ? parseInt(birthYearRaw, 10) : null;
+          const surveyYear = demo.created_at ? new Date(demo.created_at).getUTCFullYear() : null;
+          const prolificAgeNum = pDemo.age != null && Number.isFinite(Number(pDemo.age)) ? Number(pDemo.age) : null;
+          if (birthYear != null && surveyYear != null && prolificAgeNum != null) {
+            const ageAtSurvey = surveyYear - birthYear;
+            if (Math.abs(ageAtSurvey - prolificAgeNum) > 1) {
+              demographics_mismatch = true;
+              demographics_mismatch_reasons.push('age');
+            }
+          }
         }
 
         return {
@@ -214,6 +234,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           gender: gender ?? null,
           ethnicity_simplified: pDemo?.ethnicity_simplified ?? null,
           demographics_mismatch,
+          demographics_mismatch_reasons: demographics_mismatch_reasons.length > 0 ? demographics_mismatch_reasons : undefined,
           status: call.is_completed ? 'Completed' : 'Pending',
         };
       });
@@ -661,12 +682,16 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                             <AlertTriangle className="h-4 w-4" />
                           </span>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[220px]">
-                          In-app demographics (questionnaire) don&apos;t match Prolific export for this participant.
+                        <TooltipContent side="top" className="max-w-[260px]">
+                          {row.demographics_mismatch_reasons?.length
+                            ? <>In-app questionnaire differs from Prolific export: {row.demographics_mismatch_reasons.map(r => r === 'age' ? 'age (≥2 years)' : 'gender').join(' and ')}.</>
+                            : 'In-app demographics don\'t match Prolific export.'}
                         </TooltipContent>
                       </Tooltip>
                     ) : (
-                      <span className="text-muted-foreground">-</span>
+                      <span className="inline-flex items-center justify-center text-green-600 dark:text-green-500" aria-label="No demographics mismatch">
+                        <Check className="h-4 w-4" />
+                      </span>
                     )}
                   </TableCell>
                   <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>

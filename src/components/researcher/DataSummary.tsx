@@ -19,6 +19,7 @@ import {
   GUEST_SUMMARY_STATS, 
   GUEST_COMPARISON_STATS 
 } from '@/lib/guest-dummy-data';
+import { fetchArchivedFilters } from '@/lib/archived-responses';
 import { SourceFilterValue } from './GlobalSourceFilter';
 
 type AssistantFilter = 'both' | 'formal' | 'informal';
@@ -179,21 +180,26 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
 
     const fetchSummary = async () => {
       try {
-        // Fetch counts in parallel
-        const [responsesRes, callsRes, archivedRes, prolificDemoRes] = await Promise.all([
+        const [responsesRes, callsRes, archivedRes, prolificDemoRes, archivedFilters] = await Promise.all([
           supabase.from('experiment_responses').select('*', { count: 'exact', head: false }),
-          supabase.from('participant_calls').select('*', { count: 'exact', head: true }),
+          supabase.from('participant_calls').select('id'),
           isSuperAdmin 
             ? supabase.from('archived_responses').select('*', { count: 'exact', head: true })
             : Promise.resolve({ count: 0 }),
           supabase.from('prolific_export_demographics').select('*', { count: 'exact', head: true }),
+          fetchArchivedFilters(),
         ]);
 
-        const responses = responsesRes.data || [];
+        const allResponsesRaw = responsesRes.data || [];
+        const callsRaw = callsRes.data || [];
+        const responses = allResponsesRaw.filter(
+          (r) => !archivedFilters.archivedResponseKeys.has(`${r.prolific_id}|${r.call_id}`)
+        );
+        const callsFiltered = callsRaw.filter((c) => !archivedFilters.archivedParticipantCallIds.has(c.id));
+
         setAllResponses(responses);
         setAvailableBatches(extractBatches(responses));
 
-        // Calculate comparison stats by assistant type (will be recalculated when filters change)
         const formalResponses = responses.filter(r => r.assistant_type === 'formal');
         const informalResponses = responses.filter(r => r.assistant_type === 'informal');
         const unknownResponses = responses.filter(r => r.assistant_type === null || r.assistant_type === undefined);
@@ -204,11 +210,10 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
           unknown: calculateStats(unknownResponses),
         });
 
-        // Calculate initial stats for all responses
         const stats = calculateStats(responses);
         setData({
-          totalResponses: responsesRes.count || 0,
-          totalCalls: callsRes.count || 0,
+          totalResponses: responses.length,
+          totalCalls: callsFiltered.length,
           totalArchived: archivedRes.count || 0,
           prolificDemographicsCount: prolificDemoRes.count ?? 0,
           ...stats,
