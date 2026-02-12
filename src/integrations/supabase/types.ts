@@ -379,6 +379,8 @@ export type Database = {
           researcher_notes: string | null
           researcher_notes_at: string | null
           reviewed_by_researcher: boolean
+          vapi_structured_output: Json | null
+          vapi_structured_output_at: string | null
           tias_1: number | null
           tias_1_position: number | null
           tias_10: number | null
@@ -521,6 +523,8 @@ export type Database = {
           researcher_notes?: string | null
           researcher_notes_at?: string | null
           reviewed_by_researcher?: boolean
+          vapi_structured_output?: Json | null
+          vapi_structured_output_at?: string | null
           tias_1?: number | null
           tias_1_position?: number | null
           tias_10?: number | null
@@ -663,6 +667,8 @@ export type Database = {
           researcher_notes?: string | null
           researcher_notes_at?: string | null
           reviewed_by_researcher?: boolean
+          vapi_structured_output?: Json | null
+          vapi_structured_output_at?: string | null
           tias_1?: number | null
           tias_1_position?: number | null
           tias_10?: number | null
@@ -730,6 +736,33 @@ export type Database = {
           vapi_structured_output?: Json | null
           vapi_structured_output_at?: string | null
           voice_assistant_feedback?: string
+        }
+        Relationships: []
+      }
+      vapi_structured_output_runs: {
+        Row: {
+          id: string
+          workflow_id: string
+          call_ids: string[]
+          status: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          workflow_id: string
+          call_ids: string[]
+          status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          workflow_id?: string
+          call_ids?: string[]
+          status?: string
+          created_at?: string
+          updated_at?: string
         }
         Relationships: []
       }

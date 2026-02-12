@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
@@ -31,7 +31,9 @@ import {
   Check,
   Flag,
   AlertTriangle,
-  StickyNote
+  StickyNote,
+  BarChart3,
+  RefreshCw
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import { cn } from '@/lib/utils';
@@ -54,6 +56,7 @@ import { ParticipantJourneyModal } from '@/components/researcher/ParticipantJour
 import { EventType, Replayer, ReplayerEvents } from 'rrweb';
 import type { eventWithTime } from '@rrweb/types';
 import 'rrweb/dist/rrweb.min.css';
+import { toast } from 'sonner';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import {
   buildGuestDemographics,
@@ -961,6 +964,7 @@ const SessionReplayPanel = ({
 // Section navigation items - in experiment flow order
 const SECTIONS = [
   { id: 'notes', label: 'Notes', icon: StickyNote },
+  { id: 'evaluation', label: 'Call evaluation', icon: BarChart3 },
   { id: 'journey', label: 'Journey', icon: Route },
   { id: 'replay', label: 'Replay', icon: MousePointer2 },
   { id: 'demographics', label: 'Demographics', icon: User },
@@ -1013,6 +1017,8 @@ const ResponseDetails = () => {
   const [pendingMarkerEvents, setPendingMarkerEvents] = useState<Pick<NavigationEvent, 'call_id' | 'page_name' | 'event_type' | 'metadata' | 'created_at'>[]>([]);
   const [researcherNotesDraft, setResearcherNotesDraft] = useState('');
   const [researcherNotesSaving, setResearcherNotesSaving] = useState(false);
+  const [runEvaluationLoading, setRunEvaluationLoading] = useState(false);
+  const [checkResultsLoading, setCheckResultsLoading] = useState(false);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
   const setMergedFieldState = useCallback((field: FeedbackFieldKey, next: MergedDictationAudioState) => {
@@ -2275,6 +2281,50 @@ const ResponseDetails = () => {
     }
   };
 
+  const handleRunVapiEvaluation = async () => {
+    if (!data?.call_id || isPendingRecord || isGuestMode) return;
+    setRunEvaluationLoading(true);
+    try {
+      const { data: res, error } = await supabase.functions.invoke('run-vapi-structured-output', {
+        body: { callIds: [data.call_id] },
+      });
+      if (error) throw error;
+      toast.success(res?.message ?? 'Evaluation started. Check back in 1–2 min or click Check for results.');
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to start evaluation');
+    } finally {
+      setRunEvaluationLoading(false);
+    }
+  };
+
+  const handleCheckVapiResults = async () => {
+    if (!data?.call_id || !data?.id || isPendingRecord || isGuestMode) return;
+    setCheckResultsLoading(true);
+    try {
+      const { error } = await supabase.functions.invoke('fetch-vapi-structured-output-results', {
+        body: { callIds: [data.call_id] },
+      });
+      if (error) throw error;
+      const { data: updated, error: fetchErr } = await supabase
+        .from('experiment_responses')
+        .select('vapi_structured_output, vapi_structured_output_at')
+        .eq('id', data.id)
+        .single();
+      if (!fetchErr && updated) {
+        setData((prev) => (prev ? { ...prev, ...updated } : null));
+        toast.success('Results updated.');
+      } else {
+        toast.success('Check complete. Results may still be processing.');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch results');
+    } finally {
+      setCheckResultsLoading(false);
+    }
+  };
+
   const renderFeedbackTextWithHighlights = (field: FeedbackFieldKey, value: string | null | undefined) => {
     if (!value) {
       return <span className="italic text-muted-foreground">No feedback provided</span>;
@@ -2645,6 +2695,126 @@ const ResponseDetails = () => {
               >
                 {researcherNotesSaving ? 'Saving…' : 'Save notes'}
               </Button>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* VAPI structured output evaluation - right under Researcher notes */}
+        <section ref={el => sectionRefs.current['evaluation'] = el} id="evaluation" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Call evaluation (VAPI structured output)
+              </CardTitle>
+              <CardDescription>
+                Scores and reasons from the VAPI structured output evaluation. Run evaluation for this call, then check for results after 1–2 minutes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!isPendingRecord && !isGuestMode && data.call_id && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRunVapiEvaluation}
+                    disabled={runEvaluationLoading}
+                  >
+                    {runEvaluationLoading ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <BarChart3 className="h-4 w-4 mr-2" />
+                    )}
+                    Run evaluation
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCheckVapiResults}
+                    disabled={checkResultsLoading}
+                  >
+                    {checkResultsLoading ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Check for results
+                  </Button>
+                </div>
+              )}
+              {data.vapi_structured_output && typeof data.vapi_structured_output === 'object' ? (
+                (() => {
+                  const vo = data.vapi_structured_output as Record<string, unknown>;
+                  const categories: { key: string; label: string }[] = [
+                    { key: 'greeting_and_setup', label: 'Greeting & Setup' },
+                    { key: 'turn_discipline', label: 'Turn discipline' },
+                    { key: 'follow_up_limits', label: 'Follow-up limits' },
+                    { key: 'reflection', label: 'Reflection' },
+                    { key: 'adaptation_to_user_errors', label: 'Adaptation to user errors' },
+                    { key: 'summary_check', label: 'Summary check' },
+                    { key: 'closing', label: 'Closing' },
+                    { key: 'boundaries', label: 'Boundaries' },
+                  ];
+                  const totalScore = typeof vo.total_score === 'number' ? vo.total_score : null;
+                  const maxScore = 24;
+                  return (
+                    <div className="space-y-4">
+                      <div className="rounded-md border overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/50">
+                              <th className="text-left p-3 font-medium">Category</th>
+                              <th className="text-center p-3 font-medium w-20">Score</th>
+                              <th className="text-left p-3 font-medium">Reason</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {categories.map(({ key, label }) => {
+                              const score = vo[key];
+                              const reason = vo[`${key}_reason`];
+                              return (
+                                <tr key={key} className="border-b last:border-0">
+                                  <td className="p-3 font-medium">{label}</td>
+                                  <td className="p-3 text-center">
+                                    {typeof score === 'number' ? (
+                                      <span className={cn(
+                                        score === 3 && 'text-green-600 dark:text-green-500',
+                                        score === 2 && 'text-amber-600 dark:text-amber-500',
+                                        score === 1 && 'text-red-600 dark:text-red-500'
+                                      )}>
+                                        {score}/3
+                                      </span>
+                                    ) : '—'}
+                                  </td>
+                                  <td className="p-3 text-muted-foreground">{typeof reason === 'string' ? reason : '—'}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr className="border-t-2 bg-muted/30">
+                              <td className="p-3 font-semibold">Total</td>
+                              <td className="p-3 text-center font-mono">
+                                {totalScore != null ? `${totalScore}/${maxScore}` : '—'}
+                              </td>
+                              <td className="p-3 text-muted-foreground">
+                                {typeof vo.overall_justification === 'string' ? vo.overall_justification : '—'}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      {data.vapi_structured_output_at && (
+                        <p className="text-xs text-muted-foreground">
+                          Evaluation fetched: {new Date(data.vapi_structured_output_at).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No evaluation yet. Click “Run evaluation” above, wait 1–2 minutes, then “Check for results.”
+                </p>
+              )}
             </CardContent>
           </Card>
         </section>

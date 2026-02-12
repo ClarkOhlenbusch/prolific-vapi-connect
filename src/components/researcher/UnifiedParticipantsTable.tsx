@@ -31,12 +31,13 @@ import {
   Route,
   Check,
   Flag,
-  AlertTriangle
+  AlertTriangle,
+  BarChart3,
+  RefreshCw
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { useActivityLog } from '@/hooks/useActivityLog';
-import { DownloadConfirmDialog } from './DownloadConfirmDialog';
 import { ParticipantJourneyModal } from './ParticipantJourneyModal';
 import {
   AlertDialog,
@@ -48,6 +49,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Tables } from '@/integrations/supabase/types';
 import { GUEST_PARTICIPANTS } from '@/lib/guest-dummy-data';
 import { fetchArchivedFilters } from '@/lib/archived-responses';
@@ -91,6 +100,28 @@ const formatNumber = (value: number | null | undefined): string => {
   return Number(value).toFixed(2);
 };
 
+type UnifiedParticipantRow = UnifiedParticipant;
+
+const EXPORT_COLUMNS: { id: string; label: string; getValue: (row: UnifiedParticipantRow) => string | number | null | undefined }[] = [
+  { id: 'id', label: 'Row ID (participant_calls)', getValue: (r) => r.id },
+  { id: 'prolific_id', label: 'Prolific ID', getValue: (r) => r.prolific_id },
+  { id: 'call_id', label: 'Call ID', getValue: (r) => r.call_id },
+  { id: 'response_id', label: 'Response ID (experiment_responses)', getValue: (r) => r.response_id ?? '' },
+  { id: 'status', label: 'Status', getValue: (r) => r.status },
+  { id: 'created_at', label: 'Created At', getValue: (r) => r.created_at },
+  { id: 'assistant_type', label: 'Condition', getValue: (r) => r.assistant_type ?? '' },
+  { id: 'batch_label', label: 'Batch', getValue: (r) => r.batch_label ?? '' },
+  { id: 'age', label: 'Age', getValue: (r) => r.age ?? '' },
+  { id: 'gender', label: 'Gender', getValue: (r) => r.gender ?? '' },
+  { id: 'ethnicity_simplified', label: 'Ethnicity', getValue: (r) => r.ethnicity_simplified ?? '' },
+  { id: 'demographics_mismatch', label: 'Demographics mismatch', getValue: (r) => r.demographics_mismatch ? 'Yes' : 'No' },
+  { id: 'reviewed_by_researcher', label: 'Reviewed', getValue: (r) => (r.reviewed_by_researcher ? 'Yes' : 'No') },
+  { id: 'flagged', label: 'Flagged', getValue: (r) => (r.flagged ? 'Yes' : 'No') },
+  { id: 'pets_total', label: 'PETS Total', getValue: (r) => r.pets_total ?? '' },
+  { id: 'tias_total', label: 'TIAS Total', getValue: (r) => r.tias_total ?? '' },
+  { id: 'formality', label: 'Formality', getValue: (r) => r.formality ?? '' },
+];
+
 import { SourceFilterValue } from './GlobalSourceFilter';
 
 interface UnifiedParticipantsTableProps {
@@ -112,7 +143,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [archiveMode, setArchiveMode] = useState<'single' | 'bulk'>('single');
   const [singleArchiveId, setSingleArchiveId] = useState<string | null>(null);
-  const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
+  const [showExportColumnDialog, setShowExportColumnDialog] = useState(false);
+  const [exportSelectedColumns, setExportSelectedColumns] = useState<Set<string>>(() => new Set(EXPORT_COLUMNS.map(c => c.id)));
   const [journeyModal, setJourneyModal] = useState<{
     open: boolean;
     prolificId: string;
@@ -120,7 +152,10 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     condition: string | null;
   }>({ open: false, prolificId: '', status: 'Pending', condition: null });
   const [createBatchDialog, setCreateBatchDialog] = useState<{ open: boolean; batchLabel: string | null }>({ open: false, batchLabel: null });
-  
+  const [lastStructuredOutputRunId, setLastStructuredOutputRunId] = useState<string | null>(null);
+  const [runEvaluationLoading, setRunEvaluationLoading] = useState(false);
+  const [checkResultsLoading, setCheckResultsLoading] = useState(false);
+
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
   const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const { logActivity } = useActivityLog();
@@ -460,30 +495,25 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     }
   };
 
-  const exportToCSV = async () => {
-    const headers = [
-      'Prolific ID', 'Status', 'Created At', 'Call ID', 
-      'Condition', 'Batch', 'Age', 'Gender', 'Ethnicity', 'Demographics mismatch',
-      'PETS Total', 'TIAS Total', 'Formality'
-    ];
-    
+  const escapeCSV = (value: string | number | null | undefined): string => {
+    if (value === null || value === undefined) return '';
+    const str = String(value);
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const exportToCSV = async (columnIds: Set<string>) => {
+    const cols = EXPORT_COLUMNS.filter(c => columnIds.has(c.id));
+    if (cols.length === 0) {
+      toast.error('Select at least one column to export');
+      return;
+    }
+    const headers = cols.map(c => c.label);
     const csvContent = [
-      headers.join(','),
-      ...filteredData.map(row => [
-        row.prolific_id,
-        row.status,
-        row.created_at,
-        row.call_id,
-        row.assistant_type || '',
-        row.batch_label || '',
-        row.age ?? '',
-        row.gender || '',
-        row.ethnicity_simplified || '',
-        row.demographics_mismatch ? 'Yes' : 'No',
-        row.pets_total ?? '',
-        row.tias_total ?? '',
-        row.formality ?? '',
-      ].join(','))
+      headers.map(h => escapeCSV(h)).join(','),
+      ...filteredData.map(row => cols.map(c => escapeCSV(c.getValue(row))).join(','))
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -493,17 +523,81 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     const filename = `participants_${new Date().toISOString().split('T')[0]}.csv`;
     a.download = filename;
     a.click();
+    window.URL.revokeObjectURL(url);
 
-    await logActivity({ 
-      action: 'download_unified_participants', 
-      details: { 
+    await logActivity({
+      action: 'download_unified_participants',
+      details: {
         record_count: filteredData.length,
+        columns: cols.map(c => c.id),
         filters: { statusFilter, conditionFilter, batchFilter },
-        filename 
-      } 
+        filename
+      }
     });
 
     toast.success(`Exported ${filteredData.length} participants`);
+  };
+
+  const handleExportWithColumns = () => {
+    setShowExportColumnDialog(false);
+    exportToCSV(exportSelectedColumns);
+  };
+
+  const toggleExportColumn = (id: string) => {
+    setExportSelectedColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllExportColumns = () => setExportSelectedColumns(new Set(EXPORT_COLUMNS.map(c => c.id)));
+  const deselectAllExportColumns = () => setExportSelectedColumns(new Set());
+
+  const selectedCompletedCallIds = useMemo(() => {
+    return paginatedData
+      .filter((r) => selectedIds.has(r.id) && r.status === 'Completed' && r.call_id)
+      .map((r) => r.call_id);
+  }, [paginatedData, selectedIds]);
+
+  const handleRunEvaluation = async () => {
+    if (selectedCompletedCallIds.length === 0 || isGuestMode) return;
+    setRunEvaluationLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('run-vapi-structured-output', {
+        body: { callIds: selectedCompletedCallIds },
+      });
+      if (error) throw error;
+      const runId = data?.runId ?? null;
+      if (runId) setLastStructuredOutputRunId(runId);
+      toast.success(
+        data?.message ?? `Evaluation started for ${selectedCompletedCallIds.length} call(s). Check back in 1–2 min.`
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to start evaluation');
+    } finally {
+      setRunEvaluationLoading(false);
+    }
+  };
+
+  const handleCheckResults = async () => {
+    if (!lastStructuredOutputRunId || isGuestMode) return;
+    setCheckResultsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-vapi-structured-output-results', {
+        body: { runId: lastStructuredOutputRunId },
+      });
+      if (error) throw error;
+      toast.success(data?.message ?? `Updated ${data?.updated ?? 0} of ${data?.total ?? 0} calls.`);
+      fetchData();
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch results');
+    } finally {
+      setCheckResultsLoading(false);
+    }
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -571,7 +665,39 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           </Select>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {isSuperAdmin && selectedCompletedCallIds.length > 0 && (
+            <Button
+              onClick={handleRunEvaluation}
+              disabled={runEvaluationLoading || isGuestMode}
+              variant="outline"
+              size="sm"
+              title="Run VAPI structured output evaluation on selected completed calls"
+            >
+              {runEvaluationLoading ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <BarChart3 className="h-4 w-4 mr-2" />
+              )}
+              Run evaluation ({selectedCompletedCallIds.length})
+            </Button>
+          )}
+          {isSuperAdmin && lastStructuredOutputRunId && (
+            <Button
+              onClick={handleCheckResults}
+              disabled={checkResultsLoading || isGuestMode}
+              variant="outline"
+              size="sm"
+              title="Fetch evaluation results from VAPI and save to responses"
+            >
+              {checkResultsLoading ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Check for results
+            </Button>
+          )}
           {isSuperAdmin && selectedIds.size > 0 && (
             <Button onClick={handleArchiveBulk} variant="destructive" size="sm">
               <Archive className="h-4 w-4 mr-2" />
@@ -579,7 +705,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
             </Button>
           )}
           {isSuperAdmin && (
-            <Button onClick={() => setShowDownloadConfirm(true)} variant="outline" size="sm">
+            <Button onClick={() => setShowExportColumnDialog(true)} variant="outline" size="sm">
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
@@ -828,12 +954,53 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         </AlertDialogContent>
       </AlertDialog>
 
-      <DownloadConfirmDialog
-        open={showDownloadConfirm}
-        onOpenChange={setShowDownloadConfirm}
-        onConfirm={exportToCSV}
-        dataType="participant data"
-      />
+      <Dialog open={showExportColumnDialog} onOpenChange={setShowExportColumnDialog}>
+        <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Export CSV</DialogTitle>
+            <DialogDescription className="text-left space-y-2">
+              <p>
+                You are about to download <strong>participant data</strong> that may contain sensitive information. Handle it according to your agreements and data protection policies.
+              </p>
+              <p>
+                Export will include <strong>{filteredData.length} row{filteredData.length !== 1 ? 's' : ''}</strong> with your current filters (status, condition, batch, search, source).
+              </p>
+              <p className="font-medium text-foreground">Choose columns to export:</p>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto border rounded-md p-3 space-y-2 max-h-[40vh]">
+            <div className="flex gap-2 pb-2 border-b">
+              <Button type="button" variant="ghost" size="sm" onClick={selectAllExportColumns}>
+                Select all
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={deselectAllExportColumns}>
+                Deselect all
+              </Button>
+            </div>
+            {EXPORT_COLUMNS.map((col) => (
+              <label key={col.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1">
+                <Checkbox
+                  checked={exportSelectedColumns.has(col.id)}
+                  onCheckedChange={() => toggleExportColumn(col.id)}
+                />
+                <span className="text-sm">{col.label}</span>
+              </label>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExportColumnDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExportWithColumns}
+              disabled={exportSelectedColumns.size === 0}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ParticipantJourneyModal
         open={journeyModal.open}
