@@ -1,0 +1,88 @@
+[
+  {
+    "version": "1.1.8",
+    "release_date": "2026-02-12",
+    "description": "Unify same-version releases, add System Design review tooling and visual diff mode, and publish artifacts/controls for faster release review.",
+    "release_status": "released",
+    "auto_mark_release_on_push": true,
+    "changes": [
+      {
+        "type": "changed",
+        "description": "group same-version changelog entries and add push timestamps/details",
+        "scope": "researcher",
+        "commit_hash": "75bf69f",
+        "pushed_at": "2026-02-12T15:00:35-08:00",
+        "details": {
+          "summary_simple": "Release history now groups pushes under one version and shows per-change timestamps and expandable details.",
+          "changed_locations": [
+            "src/pages/ResearcherChangelog.tsx",
+            "src/integrations/supabase/types.ts",
+            "supabase/migrations/20260213143000_experiment_responses_submission_lifecycle.sql"
+          ],
+          "affected_users": "researcher",
+          "flow_impact": "No participant flow impact.",
+          "user_visible_outcome": "Researchers can read grouped version updates with clearer per-change context.",
+          "risk_notes": "Low to medium: grouped actions across merged entries should be validated."
+        }
+      },
+      {
+        "type": "added",
+        "description": "add pre-push system design artifact generator and workflow config",
+        "scope": "researcher",
+        "commit_hash": "e8168b2",
+        "pushed_at": "2026-02-12T15:00:40-08:00",
+        "details": {
+          "summary_simple": "Added generator/config to produce System Design snapshot and diff artifacts for release review.",
+          "changed_locations": [
+            "scripts/generate-system-design-artifacts.mjs",
+            "docs/push-workflow-config.json"
+          ],
+          "affected_users": "researcher",
+          "flow_impact": "No participant flow impact.",
+          "user_visible_outcome": "Push workflow can now generate architecture review artifacts.",
+          "risk_notes": "Low: mapping patterns may need occasional updates."
+        }
+      },
+      {
+        "type": "added",
+        "description": "add system design diff view and release workflow controls",
+        "scope": "researcher",
+        "commit_hash": "b1ff99b",
+        "pushed_at": "2026-02-12T15:24:15-08:00",
+        "details": {
+          "summary_simple": "Added before/after visual diff mode in System Design plus release control toggles in Changelog.",
+          "changed_locations": [
+            "src/components/researcher/StudyMap.tsx",
+            "src/pages/ResearcherChangelog.tsx",
+            "src/pages/ResearcherDashboard.tsx",
+            "supabase/migrations/20260212151000_experiment_settings_auto_mark_release_on_push.sql",
+            "supabase/migrations/20260212151500_rpc_get_auto_mark_release_on_push.sql"
+          ],
+          "affected_users": "researcher",
+          "flow_impact": "No participant flow impact.",
+          "user_visible_outcome": "Researchers can compare before/after architecture visually and control auto-release marking in UI.",
+          "risk_notes": "Low to medium: file-to-node mapping should be reviewed when architecture changes."
+        }
+      },
+      {
+        "type": "changed",
+        "description": "publish system design artifacts and manifest generator updates",
+        "scope": "researcher",
+        "commit_hash": "a6854b1",
+        "pushed_at": "2026-02-12T15:24:20-08:00",
+        "details": {
+          "summary_simple": "Artifacts are now published to public paths with a manifest so UI links always resolve.",
+          "changed_locations": [
+            "scripts/generate-system-design-artifacts.mjs",
+            "docs/system-design/*",
+            "public/system-design/*"
+          ],
+          "affected_users": "researcher",
+          "flow_impact": "No participant flow impact.",
+          "user_visible_outcome": "Snapshot/diff links in Changelog and System Design load directly in the app.",
+          "risk_notes": "Low: ensure generated artifact files are kept in sync with workflow runs."
+        }
+      }
+    ]
+  }
+]
