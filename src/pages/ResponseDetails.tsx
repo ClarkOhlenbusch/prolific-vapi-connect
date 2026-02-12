@@ -2551,6 +2551,24 @@ const ResponseDetails = () => {
                 <label className="text-sm text-muted-foreground">Feedback Dictation Audio</label>
                 <p className="text-sm">{journeyDiagnostics?.feedback?.micAudio || "Unknown"}</p>
               </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Early Access Opt-In</label>
+                <p className="text-sm">
+                  {isPendingRecord
+                    ? 'Pending response'
+                    : data.early_access_notify
+                      ? 'Yes'
+                      : 'No'}
+                </p>
+              </div>
+              <div className="col-span-2 md:col-span-4">
+                <label className="text-sm text-muted-foreground">Early Access Notes</label>
+                <p className="text-sm whitespace-pre-wrap">
+                  {isPendingRecord
+                    ? 'Pending response'
+                    : data.early_access_notes?.trim() || 'None'}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -3310,6 +3328,31 @@ const ResponseDetails = () => {
                   {renderFeedbackTextWithHighlights("experiment_feedback", data.experiment_feedback)}
                 </p>
                 {renderDictationRecordings("experiment_feedback")}
+              </div>
+              <div className="pt-2 border-t">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium text-muted-foreground">Early Access Signup</label>
+                  <Badge
+                    variant={
+                      isPendingRecord
+                        ? "outline"
+                        : data.early_access_notify
+                          ? "default"
+                          : "secondary"
+                    }
+                  >
+                    {isPendingRecord
+                      ? "Pending response"
+                      : data.early_access_notify
+                        ? "Opted in"
+                        : "Did not opt in"}
+                  </Badge>
+                </div>
+                <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm whitespace-pre-wrap">
+                  {isPendingRecord
+                    ? "No early access response recorded yet."
+                    : data.early_access_notes?.trim() || "No notes provided."}
+                </p>
               </div>
             </CardContent>
           </Card>
