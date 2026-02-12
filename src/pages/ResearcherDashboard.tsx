@@ -30,6 +30,7 @@ import { NoConsentFeedbackTable } from '@/components/researcher/NoConsentFeedbac
 import { ActivityLogsTable } from '@/components/researcher/ActivityLogsTable';
 import { GlobalSourceFilter } from '@/components/researcher/GlobalSourceFilter';
 import { ProlificDemographicsImport } from '@/components/researcher/ProlificDemographicsImport';
+import { ParticipantFlowSmokeTestCard } from '@/components/researcher/ParticipantFlowSmokeTestCard';
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
@@ -150,6 +151,8 @@ const ResearcherDashboard = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <ParticipantFlowSmokeTestCard disabled={isGuestMode} />
+
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
             <TabsTrigger value="summary" className="flex items-center gap-1.5 px-3 py-2">
               <BarChart3 className="h-4 w-4" />
