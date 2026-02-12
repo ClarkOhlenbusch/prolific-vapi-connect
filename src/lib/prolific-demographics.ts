@@ -2,6 +2,7 @@
  * Prolific export CSV → prolific_export_demographics.
  * Fixed mapping; adjust PROLIFIC_EXPORT_COLUMNS for future studies.
  */
+import type { Json, TablesInsert } from '@/integrations/supabase/types';
 
 export const MAX_PROLIFIC_IMPORT_ROWS = 10_000;
 
@@ -155,7 +156,7 @@ export function mapProlificCSVToRows(rows: string[][]): { rows: ProlificExportRo
 export function toDbRow(
   row: ProlificExportRow,
   importedBy: string | null
-): Record<string, unknown> {
+): TablesInsert<'prolific_export_demographics'> {
   return {
     prolific_id: row.prolific_id,
     age: row.age,
@@ -164,7 +165,7 @@ export function toDbRow(
     country_of_residence: row.country_of_residence,
     employment_status: row.employment_status,
     language: row.language,
-    raw_columns: row.raw_columns,
+    raw_columns: (row.raw_columns ?? null) as Json | null,
     imported_at: new Date().toISOString(),
     imported_by: importedBy,
   };
