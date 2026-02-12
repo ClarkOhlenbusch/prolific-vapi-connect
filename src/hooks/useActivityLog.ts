@@ -9,7 +9,8 @@ export type ActivityAction =
   | 'download_participant_calls'
   | 'download_unified_participants'
   | 'download_formality_scores'
-  | 'download_formality_per_turn';
+  | 'download_formality_per_turn'
+  | 'download_backup_snapshot';
 
 interface LogActivityOptions {
   action: ActivityAction;

@@ -45,6 +45,7 @@ const actionLabels: Record<string, { label: string; icon: typeof LogIn; variant:
   download_participant_calls: { label: 'Download Calls', icon: Download, variant: 'outline' },
   download_formality_scores: { label: 'Download Formality', icon: Download, variant: 'outline' },
   download_formality_per_turn: { label: 'Download Per-Turn', icon: Download, variant: 'outline' },
+  download_backup_snapshot: { label: 'Download Backup', icon: Download, variant: 'outline' },
 };
 
 export const ActivityLogsTable = () => {

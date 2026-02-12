@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  FlaskConical, 
-  LogOut, 
-  BarChart3, 
+import {
+  FlaskConical,
+  LogOut,
+  BarChart3,
   Archive,
   Settings,
   Calculator,
@@ -16,7 +16,9 @@ import {
   UserX,
   Activity,
   Users,
-  History
+  History,
+  Map,
+  Cloud
 } from 'lucide-react';
 import { UnifiedParticipantsTable } from '@/components/researcher/UnifiedParticipantsTable';
 import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponsesTable';
@@ -31,6 +33,8 @@ import { ActivityLogsTable } from '@/components/researcher/ActivityLogsTable';
 import { GlobalSourceFilter } from '@/components/researcher/GlobalSourceFilter';
 import { ProlificDemographicsImport } from '@/components/researcher/ProlificDemographicsImport';
 import { ParticipantFlowSmokeTestCard } from '@/components/researcher/ParticipantFlowSmokeTestCard';
+
+const StudyMap = lazy(() => import('@/components/researcher/StudyMap'));
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
@@ -108,34 +112,43 @@ const ResearcherDashboard = () => {
               </p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
             {!isGuestMode && (
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
+                onClick={() => navigate('/researcher/backups')}
+              >
+                <Cloud className="h-4 w-4 mr-2" />
+                Backups
+              </Button>
+            )}
+            {!isGuestMode && (
+              <Button
+                variant="outline"
                 onClick={() => navigate('/researcher/changelog')}
               >
                 <History className="h-4 w-4 mr-2" />
                 Changelog
               </Button>
             )}
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => navigate('/researcher/statistics')}
             >
               <BarChart3 className="h-4 w-4 mr-2" />
               Statistical Analysis
             </Button>
             {!isGuestMode && isSuperAdmin && (
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => navigate('/researcher/users')}
               >
                 <Settings className="h-4 w-4 mr-2" />
                 Manage Users
               </Button>
             )}
-            <Button variant={isGuestMode ? "default" : "ghost"} onClick={handleLogout}>
+            <Button variant={isGuestMode ? 'default' : 'ghost'} onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" />
               {isGuestMode ? 'Exit Demo' : 'Logout'}
             </Button>
@@ -177,6 +190,10 @@ const ResearcherDashboard = () => {
             <TabsTrigger value="no-consent" className="flex items-center gap-1.5 px-3 py-2">
               <UserX className="h-4 w-4" />
               <span className="hidden sm:inline">No Consent</span>
+            </TabsTrigger>
+            <TabsTrigger value="study-map" className="flex items-center gap-1.5 px-3 py-2">
+              <Map className="h-4 w-4" />
+              <span className="hidden sm:inline">Study Map</span>
             </TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="activity" className="flex items-center gap-1.5 px-3 py-2">
@@ -234,6 +251,21 @@ const ResearcherDashboard = () => {
 
           <TabsContent value="no-consent">
             <NoConsentFeedbackTable sourceFilter={sourceFilter} />
+          </TabsContent>
+
+          <TabsContent value="study-map">
+            <Suspense
+              fallback={
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Study Map</CardTitle>
+                    <CardDescription>Loading interactive diagram…</CardDescription>
+                  </CardHeader>
+                </Card>
+              }
+            >
+              <StudyMap />
+            </Suspense>
           </TabsContent>
 
           {isSuperAdmin && (
