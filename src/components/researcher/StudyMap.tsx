@@ -16,6 +16,7 @@ import jsPDF from "jspdf";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, Eye, ExternalLink, Navigation, Route } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -57,6 +58,8 @@ type SystemDesignManifest = {
   latest_snapshot?: string | null;
   latest_diff?: string | null;
   generated_at?: string;
+  snapshots?: string[];
+  diffs?: string[];
 };
 
 type SystemDesignSnapshotFile = {
@@ -71,6 +74,11 @@ type SystemDesignSnapshot = {
   version: string;
   release_status: "local_only" | "pushed" | "released";
   relevant_files: SystemDesignSnapshotFile[];
+  git?: {
+    branch?: string | null;
+    head?: string | null;
+    dirty?: boolean;
+  };
 };
 
 type DiffFileStatus = "added" | "changed" | "removed";
@@ -348,15 +356,15 @@ const formatSnapshotTime = (value: string | null | undefined) => {
   });
 };
 
-const extractSnapshotIdsFromDiffPath = (diffPath: string | null | undefined): { beforeId: string | null; afterId: string | null } => {
-  if (!diffPath) return { beforeId: null, afterId: null };
-  const fileName = diffPath.split("/").pop() || diffPath;
-  const match = fileName.match(/^system-design-diff-(.+)-to-(.+)\.md$/);
-  if (!match) return { beforeId: null, afterId: null };
-  return {
-    beforeId: match[1] === "none" ? null : match[1],
-    afterId: match[2] ?? null,
-  };
+const snapshotPathToLabel = (path: string) => {
+  const fileName = path.split("/").pop() || path;
+  const snapshotId = fileName.replace(/^system-design-snapshot-/, "").replace(/\.json$/, "");
+  return snapshotId;
+};
+
+const getSnapshotBranch = (snapshot: SystemDesignSnapshot | null | undefined) => {
+  const branch = snapshot?.git?.branch?.trim();
+  return branch || "unknown";
 };
 
 const buildDiffFlowElements = (
@@ -488,8 +496,13 @@ const StudyMap = () => {
   const [showOnlyChangedNodes, setShowOnlyChangedNodes] = useState(false);
   const [syncDiffViewport, setSyncDiffViewport] = useState(true);
   const [systemDesignManifest, setSystemDesignManifest] = useState<SystemDesignManifest | null>(null);
+  const [selectedBeforeSnapshotPath, setSelectedBeforeSnapshotPath] = useState<string | null>(null);
+  const [selectedAfterSnapshotPath, setSelectedAfterSnapshotPath] = useState<string | null>(null);
+  const [selectedBeforeBranch, setSelectedBeforeBranch] = useState<string | null>(null);
+  const [selectedAfterBranch, setSelectedAfterBranch] = useState<string | null>(null);
   const [beforeSnapshot, setBeforeSnapshot] = useState<SystemDesignSnapshot | null>(null);
   const [afterSnapshot, setAfterSnapshot] = useState<SystemDesignSnapshot | null>(null);
+  const [snapshotCache, setSnapshotCache] = useState<Record<string, SystemDesignSnapshot>>({});
   const [isManifestLoading, setIsManifestLoading] = useState(true);
   const mermaidHostRef = useRef<HTMLDivElement | null>(null);
   const mermaidViewRef = useRef<HTMLDivElement | null>(null);
@@ -502,9 +515,9 @@ const StudyMap = () => {
     () => buildFlowElements(parsedDiagram, focus),
     [parsedDiagram, focus],
   );
-  const fullFlowElements = useMemo(
-    () => buildFlowElements(parsedDiagram, "all"),
-    [parsedDiagram],
+  const diffBaseFlowElements = useMemo(
+    () => buildFlowElements(parsedDiagram, focus),
+    [parsedDiagram, focus],
   );
 
   const toSystemDesignAssetHref = useCallback((path: string | null | undefined) => {
@@ -520,51 +533,162 @@ const StudyMap = () => {
       const response = await fetch("/system-design/manifest.json");
       if (!response.ok) {
         setSystemDesignManifest(null);
+        setSelectedBeforeSnapshotPath(null);
+        setSelectedAfterSnapshotPath(null);
+        setSelectedBeforeBranch(null);
+        setSelectedAfterBranch(null);
         setBeforeSnapshot(null);
         setAfterSnapshot(null);
+        setSnapshotCache({});
         return;
       }
       const manifest = (await response.json()) as SystemDesignManifest;
       setSystemDesignManifest(manifest);
+      const snapshots = [...(manifest.snapshots || [])];
+      const latestSnapshotPath = manifest.latest_snapshot ?? null;
+      const latestIndex = latestSnapshotPath ? snapshots.indexOf(latestSnapshotPath) : -1;
 
-      const snapshotHref = toSystemDesignAssetHref(manifest.latest_snapshot ?? null);
-      if (!snapshotHref) {
-        setAfterSnapshot(null);
-        setBeforeSnapshot(null);
-        return;
-      }
+      const defaultAfter = latestSnapshotPath || (snapshots.length > 0 ? snapshots[snapshots.length - 1] : null);
+      const defaultBefore =
+        latestIndex > 0 ? snapshots[latestIndex - 1] : snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
 
-      const afterResponse = await fetch(snapshotHref);
-      if (!afterResponse.ok) {
-        setAfterSnapshot(null);
-        setBeforeSnapshot(null);
-        return;
-      }
-      const latestSnapshot = (await afterResponse.json()) as SystemDesignSnapshot;
-      setAfterSnapshot(latestSnapshot);
-
-      const { beforeId } = extractSnapshotIdsFromDiffPath(manifest.latest_diff ?? null);
-      if (!beforeId) {
-        setBeforeSnapshot(null);
-        return;
-      }
-
-      const beforePath = `/system-design/snapshots/system-design-snapshot-${beforeId}.json`;
-      const beforeResponse = await fetch(beforePath);
-      if (!beforeResponse.ok) {
-        setBeforeSnapshot(null);
-        return;
-      }
-      const previousSnapshot = (await beforeResponse.json()) as SystemDesignSnapshot;
-      setBeforeSnapshot(previousSnapshot);
+      setSelectedAfterSnapshotPath((current) => current ?? defaultAfter);
+      setSelectedBeforeSnapshotPath((current) => current ?? defaultBefore);
     } catch {
       setSystemDesignManifest(null);
+      setSelectedBeforeSnapshotPath(null);
+      setSelectedAfterSnapshotPath(null);
+      setSelectedBeforeBranch(null);
+      setSelectedAfterBranch(null);
       setBeforeSnapshot(null);
       setAfterSnapshot(null);
+      setSnapshotCache({});
     } finally {
       setIsManifestLoading(false);
     }
-  }, [toSystemDesignAssetHref]);
+  }, []);
+
+  const snapshotOptions = useMemo(() => systemDesignManifest?.snapshots || [], [systemDesignManifest?.snapshots]);
+
+  useEffect(() => {
+    const loadSnapshotCache = async () => {
+      if (snapshotOptions.length === 0) {
+        setSnapshotCache({});
+        return;
+      }
+      try {
+        const responses = await Promise.all(
+          snapshotOptions.map(async (path) => {
+            const href = toSystemDesignAssetHref(path);
+            if (!href) return null;
+            const response = await fetch(href);
+            if (!response.ok) return null;
+            const snapshot = (await response.json()) as SystemDesignSnapshot;
+            return { path, snapshot };
+          }),
+        );
+        const nextCache: Record<string, SystemDesignSnapshot> = {};
+        for (const row of responses) {
+          if (!row) continue;
+          nextCache[row.path] = row.snapshot;
+        }
+        setSnapshotCache(nextCache);
+      } catch {
+        setSnapshotCache({});
+      }
+    };
+
+    void loadSnapshotCache();
+  }, [snapshotOptions, toSystemDesignAssetHref]);
+
+  const snapshotRecords = useMemo(
+    () =>
+      snapshotOptions.map((path) => {
+        const snapshot = snapshotCache[path] || null;
+        return {
+          path,
+          snapshotId: snapshot?.snapshot_id || snapshotPathToLabel(path),
+          generatedAt: snapshot?.generated_at || null,
+          branch: getSnapshotBranch(snapshot),
+          version: snapshot?.version || null,
+        };
+      }),
+    [snapshotCache, snapshotOptions],
+  );
+
+  const branchOptions = useMemo(() => {
+    const branches = new Set<string>();
+    for (const record of snapshotRecords) branches.add(record.branch);
+    return [...branches].sort((a, b) => a.localeCompare(b));
+  }, [snapshotRecords]);
+
+  const beforeSnapshotOptions = useMemo(
+    () =>
+      snapshotRecords.filter((record) =>
+        selectedBeforeBranch ? record.branch === selectedBeforeBranch : true,
+      ),
+    [selectedBeforeBranch, snapshotRecords],
+  );
+
+  const afterSnapshotOptions = useMemo(
+    () =>
+      snapshotRecords.filter((record) =>
+        selectedAfterBranch ? record.branch === selectedAfterBranch : true,
+      ),
+    [selectedAfterBranch, snapshotRecords],
+  );
+
+  useEffect(() => {
+    if (snapshotOptions.length === 0) {
+      setSelectedBeforeSnapshotPath(null);
+      setSelectedAfterSnapshotPath(null);
+      setSelectedBeforeBranch(null);
+      setSelectedAfterBranch(null);
+      return;
+    }
+    if (branchOptions.length > 0) {
+      setSelectedAfterBranch((current) => current ?? branchOptions[branchOptions.length - 1]);
+      setSelectedBeforeBranch((current) => current ?? branchOptions[0]);
+    }
+  }, [snapshotOptions, branchOptions]);
+
+  useEffect(() => {
+    if (afterSnapshotOptions.length === 0) {
+      setSelectedAfterSnapshotPath(null);
+      return;
+    }
+    const currentValid = selectedAfterSnapshotPath
+      ? afterSnapshotOptions.some((record) => record.path === selectedAfterSnapshotPath)
+      : false;
+    if (!currentValid) {
+      setSelectedAfterSnapshotPath(afterSnapshotOptions[afterSnapshotOptions.length - 1].path);
+    }
+  }, [afterSnapshotOptions, selectedAfterSnapshotPath]);
+
+  useEffect(() => {
+    if (beforeSnapshotOptions.length === 0) {
+      setSelectedBeforeSnapshotPath(null);
+      return;
+    }
+    const currentValid = selectedBeforeSnapshotPath
+      ? beforeSnapshotOptions.some((record) => record.path === selectedBeforeSnapshotPath)
+      : false;
+    if (!currentValid) {
+      const fallback = beforeSnapshotOptions.length > 1
+        ? beforeSnapshotOptions[beforeSnapshotOptions.length - 2].path
+        : beforeSnapshotOptions[0].path;
+      setSelectedBeforeSnapshotPath(fallback);
+    }
+  }, [beforeSnapshotOptions, selectedBeforeSnapshotPath]);
+
+  useEffect(() => {
+    setAfterSnapshot(
+      selectedAfterSnapshotPath ? (snapshotCache[selectedAfterSnapshotPath] || null) : null,
+    );
+    setBeforeSnapshot(
+      selectedBeforeSnapshotPath ? (snapshotCache[selectedBeforeSnapshotPath] || null) : null,
+    );
+  }, [selectedAfterSnapshotPath, selectedBeforeSnapshotPath, snapshotCache]);
 
   const selectedNode = useMemo(
     () => flowElements.nodes.find((node) => node.id === selectedNodeId) || null,
@@ -669,25 +793,25 @@ const StudyMap = () => {
   const beforeDiffFlowElements = useMemo(
     () =>
       buildDiffFlowElements(
-        fullFlowElements,
+        diffBaseFlowElements,
         "before",
         diffNodeStatuses.before,
         focusedDiffNodeIds,
         showOnlyChangedNodes,
       ),
-    [fullFlowElements, diffNodeStatuses.before, focusedDiffNodeIds, showOnlyChangedNodes],
+    [diffBaseFlowElements, diffNodeStatuses.before, focusedDiffNodeIds, showOnlyChangedNodes],
   );
 
   const afterDiffFlowElements = useMemo(
     () =>
       buildDiffFlowElements(
-        fullFlowElements,
+        diffBaseFlowElements,
         "after",
         diffNodeStatuses.after,
         focusedDiffNodeIds,
         showOnlyChangedNodes,
       ),
-    [fullFlowElements, diffNodeStatuses.after, focusedDiffNodeIds, showOnlyChangedNodes],
+    [diffBaseFlowElements, diffNodeStatuses.after, focusedDiffNodeIds, showOnlyChangedNodes],
   );
 
   const selectedDiffNode = useMemo(() => {
@@ -1058,6 +1182,97 @@ const StudyMap = () => {
             </div>
           </div>
 
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Before branch</p>
+              <Select
+                value={selectedBeforeBranch ?? undefined}
+                onValueChange={(value) => setSelectedBeforeBranch(value)}
+                disabled={branchOptions.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select before branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {branchOptions.map((branch) => (
+                    <SelectItem key={`before-${branch}`} value={branch}>
+                      {branch}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">After branch</p>
+              <Select
+                value={selectedAfterBranch ?? undefined}
+                onValueChange={(value) => setSelectedAfterBranch(value)}
+                disabled={branchOptions.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select after branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {branchOptions.map((branch) => (
+                    <SelectItem key={`after-${branch}`} value={branch}>
+                      {branch}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Before snapshot</p>
+              <Select
+                value={selectedBeforeSnapshotPath ?? undefined}
+                onValueChange={(value) => {
+                  if (value === selectedAfterSnapshotPath) {
+                    const fallback = snapshotOptions.find((candidate) => candidate !== value) ?? null;
+                    setSelectedAfterSnapshotPath(fallback);
+                  }
+                  setSelectedBeforeSnapshotPath(value);
+                }}
+                disabled={beforeSnapshotOptions.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select before snapshot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {beforeSnapshotOptions.map((record) => (
+                    <SelectItem key={record.path} value={record.path}>
+                      [{record.branch}] {record.snapshotId}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">After snapshot</p>
+              <Select
+                value={selectedAfterSnapshotPath ?? undefined}
+                onValueChange={(value) => {
+                  if (value === selectedBeforeSnapshotPath) {
+                    const fallback = [...snapshotOptions].reverse().find((candidate) => candidate !== value) ?? null;
+                    setSelectedBeforeSnapshotPath(fallback);
+                  }
+                  setSelectedAfterSnapshotPath(value);
+                }}
+                disabled={afterSnapshotOptions.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select after snapshot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {afterSnapshotOptions.map((record) => (
+                    <SelectItem key={record.path} value={record.path}>
+                      [{record.branch}] {record.snapshotId}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {afterSnapshot ? (
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_350px]">
               <div className="grid gap-3 lg:grid-cols-2">
@@ -1066,7 +1281,7 @@ const StudyMap = () => {
                     <p className="text-xs font-medium">Before</p>
                     {beforeSnapshot ? (
                       <p className="text-[11px] text-muted-foreground">
-                        {beforeSnapshot.snapshot_id} · {formatSnapshotTime(beforeSnapshot.generated_at)}
+                        {beforeSnapshot.snapshot_id} · {getSnapshotBranch(beforeSnapshot)} · {formatSnapshotTime(beforeSnapshot.generated_at)}
                       </p>
                     ) : (
                       <p className="text-[11px] text-muted-foreground">No previous snapshot available in public artifacts.</p>
@@ -1104,7 +1319,7 @@ const StudyMap = () => {
                   <div className="border-b px-3 py-2">
                     <p className="text-xs font-medium">After</p>
                     <p className="text-[11px] text-muted-foreground">
-                      {afterSnapshot.snapshot_id} · {formatSnapshotTime(afterSnapshot.generated_at)}
+                      {afterSnapshot.snapshot_id} · {getSnapshotBranch(afterSnapshot)} · {formatSnapshotTime(afterSnapshot.generated_at)}
                     </p>
                   </div>
                   <div className="h-[520px] w-full">
