@@ -208,7 +208,7 @@ const createEmptyFeedbackDraftUsage = (): FeedbackDraftUsage => ({
   experiment_feedback: false,
 });
 
-type ProlificExportDemographics = Pick<Tables<'prolific_export_demographics'>['Row'], 'age' | 'gender' | 'ethnicity_simplified'>;
+type ProlificExportDemographics = Pick<Tables<'prolific_export_demographics'>, 'age' | 'gender' | 'ethnicity_simplified'>;
 
 interface ExperimentResponseWithDemographics extends Tables<'experiment_responses'> {
   demographics?: Demographics | null;
