@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ArrowLeft, Download, Info, CheckCircle2, AlertTriangle, XCircle, HelpCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Download, Info, CheckCircle2, AlertTriangle, XCircle, HelpCircle, TrendingUp, TrendingDown, ChevronDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { GlobalSourceFilter, SourceFilterValue } from '@/components/researcher/GlobalSourceFilter';
 import {
@@ -19,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import {
   welchTTest,
@@ -48,6 +50,14 @@ interface DependentVariable {
   label: string;
   scale: string;
   description: string;
+  /** Exact question or item text shown to participants. */
+  question?: string;
+  /** Response options, e.g. Likert labels. */
+  optionsSummary?: string;
+  /** Citation or label for reference link, e.g. "Moussawi et al. 2021". */
+  referenceLabel?: string;
+  /** URL for further reading (paper, scale). */
+  referenceUrl?: string;
 }
 
 // Hypothesis structure
@@ -99,26 +109,167 @@ const MANIPULATION_CHECKS: DependentVariable[] = [
   { key: 'ai_formality_score', label: 'F-Score (AI Formality)', scale: '0-100', description: 'Calculated linguistic formality from transcript' },
 ];
 
+const TIPI_REFERENCE_LABEL = 'A very brief measure of the Big-Five personality domains (TIPI)';
+const TIPI_REFERENCE_URL = 'https://www.sciencedirect.com/science/article/abs/pii/S0092656603000461?via%3Dihub';
+const TIPI_QUESTION_INSTRUCTION = 'I see myself as: [rate each]. Ten-Item Personality Inventory (TIPI); each dimension is the average of 2 items (one reverse-scored).';
+const TIPI_SCALE_SUMMARY = '1 = Disagree strongly, 2 = Disagree moderately, 3 = Disagree a little, 4 = Neither agree nor disagree, 5 = Agree a little, 6 = Agree moderately, 7 = Agree strongly';
+
 // Baseline characteristics / covariates (used for randomization checks, not outcomes)
 const BASELINE_DVS: DependentVariable[] = [
-  { key: 'tipi_extraversion', label: 'TIPI Extraversion', scale: '1-7', description: 'Personality: Extraversion subscale' },
-  { key: 'tipi_agreeableness', label: 'TIPI Agreeableness', scale: '1-7', description: 'Personality: Agreeableness subscale' },
-  { key: 'tipi_conscientiousness', label: 'TIPI Conscientiousness', scale: '1-7', description: 'Personality: Conscientiousness subscale' },
-  { key: 'tipi_emotional_stability', label: 'TIPI Emotional Stability', scale: '1-7', description: 'Personality: Emotional Stability subscale' },
-  { key: 'tipi_openness', label: 'TIPI Openness', scale: '1-7', description: 'Personality: Openness subscale' },
+  {
+    key: 'tipi_extraversion',
+    label: 'TIPI Extraversion',
+    scale: '1-7',
+    description: 'Personality: Extraversion subscale',
+    question: `${TIPI_QUESTION_INSTRUCTION} Extraversion items: Extraverted, enthusiastic; Reserved, quiet (reverse-scored).`,
+    optionsSummary: TIPI_SCALE_SUMMARY,
+    referenceLabel: TIPI_REFERENCE_LABEL,
+    referenceUrl: TIPI_REFERENCE_URL,
+  },
+  {
+    key: 'tipi_agreeableness',
+    label: 'TIPI Agreeableness',
+    scale: '1-7',
+    description: 'Personality: Agreeableness subscale',
+    question: `${TIPI_QUESTION_INSTRUCTION} Agreeableness items: Sympathetic, warm; Critical, quarrelsome (reverse-scored).`,
+    optionsSummary: TIPI_SCALE_SUMMARY,
+    referenceLabel: TIPI_REFERENCE_LABEL,
+    referenceUrl: TIPI_REFERENCE_URL,
+  },
+  {
+    key: 'tipi_conscientiousness',
+    label: 'TIPI Conscientiousness',
+    scale: '1-7',
+    description: 'Personality: Conscientiousness subscale',
+    question: `${TIPI_QUESTION_INSTRUCTION} Conscientiousness items: Dependable, self-disciplined; Disorganized, careless (reverse-scored).`,
+    optionsSummary: TIPI_SCALE_SUMMARY,
+    referenceLabel: TIPI_REFERENCE_LABEL,
+    referenceUrl: TIPI_REFERENCE_URL,
+  },
+  {
+    key: 'tipi_emotional_stability',
+    label: 'TIPI Emotional Stability',
+    scale: '1-7',
+    description: 'Personality: Emotional Stability subscale',
+    question: `${TIPI_QUESTION_INSTRUCTION} Emotional Stability items: Calm, emotionally stable; Anxious, easily upset (reverse-scored).`,
+    optionsSummary: TIPI_SCALE_SUMMARY,
+    referenceLabel: TIPI_REFERENCE_LABEL,
+    referenceUrl: TIPI_REFERENCE_URL,
+  },
+  {
+    key: 'tipi_openness',
+    label: 'TIPI Openness',
+    scale: '1-7',
+    description: 'Personality: Openness subscale',
+    question: `${TIPI_QUESTION_INSTRUCTION} Openness items: Open to new experiences, complex; Conventional, uncreative (reverse-scored).`,
+    optionsSummary: TIPI_SCALE_SUMMARY,
+    referenceLabel: TIPI_REFERENCE_LABEL,
+    referenceUrl: TIPI_REFERENCE_URL,
+  },
 ];
 
+const PETS_REFERENCE_LABEL = 'Perceived Empathy of Technology Scale (PETS): Measuring Empathy of Systems Toward the User';
+const PETS_REFERENCE_URL = 'https://dl.acm.org/doi/10.1145/3613904.3642035';
+
 const ALL_DVS: DependentVariable[] = [
-  { key: 'pets_er', label: 'PETS-ER', scale: '6-42', description: 'Emotional Relationship subscale' },
-  { key: 'pets_ut', label: 'PETS-UT', scale: '4-28', description: 'Utilitarian Trust subscale' },
-  { key: 'pets_total', label: 'PETS Total', scale: '10-70', description: 'Privacy and Emotional Trust Scale' },
-  { key: 'tias_total', label: 'TIAS Total', scale: '12-84', description: 'Trust in AI Scale' },
-  { key: 'godspeed_anthro_total', label: 'Godspeed Anthropomorphism', scale: '4-20', description: 'Perceived human-likeness' },
-  { key: 'godspeed_like_total', label: 'Godspeed Likeability', scale: '5-25', description: 'Perceived likeability' },
-  { key: 'godspeed_intel_total', label: 'Godspeed Intelligence', scale: '5-25', description: 'Perceived intelligence' },
-  { key: 'intention_1', label: 'Intention 1', scale: '1-7', description: 'Behavioral intention item 1' },
-  { key: 'intention_2', label: 'Intention 2', scale: '1-7', description: 'Behavioral intention item 2' },
-  { key: 'formality', label: 'Perceived Formality', scale: '1-7', description: 'User-rated formality perception' },
+  {
+    key: 'pets_er',
+    label: 'PETS-ER',
+    scale: '0-100',
+    description: 'Emotional Relationship subscale',
+    question: 'During this experiment, you had a conversation with Cali. Please rate each statement from 0 (strongly disagree) to 100 (strongly agree). PETS-ER is the mean of 6 items: Cali considered my mental state; Cali seemed emotionally intelligent; Cali expressed emotions; Cali sympathized with me; Cali showed interest in me; Cali supported me in coping with an emotional situation.',
+    optionsSummary: 'Scale: 0 = Strongly disagree, 100 = Strongly agree (slider or number input).',
+    referenceLabel: PETS_REFERENCE_LABEL,
+    referenceUrl: PETS_REFERENCE_URL,
+  },
+  {
+    key: 'pets_ut',
+    label: 'PETS-UT',
+    scale: '0-100',
+    description: 'Utilitarian Trust subscale',
+    question: 'Same instruction as PETS-ER. PETS-UT is the mean of 4 items: Cali understood my goals; Cali understood my needs; I trusted Cali; Cali understood my intentions.',
+    optionsSummary: 'Scale: 0 = Strongly disagree, 100 = Strongly agree (slider or number input).',
+    referenceLabel: PETS_REFERENCE_LABEL,
+    referenceUrl: PETS_REFERENCE_URL,
+  },
+  {
+    key: 'pets_total',
+    label: 'PETS Total',
+    scale: '0-100',
+    description: 'Privacy and Emotional Trust Scale (weighted composite)',
+    question: 'PETS Total is a weighted composite of PETS-ER (Emotional Relationship) and PETS-UT (Utilitarian Trust): Total = PETS-ER × 0.6 + PETS-UT × 0.4. Both subscales use the same 0–100 item mean (see PETS-ER and PETS-UT for item content).',
+    optionsSummary: 'Composite: 0.6 × PETS-ER + 0.4 × PETS-UT (each subscale 0–100). Effective range depends on subscale means.',
+    referenceLabel: PETS_REFERENCE_LABEL,
+    referenceUrl: PETS_REFERENCE_URL,
+  },
+  {
+    key: 'tias_total',
+    label: 'TIAS Total',
+    scale: '12-84',
+    description: 'Trust in AI Scale',
+    question: 'Trust in Automation Scale (TIAS) adapted for AI/voice assistant. Participants rate agreement with 12 statements about Cali (sum, range 12–84). Sample items (reverse-scored where indicated): Cali is deceptive (R); Cali behaves in an underhanded manner (R); I am suspicious of Cali\'s intent, action, or output (R); I am wary of Cali (R); Cali\'s action will have a harmful or injurious outcome (R); I am confident in Cali; Cali provides security; Cali has integrity; Cali is dependable; Cali is reliable; I can trust Cali; I am familiar with Cali.',
+    optionsSummary: '1 = Not at all, 2 = Slightly, 3 = Somewhat, 4 = Moderately, 5 = Quite a bit, 6 = Very, 7 = Extremely. Total = sum of 12 items (12–84).',
+    referenceLabel: 'Jian, J. Y., Bisantz, A. M., & Drury, C. G. (2000). Foundations for an Empirically Determined Scale of Trust in Automated Systems. International Journal of Cognitive Ergonomics, 4(1), 53–71.',
+    referenceUrl: 'https://doi.org/10.1207/S15327566IJCE0401_04',
+  },
+  {
+    key: 'godspeed_anthro_total',
+    label: 'Godspeed Anthropomorphism',
+    scale: '4-20',
+    description: 'Perceived human-likeness',
+    question: 'Godspeed Questionnaire Series (GQS). Anthropomorphism subscale: sum of 4 semantic-differential items. Rate the assistant on each pair (1 = left pole, 5 = right pole): Fake–Natural; Machinelike–Humanlike; Unconscious–Conscious; Artificial–Lifelike.',
+    optionsSummary: 'Scale 1–5 per item (semantic differential; 1 = left anchor, 5 = right anchor). Total range 4–20.',
+    referenceLabel: 'Bartneck, C. (2023). Godspeed Questionnaire Series: Translations and Usage. In Krägeloh et al. (Eds.), International Handbook of Behavioral Health Assessment (pp. 1–35). Springer.',
+    referenceUrl: 'https://doi.org/10.1007/978-3-030-89738-3_24-1',
+  },
+  {
+    key: 'godspeed_like_total',
+    label: 'Godspeed Likeability',
+    scale: '5-25',
+    description: 'Perceived likeability',
+    question: 'Godspeed Questionnaire Series (GQS). Likeability subscale: sum of 5 semantic-differential items. Rate the assistant on each pair: Dislike–Like; Unfriendly–Friendly; Unkind–Kind; Unpleasant–Pleasant; Awful–Nice.',
+    optionsSummary: 'Scale 1–5 per item (semantic differential; 1 = left anchor, 5 = right anchor). Total range 5–25.',
+    referenceLabel: 'Bartneck, C. (2023). Godspeed Questionnaire Series: Translations and Usage. In Krägeloh et al. (Eds.), International Handbook of Behavioral Health Assessment (pp. 1–35). Springer.',
+    referenceUrl: 'https://doi.org/10.1007/978-3-030-89738-3_24-1',
+  },
+  {
+    key: 'godspeed_intel_total',
+    label: 'Godspeed Intelligence',
+    scale: '5-25',
+    description: 'Perceived intelligence',
+    question: 'Godspeed Questionnaire Series (GQS). Perceived Intelligence subscale: sum of 5 semantic-differential items. Rate the assistant on each pair: Incompetent–Competent; Ignorant–Knowledgeable; Irresponsible–Responsible; Unintelligent–Intelligent; Foolish–Sensible.',
+    optionsSummary: 'Scale 1–5 per item (semantic differential; 1 = left anchor, 5 = right anchor). Total range 5–25.',
+    referenceLabel: 'Bartneck, C. (2023). Godspeed Questionnaire Series: Translations and Usage. In Krägeloh et al. (Eds.), International Handbook of Behavioral Health Assessment (pp. 1–35). Springer.',
+    referenceUrl: 'https://doi.org/10.1007/978-3-030-89738-3_24-1',
+  },
+  {
+    key: 'intention_1',
+    label: 'Intention 1',
+    scale: '1-7',
+    description: 'Behavioral intention item 1',
+    question: 'If available, I intend to start using voice assistants like Cali within the next month.',
+    optionsSummary: 'Likert 1–7: 1 = Not at all, 2 = Slightly, 3 = Somewhat, 4 = Moderately, 5 = Quite a bit, 6 = Very, 7 = Extremely',
+    referenceLabel: 'Moussawi et al. 2021',
+    referenceUrl: 'https://doi.org/10.1007/s12525-020-00411-w',
+  },
+  {
+    key: 'intention_2',
+    label: 'Intention 2',
+    scale: '1-7',
+    description: 'Behavioral intention item 2',
+    question: 'If available, in the next months, I plan to experiment or regularly use voice assistants like Cali.',
+    optionsSummary: 'Likert 1–7: 1 = Not at all, 2 = Slightly, 3 = Somewhat, 4 = Moderately, 5 = Quite a bit, 6 = Very, 7 = Extremely',
+    referenceLabel: 'Moussawi et al. 2021',
+    referenceUrl: 'https://doi.org/10.1007/s12525-020-00411-w',
+  },
+  {
+    key: 'formality',
+    label: 'Perceived Formality',
+    scale: '1-7',
+    description: 'User-rated formality perception',
+    question: 'During this experiment, you had a conversation with Cali. How formal did you find Cali?',
+    optionsSummary: '1 = Extremely Informal, 2 = Very Informal, 3 = Mostly Informal, 4 = Neutral, 5 = Mostly Formal, 6 = Very Formal, 7 = Extremely Formal.',
+  },
   { key: 'ai_formality_score', label: 'F-Score (AI Formality)', scale: '0-100', description: 'Calculated linguistic formality' },
 ];
 
@@ -177,6 +328,10 @@ type PredictorDefinition = {
   label: string;
   type: PredictorType;
   rawKeys?: string[];
+  /** Exact question shown to participants (Prolific pre-screening / demographics). */
+  question?: string;
+  /** Short summary of response options, e.g. "Yes / No / Prefer not to say". */
+  optionsSummary?: string;
 };
 
 interface EarlyAccessPredictorResult {
@@ -246,6 +401,7 @@ function getDemographicValue(demo: ProlificDemographicRow, pred: PredictorDefini
   if (pred.key === 'gender') return (demo.gender ?? '').trim() || null;
   if (pred.key === 'ethnicity_simplified') return (demo.ethnicity_simplified ?? '').trim() || null;
   if (pred.key === 'employment_status') return (demo.employment_status ?? '').trim() || null;
+  if (pred.key === 'country_of_residence') return (demo.country_of_residence ?? '').trim() || null;
   const raw = demo.raw_columns != null && typeof demo.raw_columns === 'object'
     ? demo.raw_columns
     : typeof demo.raw_columns === 'string'
@@ -283,17 +439,114 @@ type ProlificDemographicRow = {
 
 /** Demographic predictors for exploratory Demographics × Outcomes. rawKey = key in raw_columns (CSV header). */
 const DEMOGRAPHIC_PREDICTORS: PredictorDefinition[] = [
-  { key: 'age', label: 'Age', type: 'continuous' },
-  { key: 'gender', label: 'Gender', type: 'categorical' },
-  { key: 'ethnicity_simplified', label: 'Ethnicity', type: 'categorical' },
-  { key: 'employment_status', label: 'Employment', type: 'categorical' },
-  { key: 'telemedicine', label: 'Telemedicine', type: 'categorical', rawKeys: ['Telemedicine', 'Telemedicine '] },
-  { key: 'hearing_difficulties', label: 'Hearing difficulties', type: 'categorical', rawKeys: ['Hearing difficulties'] },
-  { key: 'speech_disorders', label: 'Speech disorders', type: 'categorical', rawKeys: ['Speech disorders'] },
-  { key: 'depression', label: 'Depression', type: 'categorical', rawKeys: ['Depression'] },
-  { key: 'mental_health_diagnosis', label: 'Mental health diagnosis', type: 'categorical', rawKeys: ['Mental health diagnosis'] },
-  { key: 'ai_chatbots', label: 'AI chatbots (None vs Any)', type: 'categorical', rawKeys: ['Ai chatbots'] },
-  { key: 'harmful_content', label: 'Harmful content', type: 'categorical', rawKeys: ['Harmful content'] },
+  {
+    key: 'country_of_residence',
+    label: 'Country of residence',
+    type: 'categorical',
+    question: 'In what country do you currently reside?',
+  },
+  {
+    key: 'age',
+    label: 'Age',
+    type: 'continuous',
+    question: 'What is your date of birth?',
+  },
+  {
+    key: 'telemedicine',
+    label: 'Telemedicine',
+    type: 'categorical',
+    rawKeys: ['Telemedicine', 'Telemedicine '],
+    question: 'Have you ever consulted with a healthcare provider using telemedicine?',
+    optionsSummary: 'Yes / No',
+  },
+  {
+    key: 'first_language',
+    label: 'First language',
+    type: 'categorical',
+    rawKeys: ['First language', 'Language'],
+    question: 'What is your first language?',
+  },
+  {
+    key: 'gender',
+    label: 'Gender',
+    type: 'categorical',
+    question: 'What gender are you currently? We will ask about your sex later.',
+  },
+  {
+    key: 'employment_status',
+    label: 'Employment',
+    type: 'categorical',
+    question: 'What is your employment status?',
+    optionsSummary: 'Full-Time, Part-Time, Due to start a new job, Unemployed (job seeking), Not in paid work (e.g. homemaker, retired, disabled), Other',
+  },
+  {
+    key: 'ethnicity_simplified',
+    label: 'Ethnicity',
+    type: 'categorical',
+    question: 'What ethnic group do you belong to?',
+  },
+  {
+    key: 'nationality',
+    label: 'Nationality',
+    type: 'categorical',
+    rawKeys: ['Nationality'],
+    question: 'What is your nationality?',
+  },
+  {
+    key: 'hearing_difficulties',
+    label: 'Hearing difficulties',
+    type: 'categorical',
+    rawKeys: ['Hearing difficulties'],
+    question: 'Do you have any hearing loss or hearing difficulties?',
+    optionsSummary: 'Yes / No / Rather not say',
+  },
+  {
+    key: 'speech_disorders',
+    label: 'Speech disorders',
+    type: 'categorical',
+    rawKeys: ['Speech disorders'],
+    question: 'Do you have a Speech Disorder?',
+    optionsSummary: 'Yes (Articulation), Yes (Voice), Yes (Disfluency), No, Prefer not to say',
+  },
+  {
+    key: 'depression',
+    label: 'Depression',
+    type: 'categorical',
+    rawKeys: ['Depression'],
+    question: 'Do you experience depression?',
+    optionsSummary: 'Yes / No / Prefer not to say',
+  },
+  {
+    key: 'mental_health_diagnosis',
+    label: 'Mental health diagnosis',
+    type: 'categorical',
+    rawKeys: ['Mental health diagnosis'],
+    question: 'Are you currently diagnosed with a mental health condition?',
+    optionsSummary: 'Yes / No / Rather not say',
+  },
+  {
+    key: 'ai_chatbots',
+    label: 'AI chatbots (None vs Any)',
+    type: 'categorical',
+    rawKeys: ['Ai chatbots'],
+    question: 'Which of these AI chatbots have you interacted with?',
+    optionsSummary: 'Character.AI, ChatGPT, Claude, GitHub Copilot, Google Bard/Gemini, Grok, HuggingChat, Jasper, Meta Llama 2, Microsoft Bing AI, Pi, Poe, Perplexity, Snapchat My AI, Replika, Mistral, DeepL, Microsoft 365 Copilot, Other, None of these',
+  },
+  {
+    key: 'harmful_content',
+    label: 'Harmful content',
+    type: 'categorical',
+    rawKeys: ['Harmful content'],
+    question: 'Are you willing to participate in studies which may contain harmful, graphic or upsetting content?',
+  },
+  {
+    key: 'sex',
+    label: 'Sex',
+    type: 'categorical',
+    rawKeys: ['Sex'],
+    question: 'What is your sex, as recorded on legal/official documents?',
+    optionsSummary: 'Male / Female',
+  },
 ];
 
 const EARLY_ACCESS_PREDICTORS: PredictorDefinition[] = [
@@ -307,6 +560,8 @@ const StatisticalAnalysis = () => {
   const [responses, setResponses] = useState<ExperimentResponse[]>([]);
   const [prolificDemographics, setProlificDemographics] = useState<ProlificDemographicRow[]>([]);
   const [activeTab, setActiveTab] = useState('hypotheses');
+  const [expandedDemographicCellKey, setExpandedDemographicCellKey] = useState<string | null>(null);
+  const [demographicsSortBy, setDemographicsSortBy] = useState<'pValue' | 'adjustedP' | 'effectSize'>('adjustedP');
   const { isGuestMode } = useResearcherAuth();
   const [sourceFilter, setSourceFilter] = useState<SourceFilterValue>(() => {
     const saved = sessionStorage.getItem(SOURCE_FILTER_STORAGE_KEY);
@@ -778,9 +1033,14 @@ const StatisticalAnalysis = () => {
     outcomeLabel: string;
     type: 'continuous' | 'categorical';
     pValue: number;
+    adjustedP: number;
     effectSizeLabel: string;
+    /** Numeric effect size value for sorting (use abs where relevant). */
+    effectSizeValue: number;
     n: number;
     detail?: string;
+    /** One- or two-sentence data-driven interpretation (direction + effect). */
+    interpretation?: string;
   };
 
   const demographicExploratoryResults = useMemo((): DemoExploratoryCell[] => {
@@ -791,7 +1051,7 @@ const StatisticalAnalysis = () => {
     );
     if (responsesWithDemo.length < 5) return [];
 
-    const cells: DemoExploratoryCell[] = [];
+    const cells: Omit<DemoExploratoryCell, 'adjustedP'>[] = [];
     for (const pred of DEMOGRAPHIC_PREDICTORS) {
       for (const dv of ALL_DVS) {
         const pairs: { demoVal: string | number; outcomeVal: number }[] = [];
@@ -809,6 +1069,10 @@ const StatisticalAnalysis = () => {
           const x = pairs.map((p) => p.demoVal as number);
           const y = pairs.map((p) => p.outcomeVal);
           const { r, pValue, n } = spearmanCorrelation(x, y);
+          const dir = r > 0.05 ? 'higher' : r < -0.05 ? 'lower' : 'no clear linear association with';
+          const interpretation = r > 0.05 || r < -0.05
+            ? `Higher ${pred.label} was associated with ${dir} ${dv.label} (ρ = ${r.toFixed(2)}).`
+            : `No clear linear association between ${pred.label} and ${dv.label} (ρ = ${r.toFixed(2)}).`;
           cells.push({
             predictorKey: pred.key,
             predictorLabel: pred.label,
@@ -817,8 +1081,10 @@ const StatisticalAnalysis = () => {
             type: 'continuous',
             pValue,
             effectSizeLabel: `ρ = ${r.toFixed(2)}`,
+            effectSizeValue: Math.abs(r),
             n,
             detail: `ρ = ${r.toFixed(2)}, n = ${n}`,
+            interpretation,
           });
         } else {
           const byCat = new Map<string, number[]>();
@@ -827,20 +1093,31 @@ const StatisticalAnalysis = () => {
             if (!byCat.has(cat)) byCat.set(cat, []);
             byCat.get(cat)!.push(outcomeVal);
           }
-          const groups = [...byCat.values()].filter((g) => g.length >= 2);
-          if (groups.length < 2) continue;
-          const groupMeans = groups.map((g) => mean(g));
-          const groupNs = groups.map((g) => g.length);
+          const entries = [...byCat.entries()].filter(([, g]) => g.length >= 2);
+          if (entries.length < 2) continue;
+          const byMean = entries.map(([name, values]) => ({ name, values, mean: mean(values) }));
+          byMean.sort((a, b) => b.mean - a.mean);
+          const groupArrays = byMean.map((x) => x.values);
           let pValue = 1;
           let effectSizeLabel = '—';
-          if (groups.length === 2) {
-            const t = welchTTest(groups[0], groups[1]);
+          let effectSizeValue = 0;
+          let interpretation: string | undefined;
+          if (groupArrays.length === 2) {
+            const t = welchTTest(groupArrays[0], groupArrays[1]);
             pValue = t.pValue;
             effectSizeLabel = `d = ${t.cohensD.toFixed(2)}`;
+            effectSizeValue = Math.abs(t.cohensD);
+            const higher = byMean[0].name;
+            const lower = byMean[1].name;
+            interpretation = `${higher} had higher ${dv.label} than ${lower} (d = ${t.cohensD.toFixed(2)}).`;
           } else {
-            const anova = oneWayAnova(groups);
+            const anova = oneWayAnova(groupArrays);
             pValue = anova.pValue;
             effectSizeLabel = `η² = ${anova.etaSq.toFixed(2)}`;
+            effectSizeValue = anova.etaSq;
+            const top = byMean[0];
+            const bottom = byMean[byMean.length - 1];
+            interpretation = `Scores differed by ${pred.label} (η² = ${anova.etaSq.toFixed(2)}); highest in ${top.name} (M = ${top.mean.toFixed(1)}), lowest in ${bottom.name} (M = ${bottom.mean.toFixed(1)}).`;
           }
           cells.push({
             predictorKey: pred.key,
@@ -850,14 +1127,31 @@ const StatisticalAnalysis = () => {
             type: 'categorical',
             pValue,
             effectSizeLabel,
+            effectSizeValue,
             n: pairs.length,
-            detail: `${groups.length} groups, n = ${pairs.length}`,
+            detail: `${groupArrays.length} groups, n = ${pairs.length}`,
+            interpretation,
           });
         }
       }
     }
-    return cells;
+    const adjusted = holmCorrection(cells.map((c) => c.pValue));
+    return cells.map((c, i) => ({ ...c, adjustedP: adjusted[i] ?? c.pValue }));
   }, [responses, prolificDemographics]);
+
+  const sortedDemographicExploratoryResults = useMemo(() => {
+    const copy = [...demographicExploratoryResults];
+    if (demographicsSortBy === 'effectSize') {
+      copy.sort((a, b) => (b.effectSizeValue ?? 0) - (a.effectSizeValue ?? 0));
+      return copy;
+    }
+    if (demographicsSortBy === 'adjustedP') {
+      copy.sort((a, b) => a.adjustedP - b.adjustedP);
+      return copy;
+    }
+    copy.sort((a, b) => a.pValue - b.pValue);
+    return copy;
+  }, [demographicExploratoryResults, demographicsSortBy]);
 
   const generatePythonScript = () => {
     const script = `"""
@@ -1423,17 +1717,19 @@ run_moderation_analysis <- function(df) {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-9">
-            <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
-            <TabsTrigger value="baseline">Baseline Balance</TabsTrigger>
-            <TabsTrigger value="demographics">Demographics × Outcomes</TabsTrigger>
-            <TabsTrigger value="early-access">Early Access</TabsTrigger>
-            <TabsTrigger value="manipulation">Manipulation Check</TabsTrigger>
-            <TabsTrigger value="exploratory">Exploratory</TabsTrigger>
-            <TabsTrigger value="progression">Progression</TabsTrigger>
-            <TabsTrigger value="descriptive">Descriptive</TabsTrigger>
-            <TabsTrigger value="assumptions">Assumptions</TabsTrigger>
-          </TabsList>
+          <div className="w-full overflow-x-auto pb-1">
+            <TabsList className="inline-flex h-9 w-max min-w-full flex-nowrap gap-0.5 rounded-md bg-muted p-1 text-muted-foreground [&>button]:shrink-0 [&>button]:px-2.5 [&>button]:py-1 [&>button]:text-xs">
+              <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
+              <TabsTrigger value="baseline">Baseline Balance</TabsTrigger>
+              <TabsTrigger value="demographics">Demographics × Outcomes</TabsTrigger>
+              <TabsTrigger value="early-access">Early Access</TabsTrigger>
+              <TabsTrigger value="manipulation">Manipulation Check</TabsTrigger>
+              <TabsTrigger value="exploratory">Exploratory</TabsTrigger>
+              <TabsTrigger value="progression">Progression</TabsTrigger>
+              <TabsTrigger value="descriptive">Descriptive</TabsTrigger>
+              <TabsTrigger value="assumptions">Assumptions</TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Hypotheses Tab */}
           <TabsContent value="hypotheses" className="space-y-6">
@@ -1589,12 +1885,49 @@ run_moderation_analysis <- function(df) {
                             balanceStatus = 'borderline';
                           }
 
+                          const hasDvInfo = result.dv.question != null || result.dv.referenceUrl != null;
                           return (
                             <TableRow key={result.dv.key}>
                               <TableCell>
-                                <div>
-                                  <span className="font-medium">{result.dv.label}</span>
-                                  <p className="text-xs text-muted-foreground">{result.dv.description}</p>
+                                <div className="flex items-start gap-1.5">
+                                  <div>
+                                    <span className="font-medium">{result.dv.label}</span>
+                                    <p className="text-xs text-muted-foreground">{result.dv.description}</p>
+                                  </div>
+                                  {hasDvInfo && (
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <button type="button" className="shrink-0 rounded p-0.5 hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Question and reference">
+                                          <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                        </button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="max-w-md text-left whitespace-pre-wrap" align="start">
+                                        {result.dv.question != null && result.dv.question.trim() !== '' && (
+                                          <>
+                                            <p className="font-medium text-foreground mb-1">Participant question / item</p>
+                                            <p className="text-sm mb-2">{result.dv.question}</p>
+                                          </>
+                                        )}
+                                        {result.dv.optionsSummary != null && result.dv.optionsSummary.trim() !== '' && (
+                                          <p className="text-muted-foreground text-xs mb-2 border-t pt-2">
+                                            {result.dv.optionsSummary}
+                                          </p>
+                                        )}
+                                        {result.dv.referenceUrl != null && result.dv.referenceUrl.trim() !== '' && (
+                                          <p className="text-xs border-t pt-2 mt-2">
+                                            <a
+                                              href={result.dv.referenceUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-primary underline hover:no-underline"
+                                            >
+                                              {result.dv.referenceLabel != null && result.dv.referenceLabel.trim() !== '' ? result.dv.referenceLabel : 'Extra information'}
+                                            </a>
+                                          </p>
+                                        )}
+                                      </PopoverContent>
+                                    </Popover>
+                                  )}
                                 </div>
                               </TableCell>
                               <TableCell className="text-center bg-blue-50/30 dark:bg-blue-950/10">
@@ -1741,7 +2074,7 @@ run_moderation_analysis <- function(df) {
               <CardHeader>
                 <CardTitle>Predictor × Outcome grid</CardTitle>
                 <CardDescription>
-                  p &lt; 0.05 highlighted. Effect: ρ (Age), Cohen&apos;s d (2 groups), or η² (3+ groups).
+                  p &lt; 0.05 highlighted. Effect: ρ (Age), Cohen&apos;s d (2 groups), or η² (3+ groups). Interpretation column states direction (e.g. which group had higher scores). Shows both raw p and Holm-adjusted p (across this grid).
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1750,6 +2083,24 @@ run_moderation_analysis <- function(df) {
                     Need at least 5 participants with both Prolific demographics and outcome data. Upload a Prolific demographic CSV in the Responses tab.
                   </p>
                 ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <p className="text-xs text-muted-foreground">
+                        Tip: Click a row to expand predictor + outcome definitions.
+                      </p>
+                      <label className="text-xs text-muted-foreground inline-flex items-center gap-2">
+                        Sort by
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
+                          value={demographicsSortBy}
+                          onChange={(e) => setDemographicsSortBy(e.target.value as typeof demographicsSortBy)}
+                        >
+                          <option value="adjustedP">p (adj)</option>
+                          <option value="pValue">p</option>
+                          <option value="effectSize">Effect size</option>
+                        </select>
+                      </label>
+                    </div>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -1758,26 +2109,185 @@ run_moderation_analysis <- function(df) {
                           <TableHead>Outcome</TableHead>
                           <TableHead className="text-right">n</TableHead>
                           <TableHead className="text-right">p</TableHead>
+                          <TableHead className="text-right">p (adj)</TableHead>
                           <TableHead className="text-right">Effect</TableHead>
+                          <TableHead className="min-w-[200px]">Interpretation</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {demographicExploratoryResults
-                          .sort((a, b) => a.pValue - b.pValue)
-                          .map((cell, idx) => (
+                        {sortedDemographicExploratoryResults
+                          .map((cell, idx) => {
+                            const rowKey = `${cell.predictorKey}|${cell.outcomeKey}|${idx}`;
+                            const isExpanded = expandedDemographicCellKey === rowKey;
+                            const pred = DEMOGRAPHIC_PREDICTORS.find((p) => p.key === cell.predictorKey);
+                            const dv = ALL_DVS.find((d) => d.key === cell.outcomeKey);
+                            const hasQuestion = pred?.question != null && pred.question.trim() !== '';
+                            return (
+                            <Fragment key={rowKey}>
                             <TableRow
-                              key={`${cell.predictorKey}-${cell.outcomeKey}-${idx}`}
-                              className={cell.pValue < 0.05 ? 'bg-amber-50/50 dark:bg-amber-950/20' : undefined}
+                              className={cn(
+                                'cursor-pointer hover:bg-muted/50 transition-colors',
+                                cell.pValue < 0.05 && 'bg-amber-50/50 dark:bg-amber-950/20',
+                                isExpanded && 'bg-muted/50'
+                              )}
+                              onClick={() => setExpandedDemographicCellKey((k) => (k === rowKey ? null : rowKey))}
                             >
-                              <TableCell className="font-medium">{cell.predictorLabel}</TableCell>
-                              <TableCell>{cell.outcomeLabel}</TableCell>
+                              <TableCell className="font-medium" onClick={(e) => e.stopPropagation()}>
+                                {hasQuestion ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex items-center gap-1.5 cursor-help">
+                                        {cell.predictorLabel}
+                                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-md text-left whitespace-pre-wrap">
+                                      <p className="font-medium text-foreground mb-1">Participant question</p>
+                                      <p className="text-sm">{pred!.question}</p>
+                                      {pred!.optionsSummary != null && pred!.optionsSummary.trim() !== '' && (
+                                        <p className="text-muted-foreground text-xs mt-2 border-t pt-2">
+                                          Options: {pred!.optionsSummary}
+                                        </p>
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  cell.predictorLabel
+                                )}
+                              </TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                {dv && (dv.question != null || dv.referenceUrl != null) ? (
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <button type="button" className="inline-flex items-center gap-1.5 text-left hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-ring rounded">
+                                        {cell.outcomeLabel}
+                                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                      </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="max-w-md text-left whitespace-pre-wrap" align="start">
+                                      {dv.question != null && dv.question.trim() !== '' && (
+                                        <>
+                                          <p className="font-medium text-foreground mb-1">Participant question / item</p>
+                                          <p className="text-sm mb-2">{dv.question}</p>
+                                        </>
+                                      )}
+                                      {dv.optionsSummary != null && dv.optionsSummary.trim() !== '' && (
+                                        <p className="text-muted-foreground text-xs mb-2 border-t pt-2">
+                                          {dv.optionsSummary}
+                                        </p>
+                                      )}
+                                      {dv.referenceUrl != null && dv.referenceUrl.trim() !== '' && (
+                                        <p className="text-xs border-t pt-2 mt-2">
+                                          <a
+                                            href={dv.referenceUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-primary underline hover:no-underline"
+                                          >
+                                            {dv.referenceLabel != null && dv.referenceLabel.trim() !== '' ? dv.referenceLabel : 'Extra information'}
+                                          </a>
+                                        </p>
+                                      )}
+                                    </PopoverContent>
+                                  </Popover>
+                                ) : (
+                                  cell.outcomeLabel
+                                )}
+                              </TableCell>
                               <TableCell className="text-right font-mono">{cell.n}</TableCell>
                               <TableCell className="text-right font-mono">{formatP(cell.pValue)}</TableCell>
-                              <TableCell className="text-right font-mono">{cell.effectSizeLabel}</TableCell>
+                              <TableCell className="text-right font-mono">{formatP(cell.adjustedP)}</TableCell>
+                              <TableCell className="text-right font-mono">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="cursor-help border-b border-dotted border-muted-foreground">
+                                      {cell.effectSizeLabel}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs">
+                                    {cell.effectSizeLabel.startsWith('ρ')
+                                      ? "Spearman's ρ: correlation between a continuous predictor (e.g. Age) and the outcome."
+                                      : cell.effectSizeLabel.startsWith('d =')
+                                        ? "Cohen's d: standardized mean difference between two groups."
+                                        : cell.effectSizeLabel.startsWith('η²')
+                                          ? "η² (eta-squared): proportion of variance explained; used for 3+ groups (ANOVA)."
+                                          : 'Effect size for this predictor × outcome.'}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground whitespace-normal">
+                                <span className="inline-flex items-center justify-between gap-2 w-full">
+                                  <span>{cell.interpretation ?? '—'}</span>
+                                  <ChevronDown className={cn('h-4 w-4 text-muted-foreground shrink-0 transition-transform', isExpanded && 'rotate-180')} />
+                                </span>
+                              </TableCell>
                             </TableRow>
-                          ))}
+                            {isExpanded && (
+                              <TableRow className="bg-muted/30 hover:bg-muted/30">
+                                <TableCell colSpan={7} className="p-4 align-top" onClick={(e) => e.stopPropagation()}>
+                                  <div className="rounded-lg border bg-background p-4 space-y-4 text-sm max-w-3xl">
+                                    <div>
+                                      <p className="font-medium text-foreground mb-1">Predictor: {cell.predictorLabel}</p>
+                                      {pred?.question != null && pred.question.trim() !== '' ? (
+                                        <>
+                                          <p className="text-muted-foreground">{pred.question}</p>
+                                          {pred.optionsSummary != null && pred.optionsSummary.trim() !== '' && (
+                                            <p className="text-muted-foreground text-xs mt-1">Options: {pred.optionsSummary}</p>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <p className="text-muted-foreground">No question definition.</p>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="font-medium text-foreground mb-1">Outcome: {cell.outcomeLabel}</p>
+                                      {dv?.question != null && dv.question.trim() !== '' ? (
+                                        <>
+                                          <p className="text-muted-foreground">{dv.question}</p>
+                                          {dv.optionsSummary != null && dv.optionsSummary.trim() !== '' && (
+                                            <p className="text-muted-foreground text-xs mt-1">{dv.optionsSummary}</p>
+                                          )}
+                                          {dv.referenceUrl != null && dv.referenceUrl.trim() !== '' && (
+                                            <a
+                                              href={dv.referenceUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-primary underline hover:no-underline text-xs mt-1 inline-block"
+                                            >
+                                              {dv.referenceLabel ?? 'Reference'}
+                                            </a>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <p className="text-muted-foreground">No question definition.</p>
+                                      )}
+                                    </div>
+                                    <div className="grid gap-2 sm:grid-cols-2 border-t pt-3">
+                                      <div>
+                                        <p className="font-medium text-foreground mb-1">Statistics</p>
+                                        <p className="text-muted-foreground">
+                                          n = <span className="font-mono">{cell.n}</span>, p = <span className="font-mono">{formatP(cell.pValue)}</span>, p(adj) = <span className="font-mono">{formatP(cell.adjustedP)}</span>
+                                        </p>
+                                        <p className="text-muted-foreground">
+                                          Effect: <span className="font-mono">{cell.effectSizeLabel}</span>
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="font-medium text-foreground mb-1">Interpretation</p>
+                                        <p className="text-muted-foreground">{cell.interpretation ?? '—'}</p>
+                                      </div>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">Click row again to collapse.</p>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            </Fragment>
+                          );
+                          })}
                       </TableBody>
                     </Table>
+                  </div>
                   </div>
                 )}
               </CardContent>
@@ -1790,7 +2300,7 @@ run_moderation_analysis <- function(df) {
               <Info className="h-4 w-4" />
               <AlertTitle>Exploratory: Early Access Opt-In Drivers</AlertTitle>
               <AlertDescription>
-                Outcome is binary: opted in (`early_access_notify = true`) vs opted out. This section checks which predictors are associated with opt-in likelihood, including condition (formal/informal), demographics, and imported Prolific variables.
+                Outcome is binary: opted in (`early_access_notify = true`) vs opted out. This section checks which predictors are associated with opt-in likelihood, including condition (formal/informal), demographics, and imported Prolific variables. Only participants who were shown the early-access signup step are included; completions from before that step was added are excluded.
               </AlertDescription>
             </Alert>
 
@@ -1804,7 +2314,7 @@ run_moderation_analysis <- function(df) {
               <CardContent className="space-y-4">
                 {earlyAccessSummary.totalN === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No early-access responses found yet.
+                    No early-access responses found yet. Only participants who reached the early-access signup step are counted; earlier completions are excluded.
                   </p>
                 ) : (
                   <>
@@ -1878,12 +2388,37 @@ run_moderation_analysis <- function(df) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {earlyAccessResults.map((result) => (
+                        {earlyAccessResults.map((result) => {
+                          const pred = EARLY_ACCESS_PREDICTORS.find((p) => p.key === result.predictorKey);
+                          const hasQuestion = pred?.question != null && pred.question.trim() !== '';
+                          return (
                           <TableRow
                             key={result.predictorKey}
                             className={result.significant ? 'bg-amber-50/50 dark:bg-amber-950/20' : undefined}
                           >
-                            <TableCell className="font-medium">{result.predictorLabel}</TableCell>
+                            <TableCell className="font-medium">
+                              {hasQuestion ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex items-center gap-1.5 cursor-help">
+                                      {result.predictorLabel}
+                                      <HelpCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-md text-left whitespace-pre-wrap">
+                                    <p className="font-medium text-foreground mb-1">Participant question</p>
+                                    <p className="text-sm">{pred!.question}</p>
+                                    {pred!.optionsSummary != null && pred!.optionsSummary.trim() !== '' && (
+                                      <p className="text-muted-foreground text-xs mt-2 border-t pt-2">
+                                        Options: {pred!.optionsSummary}
+                                      </p>
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                result.predictorLabel
+                              )}
+                            </TableCell>
                             <TableCell>
                               <Badge variant="outline" className="text-xs">
                                 {result.type === 'continuous' ? 'Continuous' : 'Categorical'}
@@ -1902,7 +2437,8 @@ run_moderation_analysis <- function(df) {
                             <TableCell className="text-right font-mono">{result.effectSizeLabel}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">{result.detail}</TableCell>
                           </TableRow>
-                        ))}
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
