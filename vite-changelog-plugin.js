@@ -7,12 +7,15 @@ const root = path.resolve(__dirname);
 const docsDir = path.join(root, 'docs');
 const outDir = path.join(root, 'public', 'changelog');
 
-const PREFIX = 'changelog-import-';
+const PREFIX_IMPORT = 'changelog-import-';
+const PREFIX_MERGE = 'changelog-merge-';
 const SUFFIX = '.json';
 
 function getChangelogFilenames() {
   if (!fs.existsSync(docsDir)) return [];
-  return fs.readdirSync(docsDir).filter((n) => n.startsWith(PREFIX) && n.endsWith(SUFFIX));
+  return fs.readdirSync(docsDir).filter(
+    (n) => n.endsWith(SUFFIX) && (n.startsWith(PREFIX_IMPORT) || n.startsWith(PREFIX_MERGE))
+  );
 }
 
 function copyChangelogFiles() {
@@ -45,7 +48,7 @@ export function changelogPlugin() {
         }
 
         const name = decodeURIComponent(path.basename(url));
-        if (!name.startsWith(PREFIX) || !name.endsWith(SUFFIX)) return next();
+        if ((!name.startsWith(PREFIX_IMPORT) && !name.startsWith(PREFIX_MERGE)) || !name.endsWith(SUFFIX)) return next();
         const filePath = path.join(docsDir, name);
         if (!fs.existsSync(filePath)) {
           res.statusCode = 404;
