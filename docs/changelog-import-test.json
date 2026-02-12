@@ -1,0 +1,11 @@
+[
+  {
+    "version": "0.0.0-test",
+    "release_date": "2026-02-11",
+    "description": "Test import from build (safe to delete)",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "Test change for import diagnostic", "scope": "both" }
+    ]
+  }
+]

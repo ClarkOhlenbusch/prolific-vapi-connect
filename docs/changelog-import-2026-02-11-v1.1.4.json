@@ -1,0 +1,12 @@
+[
+  {
+    "version": "1.1.4",
+    "release_date": "2026-02-11",
+    "description": "New JSON for import test; archive import attempts",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "New changelog JSON with unique filename for auto-import test", "scope": "researcher" },
+      { "type": "added", "description": "Archive import attempts button in Import history & debug", "scope": "researcher" }
+    ]
+  }
+]
