@@ -36,7 +36,7 @@ import { GlobalSourceFilter } from '@/components/researcher/GlobalSourceFilter';
 import { ProlificDemographicsImport } from '@/components/researcher/ProlificDemographicsImport';
 import { ParticipantFlowSmokeTestCard } from '@/components/researcher/ParticipantFlowSmokeTestCard';
 
-const StudyMap = lazy(() => import('@/components/researcher/StudyMap'));
+const SystemDesign = lazy(() => import('@/components/researcher/StudyMap'));
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
@@ -203,7 +203,7 @@ const ResearcherDashboard = () => {
             </TabsTrigger>
             <TabsTrigger value="study-map" className="flex items-center gap-1.5 px-3 py-2">
               <Map className="h-4 w-4" />
-              <span className="hidden sm:inline">Study Map</span>
+              <span className="hidden sm:inline">System Design</span>
             </TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="activity" className="flex items-center gap-1.5 px-3 py-2">
@@ -283,13 +283,13 @@ const ResearcherDashboard = () => {
               fallback={
                 <Card>
                   <CardHeader>
-                    <CardTitle>Study Map</CardTitle>
+                    <CardTitle>System Design</CardTitle>
                     <CardDescription>Loading interactive diagram…</CardDescription>
                   </CardHeader>
                 </Card>
               }
             >
-              <StudyMap />
+              <SystemDesign />
             </Suspense>
           </TabsContent>
 

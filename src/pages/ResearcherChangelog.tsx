@@ -44,10 +44,12 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
 const GITHUB_REPO = (import.meta.env.VITE_GITHUB_REPO as string) || 'ClarkOhlenbusch/prolific-vapi-connect';
 const VISITED_COMMITS_KEY = 'changelog-visited-commit-ids';
 const LAST_ENTRY_KEY = 'changelog-last-clicked-entry-id';
+const AUTO_MARK_RELEASE_SETTING_KEY = 'auto_mark_release_on_push';
 
 function commitUrl(hash: string) {
   const clean = hash.trim().replace(/^https:\/\/github\.com\/[^/]+\/[^/]+\/commit\//i, '').split('/')[0];
@@ -135,6 +137,14 @@ function getDetailStringArray(details: Json | null, key: string): string[] {
     .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     .map((item) => item.trim());
 }
+
+function parseBooleanSetting(value: string | null | undefined, fallback: boolean): boolean {
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  return fallback;
+}
 import { toast } from 'sonner';
 
 type ChangeType = 'added' | 'changed' | 'fixed' | 'removed';
@@ -180,6 +190,15 @@ type ChangelogVersionGroup = {
   entryIds: string[];
   primaryEntryId: string;
   changes: ChangelogChangeWithPush[];
+};
+
+type SystemDesignManifest = {
+  schema_version?: number;
+  generated_at?: string;
+  latest_snapshot?: string | null;
+  latest_diff?: string | null;
+  snapshots?: string[];
+  diffs?: string[];
 };
 
 const typeColors: Record<ChangeType, string> = {
@@ -263,6 +282,62 @@ const ResearcherChangelog = () => {
   });
 
   const entries = entriesRaw;
+
+  const { data: autoMarkReleaseOnPush = true, isLoading: isAutoMarkReleaseLoading } = useQuery({
+    queryKey: ['changelog-auto-mark-release-on-push'],
+    queryFn: async () => {
+      if (isGuestMode) return true;
+      const { data, error } = await supabase
+        .from('experiment_settings')
+        .select('setting_value')
+        .eq('setting_key', AUTO_MARK_RELEASE_SETTING_KEY)
+        .maybeSingle();
+
+      if (error) throw error;
+      return parseBooleanSetting(data?.setting_value, true);
+    },
+    enabled: !!user,
+  });
+
+  const updateAutoMarkReleaseMutation = useMutation({
+    mutationFn: async (nextValue: boolean) => {
+      if (isGuestMode) return;
+      const { error } = await supabase
+        .from('experiment_settings')
+        .upsert(
+          {
+            setting_key: AUTO_MARK_RELEASE_SETTING_KEY,
+            setting_value: String(nextValue),
+            updated_at: new Date().toISOString(),
+            updated_by: user?.id ?? null,
+          },
+          { onConflict: 'setting_key' },
+        );
+      if (error) throw error;
+    },
+    onSuccess: (_, nextValue) => {
+      queryClient.invalidateQueries({ queryKey: ['changelog-auto-mark-release-on-push'] });
+      toast.success(nextValue ? 'Pushes will be auto-marked as released' : 'Pushes will stay in pushed state');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update release automation setting');
+    },
+  });
+
+  const {
+    data: systemDesignManifest = null,
+    isLoading: isSystemDesignManifestLoading,
+    refetch: refetchSystemDesignManifest,
+  } = useQuery({
+    queryKey: ['system-design-manifest'],
+    queryFn: async () => {
+      const response = await fetch('/system-design/manifest.json');
+      if (!response.ok) throw new Error('Manifest not available');
+      const parsed = (await response.json()) as SystemDesignManifest;
+      return parsed;
+    },
+    retry: false,
+  });
 
   const { data: experimentBatches = [] } = useQuery({
     queryKey: ['experiment-batches-for-changelog'],
@@ -1265,6 +1340,16 @@ const ResearcherChangelog = () => {
     }
   };
 
+  const getSystemDesignAssetHref = (path: string | null | undefined) => {
+    if (!path) return null;
+    const normalized = path.trim().replace(/^\/+/, '');
+    if (!normalized) return null;
+    return normalized.startsWith('system-design/') ? `/${normalized}` : `/system-design/${normalized}`;
+  };
+
+  const latestSystemDesignSnapshotHref = getSystemDesignAssetHref(systemDesignManifest?.latest_snapshot ?? null);
+  const latestSystemDesignDiffHref = getSystemDesignAssetHref(systemDesignManifest?.latest_diff ?? null);
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
@@ -1328,6 +1413,63 @@ const ResearcherChangelog = () => {
                   <li><strong className="text-foreground">Changelog</strong> — New pushes are auto-imported when you open this page. You can also paste JSON (Import from JSON) or <strong className="text-foreground">edit release history from JSON</strong> (Export, edit in chat or in a file, then Apply edits) to merge versions or bulk-edit.</li>
                   <li><strong className="text-foreground">Create new batch</strong> — When starting a new wave, click &quot;Create new batch&quot; above (e.g. prepilot, pilot, main). You can also create batches from Experiment Settings.</li>
                 </ol>
+                <div className="mt-4 rounded-md border bg-muted/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">Auto mark release on push</p>
+                      <p className="text-xs text-muted-foreground">
+                        If enabled, approved pushes are marked as released automatically.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={autoMarkReleaseOnPush}
+                      disabled={isGuestMode || !isSuperAdmin || isAutoMarkReleaseLoading || updateAutoMarkReleaseMutation.isPending}
+                      onCheckedChange={(checked) => updateAutoMarkReleaseMutation.mutate(checked)}
+                      aria-label="Auto mark release on push"
+                    />
+                  </div>
+                  {!isSuperAdmin ? (
+                    <p className="mt-2 text-xs text-muted-foreground">Only super admins can change this setting.</p>
+                  ) : null}
+                </div>
+                <div className="mt-3 rounded-md border bg-muted/20 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">System Design artifacts</p>
+                      <p className="text-xs text-muted-foreground">
+                        Latest generated snapshot and diff for pre-push review.
+                      </p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => refetchSystemDesignManifest()} disabled={isSystemDesignManifestLoading}>
+                      {isSystemDesignManifestLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                      Refresh
+                    </Button>
+                  </div>
+                  {latestSystemDesignSnapshotHref || latestSystemDesignDiffHref ? (
+                    <div className="flex flex-wrap gap-2">
+                      {latestSystemDesignSnapshotHref ? (
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={latestSystemDesignSnapshotHref} target="_blank" rel="noreferrer">
+                            Snapshot
+                            <ExternalLink className="h-3 w-3 ml-1" />
+                          </a>
+                        </Button>
+                      ) : null}
+                      {latestSystemDesignDiffHref ? (
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={latestSystemDesignDiffHref} target="_blank" rel="noreferrer">
+                            Diff
+                            <ExternalLink className="h-3 w-3 ml-1" />
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      No published artifacts found at <code className="bg-background px-1 rounded">/system-design/manifest.json</code>.
+                    </p>
+                  )}
+                </div>
               </CardContent>
             </CollapsibleContent>
           </Card>

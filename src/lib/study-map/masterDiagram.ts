@@ -1,6 +1,6 @@
 export const MASTER_STUDY_MAP_MERMAID = `
 flowchart LR
-  MASTER["Master Study Map"]
+  MASTER["Master System Design"]
 
   subgraph JOURNEY["1) Participant Journey"]
     P_ID["Prolific ID<br/>/"]
