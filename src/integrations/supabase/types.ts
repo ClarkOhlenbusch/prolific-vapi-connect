@@ -442,10 +442,6 @@ export type Database = {
           u4: number
           u4_position: number
           voice_assistant_feedback: string
-          early_access_notify: boolean
-          early_access_notes: string | null
-          reviewed_by_researcher: boolean
-          flagged: boolean
         }
         Insert: {
           ai_formality_calculated_at?: string | null
@@ -584,10 +580,6 @@ export type Database = {
           u4: number
           u4_position: number
           voice_assistant_feedback: string
-          early_access_notify?: boolean
-          early_access_notes?: string | null
-          reviewed_by_researcher?: boolean
-          flagged?: boolean
         }
         Update: {
           ai_formality_calculated_at?: string | null
@@ -726,10 +718,6 @@ export type Database = {
           u4?: number
           u4_position?: number
           voice_assistant_feedback?: string
-          early_access_notify?: boolean
-          early_access_notes?: string | null
-          reviewed_by_researcher?: boolean
-          flagged?: boolean
         }
         Relationships: []
       }
