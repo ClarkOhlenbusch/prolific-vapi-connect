@@ -57,6 +57,8 @@ Deno.serve(async (req) => {
     const updatePayload = {
       early_access_notify: notifyWhenReady,
       early_access_notes: notes?.trim() ? notes.trim() : null,
+      last_step: "early_access",
+      last_saved_at: new Date().toISOString(),
     };
 
     const { data: updatedRows, error: updateError } = await supabase
@@ -64,6 +66,7 @@ Deno.serve(async (req) => {
       .update(updatePayload)
       .eq("prolific_id", session.prolific_id)
       .eq("call_id", session.call_id)
+      .eq("submission_status", "submitted")
       .select("id, prolific_id, call_id, early_access_notify, early_access_notes");
 
     if (updateError) {

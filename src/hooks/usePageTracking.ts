@@ -10,6 +10,27 @@ interface UsePageTrackingOptions {
 export const usePageTracking = ({ pageName, prolificId, callId }: UsePageTrackingOptions) => {
   const startTimeRef = useRef<number>(Date.now());
 
+  // Keep experiment_responses draft lifecycle metadata in sync with current page progress.
+  useEffect(() => {
+    if (!prolificId) return;
+
+    const sessionToken = localStorage.getItem("sessionToken");
+    if (!sessionToken) return;
+
+    supabase.functions
+      .invoke("upsert-experiment-draft", {
+        body: {
+          sessionToken,
+          prolificId,
+          callId: callId || "",
+          lastStep: pageName,
+        },
+      })
+      .catch((error) => {
+        console.error("Error updating experiment response draft step:", error);
+      });
+  }, [pageName, prolificId, callId]);
+
   // Track time on page when user leaves
   useEffect(() => {
     startTimeRef.current = Date.now();

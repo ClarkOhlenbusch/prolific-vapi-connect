@@ -278,26 +278,44 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check for existing submission (by prolific_id since it's unique)
-    const { data: existingResponse, error: existingError } = await supabase
+    // Resolve existing draft/submission row by session first, then fallback to prolific_id for legacy rows.
+    const { data: existingBySession, error: existingBySessionError } = await supabase
       .from("experiment_responses")
-      .select("id, prolific_id, call_id")
-      .eq("prolific_id", validatedPets.prolific_id)
+      .select("id, prolific_id, call_id, submission_status")
+      .eq("session_token", sessionToken)
       .maybeSingle();
 
-    if (existingError) {
-      console.error("Error checking existing responses:", existingError);
+    if (existingBySessionError) {
+      console.error("Error checking existing response by session:", existingBySessionError);
       return new Response(JSON.stringify({ error: "Database error" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    let existingResponse = existingBySession;
+    if (!existingResponse) {
+      const { data: existingByProlific, error: existingByProlificError } = await supabase
+        .from("experiment_responses")
+        .select("id, prolific_id, call_id, submission_status")
+        .eq("prolific_id", validatedPets.prolific_id)
+        .maybeSingle();
+
+      if (existingByProlificError) {
+        console.error("Error checking existing response by prolific_id:", existingByProlificError);
+        return new Response(JSON.stringify({ error: "Database error" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      existingResponse = existingByProlific;
+    }
+
     const isResearcherId = /^researcher[0-9]+$/i.test(validatedPets.prolific_id);
     const canReuseExistingResearcherRow =
       isResearcherId && !!existingResponse && existingResponse.call_id === validatedPets.call_id;
 
-    if (existingResponse && !canReuseExistingResearcherRow) {
+    if (existingResponse?.submission_status === "submitted" && !canReuseExistingResearcherRow) {
       console.log("Questionnaire already submitted for prolific_id:", validatedPets.prolific_id);
       return new Response(JSON.stringify({ error: "Questionnaire already submitted" }), {
         status: 409,
@@ -320,10 +338,13 @@ Deno.serve(async (req) => {
       .select("*", { count: "exact", head: true })
       .eq("prolific_id", validatedPets.prolific_id);
 
+    const submittedAt = new Date().toISOString();
+
     // Insert into consolidated experiment_responses table
     const experimentData = {
       prolific_id: validatedPets.prolific_id,
       call_id: validatedPets.call_id,
+      session_token: sessionToken,
       call_attempt_number: callAttempts || 1,
       // PETS items
       e1: validatedPets.e1,
@@ -469,9 +490,13 @@ Deno.serve(async (req) => {
       assistant_type: assistantType || null,
       // Batch label
       batch_label: batchLabel || null,
+      submission_status: "submitted",
+      submitted_at: submittedAt,
+      last_saved_at: submittedAt,
+      last_step: "submitted_questionnaire",
     };
 
-    if (canReuseExistingResearcherRow && existingResponse) {
+    if (existingResponse) {
       const { error: updateDraftError } = await supabase
         .from("experiment_responses")
         .update(experimentData)

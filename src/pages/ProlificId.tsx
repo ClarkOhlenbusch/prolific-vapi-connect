@@ -77,6 +77,19 @@ const ProlificId = () => {
         return;
       }
 
+      // Seed a pending experiment_responses draft row immediately so incomplete sessions are visible.
+      const { error: draftError } = await supabase.functions.invoke('upsert-experiment-draft', {
+        body: {
+          sessionToken,
+          prolificId: validatedId,
+          callId: '',
+          lastStep: 'prolific_id_entered',
+        },
+      });
+      if (draftError) {
+        console.error('Failed to seed pending experiment response draft:', draftError);
+      }
+
       // Store both Prolific ID and session token
       sessionStorage.setItem('prolificId', validatedId);
       localStorage.setItem('sessionToken', sessionToken);

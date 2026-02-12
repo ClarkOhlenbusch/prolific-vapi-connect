@@ -110,6 +110,36 @@ Deno.serve(async (req) => {
       );
     }
 
+    const { error: draftInsertError } = await supabase.from("experiment_responses").insert({
+      prolific_id: prolificId,
+      call_id: callId,
+      session_token: sessionToken,
+      submission_status: "pending",
+      last_step: "researcher_session_created",
+      last_saved_at: new Date().toISOString(),
+    });
+
+    if (draftInsertError) {
+      const formattedDraftInsertError = formatDbError(draftInsertError);
+      console.error("Failed to create experiment_responses draft row", {
+        requestId,
+        prolificId,
+        callId,
+        error: formattedDraftInsertError,
+      });
+      return new Response(
+        JSON.stringify({
+          error: "Failed to create researcher session draft",
+          requestId,
+          dbError: formattedDraftInsertError,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
     console.log("create-researcher-session request succeeded", {
       requestId,
       prolificId,
