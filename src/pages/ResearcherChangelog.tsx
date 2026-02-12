@@ -50,6 +50,20 @@ function commitUrl(hash: string) {
   return `https://github.com/${GITHUB_REPO}/commit/${clean}`;
 }
 
+/** Compare version strings (e.g. 1.1, 1.2, 1.1.4) segment-by-segment; returns -1 | 0 | 1 */
+function compareVersions(va: string, vb: string): number {
+  const parts = (v: string) => (v || '').split('.').map(p => parseInt(p, 10) || 0);
+  const a = parts(va);
+  const b = parts(vb);
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const na = a[i] ?? 0;
+    const nb = b[i] ?? 0;
+    if (na !== nb) return na < nb ? -1 : 1;
+  }
+  return 0;
+}
+
 function getVisitedSet(): Set<string> {
   try {
     const raw = sessionStorage.getItem(VISITED_COMMITS_KEY);
@@ -226,11 +240,27 @@ const ResearcherChangelog = () => {
       const { data, error } = await supabase
         .from('changelog_import_attempts')
         .select('id, source_key, status, error_message, attempted_at')
+        .is('archived_at', null)
         .order('attempted_at', { ascending: false })
         .limit(100);
       if (error) throw error;
       return (data ?? []) as { id: string; source_key: string; status: string; error_message: string | null; attempted_at: string }[];
     },
+  });
+
+  const archiveImportAttemptsMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('changelog_import_attempts')
+        .update({ archived_at: new Date().toISOString() } as Record<string, unknown>)
+        .is('archived_at', null);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['changelog-import-attempts'] });
+      toast.success('Import attempts archived');
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const validScopes = ['participant', 'researcher', 'both'] as const;
@@ -256,15 +286,19 @@ const ResearcherChangelog = () => {
   };
 
   const runImportForFile = async (name: string): Promise<{ ok: boolean; errorMessage: string | null }> => {
+    const url = `/changelog/${encodeURIComponent(name)}`;
     let raw: string;
     try {
-      const r = await fetch(`/changelog/${encodeURIComponent(name)}`);
+      const r = await fetch(url);
+      console.log('[changelog import] fetch', url, 'status', r.status, r.statusText);
       if (!r.ok) return { ok: false, errorMessage: `Fetch failed: ${r.status} ${r.statusText}` };
       raw = await r.text();
     } catch (e) {
+      console.error('[changelog import] fetch error', url, e);
       return { ok: false, errorMessage: e instanceof Error ? e.message : 'Fetch failed' };
     }
     const trimmed = raw.trim();
+    console.log('[changelog import] response preview', trimmed.startsWith('<') ? '(HTML)' : raw.slice(0, 120) + (raw.length > 120 ? '...' : ''));
     if (trimmed.startsWith('<')) {
       return { ok: false, errorMessage: 'Server returned HTML (file not found or wrong path), not JSON. Restart dev server or redeploy so /changelog/ files are served.' };
     }
@@ -332,28 +366,44 @@ const ResearcherChangelog = () => {
   // Auto-import new changelog JSON files (copied from docs/ to public/changelog at build time; Lovable deploys them with the site).
   // Run at most once per page load to avoid a loop when changelog_imported_sources is missing or invalidated.
   useEffect(() => {
-    if (!user || isGuestMode) return;
-    if (importedSourceKeysQueryError) return; // Table may not exist (404); don't run or retry in a loop
-    if (!importedSourceKeysQuerySuccess) return; // Wait until we have the real list (or know it failed)
-    if (autoImportRunOnceRef.current) return;
+    if (!user || isGuestMode) {
+      console.log('[changelog auto-import] skip: no user or guest mode');
+      return;
+    }
+    if (importedSourceKeysQueryError) {
+      console.log('[changelog auto-import] skip: imported sources query error (table may not exist)');
+      return;
+    }
+    if (!importedSourceKeysQuerySuccess) {
+      console.log('[changelog auto-import] skip: waiting for imported sources query');
+      return;
+    }
+    if (autoImportRunOnceRef.current) {
+      console.log('[changelog auto-import] skip: already ran once this load');
+      return;
+    }
     autoImportRunOnceRef.current = true;
 
     const run = async () => {
       let list: string[];
       try {
         const res = await fetch('/changelog/manifest.json');
+        console.log('[changelog auto-import] manifest', res.ok ? 'ok' : res.status, res.statusText);
         if (!res.ok) return;
         list = (await res.json()) as string[];
-      } catch {
+      } catch (e) {
+        console.error('[changelog auto-import] manifest fetch failed', e);
         return;
       }
       const changelogFiles = Array.isArray(list) ? list.filter((n) => typeof n === 'string' && n.startsWith('changelog-import-') && n.endsWith('.json')) : [];
       const newFiles = changelogFiles.filter((name) => !importedSourceKeys.includes(name));
+      console.log('[changelog auto-import] manifest files', changelogFiles.length, 'already imported', importedSourceKeys.length, 'new to import', newFiles.length, newFiles);
       if (newFiles.length === 0) return;
 
       let importedCount = 0;
       for (const name of newFiles) {
         const result = await runImportForFile(name);
+        console.log('[changelog auto-import]', name, result.ok ? 'ok' : 'failed', result.errorMessage ?? '');
         if (result.ok) {
           await supabase.from('changelog_imported_sources').insert({ source_key: name });
           await logImportAttempt(name, 'success', null);
@@ -373,6 +423,63 @@ const ResearcherChangelog = () => {
   }, [user, isGuestMode, importedSourceKeysQueryError, importedSourceKeysQuerySuccess, importedSourceKeys, queryClient]);
 
   const [availableChangelogFiles, setAvailableChangelogFiles] = useState<string[]>([]);
+  const [testImportStatus, setTestImportStatus] = useState<string | null>(null);
+
+  const runTestImport = async () => {
+    setTestImportStatus('Running…');
+    const testPayload = {
+      version: '0.0.0-test',
+      release_date: new Date().toISOString().slice(0, 10),
+      description: 'Diagnostic test entry (safe to delete)',
+      changes: [{ type: 'added' as const, description: 'Test change', scope: 'both' as const }]
+    };
+    const parsedEntries = [normalizeChangelogEntry(testPayload)];
+    const valid = parsedEntries.filter((e) => e.version && e.release_date);
+    if (valid.length === 0) {
+      setTestImportStatus('Error: no valid entry');
+      return;
+    }
+    try {
+      for (const { version, release_date, description, active_batch_label, changes } of valid) {
+        const { data: entry, error: entryError } = await supabase
+          .from('changelog_entries')
+          .insert({
+            version,
+            release_date,
+            description: description?.trim() || null,
+            active_batch_label: active_batch_label?.trim() || null,
+            created_by: user?.id ?? null
+          })
+          .select('id')
+          .single();
+        if (entryError) {
+          setTestImportStatus(`Error: ${entryError.message}`);
+          return;
+        }
+        if (entry && changes.length > 0) {
+          const { error: chErr } = await supabase.from('changelog_changes').insert(
+            changes.map((c, i) => ({
+              entry_id: entry.id,
+              change_type: c.type,
+              description: c.description,
+              display_order: i,
+              scope: c.scope ?? 'both',
+              commit_hash: c.commit_hash ?? null
+            }))
+          );
+          if (chErr) {
+            setTestImportStatus(`Error (changes): ${chErr.message}`);
+            return;
+          }
+        }
+      }
+      setTestImportStatus('Success');
+      queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+    } catch (e) {
+      setTestImportStatus(e instanceof Error ? e.message : 'Unknown error');
+    }
+  };
+
   const fetchManifestForDownload = async () => {
     try {
       const res = await fetch('/changelog/manifest.json');
@@ -426,14 +533,14 @@ const ResearcherChangelog = () => {
       list = list.filter(e => e.changes.length > 0);
     }
     const sorted = [...list].sort((a, b) => {
-      // Primary: release_date (desc = newest first, asc = oldest first)
+      // Primary: version (desc = newest first = highest version, asc = oldest first = lowest version)
       const d = sortOrder === 'desc' ? -1 : 1;
+      const versionCmp = compareVersions(a.version || '', b.version || '');
+      if (versionCmp !== 0) return versionCmp * d;
+      // Tie-break: release_date, then created_at
       if (a.release_date !== b.release_date) {
         return a.release_date < b.release_date ? -d : d;
       }
-      // Same date: tie-break by version (numeric-aware), then created_at
-      const versionCmp = (a.version || '').localeCompare(b.version || '', undefined, { numeric: true });
-      if (versionCmp !== 0) return versionCmp;
       return (a.created_at || '').localeCompare(b.created_at || '');
     });
     return sorted;
@@ -845,7 +952,46 @@ const ResearcherChangelog = () => {
             <CollapsibleContent>
               <CardContent className="pt-0 space-y-4">
                 <div>
-                  <h4 className="text-sm font-medium mb-2">Import attempts (last 100)</h4>
+                  <h4 className="text-sm font-medium mb-2">Latest JSON from build</h4>
+                  <p className="text-sm text-muted-foreground mb-2">Fetch the list of changelog files deployed with this app and download any file to paste into Import from JSON. Open devtools Console for import debug logs.</p>
+                  <Button size="sm" variant="outline" onClick={fetchManifestForDownload}>Load available files</Button>
+                  {availableChangelogFiles.length > 0 ? (
+                    <ul className="mt-2 space-y-1">
+                      {availableChangelogFiles.map((name) => (
+                        <li key={name} className="flex items-center gap-2">
+                          <span className="font-mono text-xs">{name}</span>
+                          <Button size="sm" variant="ghost" onClick={() => downloadChangelogJson(name)}>
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground mt-2">Click &quot;Load available files&quot; to fetch from /changelog/manifest.json</p>
+                  )}
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Test import (diagnostic)</h4>
+                  <p className="text-sm text-muted-foreground mb-2">Try importing a minimal test entry. Check Console for logs. If this succeeds, DB insert works; if it fails, the error points to the cause.</p>
+                  <Button size="sm" variant="outline" onClick={runTestImport} disabled={testImportStatus === 'Running…'}>
+                    {testImportStatus === null ? 'Run test import' : testImportStatus}
+                  </Button>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <h4 className="text-sm font-medium">Import attempts (last 100)</h4>
+                    {importAttempts.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => archiveImportAttemptsMutation.mutate()}
+                        disabled={archiveImportAttemptsMutation.isPending}
+                      >
+                        {archiveImportAttemptsMutation.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null}
+                        Archive import attempts
+                      </Button>
+                    )}
+                  </div>
                   {importAttempts.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No import attempts recorded yet.</p>
                   ) : (
@@ -885,23 +1031,6 @@ const ResearcherChangelog = () => {
                         </tbody>
                       </table>
                     </div>
-                  )}
-                </div>
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Latest JSON from build</h4>
-                  <p className="text-sm text-muted-foreground mb-2">Fetch the list of changelog files deployed with this app and download any file (e.g. changelog-import-2026-02-11.json for v1.1.2) to paste into Import from JSON.</p>
-                  <Button size="sm" variant="outline" onClick={fetchManifestForDownload}>Load available files</Button>
-                  {availableChangelogFiles.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {availableChangelogFiles.map((name) => (
-                        <li key={name} className="flex items-center gap-2">
-                          <span className="font-mono text-xs">{name}</span>
-                          <Button size="sm" variant="ghost" onClick={() => downloadChangelogJson(name)}>
-                            <Download className="h-3 w-3" />
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
                   )}
                 </div>
               </CardContent>
