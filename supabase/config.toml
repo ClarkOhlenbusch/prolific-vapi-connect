@@ -44,3 +44,9 @@ verify_jwt = false
 
 [functions.submit-early-access]
 verify_jwt = false
+
+[functions.run-vapi-structured-output]
+verify_jwt = false
+
+[functions.fetch-vapi-structured-output-results]
+verify_jwt = false
