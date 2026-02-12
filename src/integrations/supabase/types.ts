@@ -49,30 +49,36 @@ export type Database = {
           change_type: string
           commit_hash: string | null
           created_at: string
+          details: Json | null
           description: string
           display_order: number
           entry_id: string
           id: string
+          pushed_at: string
           scope: string
         }
         Insert: {
           change_type: string
           commit_hash?: string | null
           created_at?: string
+          details?: Json | null
           description: string
           display_order?: number
           entry_id: string
           id?: string
+          pushed_at?: string
           scope?: string
         }
         Update: {
           change_type?: string
           commit_hash?: string | null
           created_at?: string
+          details?: Json | null
           description?: string
           display_order?: number
           entry_id?: string
           id?: string
+          pushed_at?: string
           scope?: string
         }
         Relationships: [

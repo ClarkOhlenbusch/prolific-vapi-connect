@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,7 +38,8 @@ import {
   Flag,
   Eye,
   Download,
-  History
+  History,
+  ChevronRight
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
@@ -82,6 +84,57 @@ function markVisited(changeId: string) {
     sessionStorage.setItem(VISITED_COMMITS_KEY, JSON.stringify([...set]));
   } catch {}
 }
+
+function formatPushTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function formatDetailsForEditor(details: Json | null): string {
+  if (details === null || details === undefined) return '';
+  if (typeof details === 'string') return details;
+  try {
+    return JSON.stringify(details, null, 2);
+  } catch {
+    return String(details);
+  }
+}
+
+function parseDetailsFromEditor(input: string): Json | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed) as Json;
+  } catch {
+    return { summary_simple: trimmed };
+  }
+}
+
+function getDetailString(details: Json | null, key: string): string | null {
+  if (!isObject(details)) return null;
+  const value = details[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function getDetailStringArray(details: Json | null, key: string): string[] {
+  if (!isObject(details)) return [];
+  const value = details[key];
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim());
+}
 import { toast } from 'sonner';
 
 type ChangeType = 'added' | 'changed' | 'fixed' | 'removed';
@@ -93,6 +146,9 @@ interface ChangelogChange {
   change_type: ChangeType;
   description: string;
   display_order: number;
+  created_at: string;
+  pushed_at: string | null;
+  details: Json | null;
   scope: ChangeScope;
   commit_hash?: string | null;
 }
@@ -110,6 +166,21 @@ interface ChangelogEntry {
 }
 
 type ChangelogEntryWithInferred = ChangelogEntry & { inferredBatchLabel: string | null };
+type ChangelogChangeWithPush = ChangelogChange & { pushed_at: string };
+type ChangelogVersionGroup = {
+  id: string;
+  version: string;
+  release_date: string;
+  description: string | null;
+  active_batch_label: string | null;
+  inferredBatchLabel: string | null;
+  created_at: string;
+  reviewedAll: boolean;
+  flaggedAny: boolean;
+  entryIds: string[];
+  primaryEntryId: string;
+  changes: ChangelogChangeWithPush[];
+};
 
 const typeColors: Record<ChangeType, string> = {
   added: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
@@ -160,10 +231,11 @@ const ResearcherChangelog = () => {
 
   // Form state for new/edit entry
   const [entryForm, setEntryForm] = useState({ version: '', release_date: '', description: '', active_batch_label: '' });
-  const [newChanges, setNewChanges] = useState<{ type: ChangeType; description: string; scope: ChangeScope; commit_hash?: string | null }[]>([]);
+  const [newChanges, setNewChanges] = useState<{ type: ChangeType; description: string; scope: ChangeScope; commit_hash?: string | null; details_text?: string }[]>([]);
   
   // Inline editing state
-  const [editingChange, setEditingChange] = useState<{ id: string; type: ChangeType; description: string; scope: ChangeScope; commit_hash?: string | null } | null>(null);
+  const [editingChange, setEditingChange] = useState<{ id: string; type: ChangeType; description: string; scope: ChangeScope; commit_hash?: string | null; details_text: string } | null>(null);
+  const [expandedChangeIds, setExpandedChangeIds] = useState<Set<string>>(new Set());
 
   // Fetch changelog entries with changes
   const { data: entriesRaw = [], isLoading } = useQuery({
@@ -273,7 +345,7 @@ const ResearcherChangelog = () => {
   });
 
   const validScopes = ['participant', 'researcher', 'both'] as const;
-  type ImportChange = { type: string; description: string; scope?: string; commit_hash?: string };
+  type ImportChange = { type: string; description: string; scope?: string; commit_hash?: string; pushed_at?: string; details?: Json };
   const normalizeChangelogEntry = (obj: { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }) => {
     const version = typeof obj.version === 'string' ? obj.version.trim() : '';
     const release_date = typeof obj.release_date === 'string' ? obj.release_date.trim() : '';
@@ -288,10 +360,96 @@ const ResearcherChangelog = () => {
         type: c.type as ChangeType,
         description: String(c.description).trim(),
         scope: (validScopes.includes(c.scope as ChangeScope) ? c.scope : 'both') as ChangeScope,
-        commit_hash: typeof c.commit_hash === 'string' ? (c.commit_hash.trim() || undefined) : undefined
+        commit_hash: typeof c.commit_hash === 'string' ? (c.commit_hash.trim() || undefined) : undefined,
+        pushed_at: typeof c.pushed_at === 'string' ? (c.pushed_at.trim() || undefined) : undefined,
+        details: c.details ?? null,
       }))
       .filter((c) => c.description.length > 0);
     return { version, release_date, description, active_batch_label, changes };
+  };
+
+  const upsertChangelogVersionEntry = async (data: {
+    version: string;
+    release_date: string;
+    description?: string;
+    active_batch_label?: string;
+    changes: { type: ChangeType; description: string; scope?: ChangeScope; commit_hash?: string; pushed_at?: string; details?: Json | null }[];
+  }) => {
+    const version = data.version.trim();
+    const releaseDate = data.release_date.trim();
+    const description = data.description?.trim() || null;
+    const activeBatchLabel = data.active_batch_label?.trim() || null;
+
+    const { data: existingEntry, error: existingEntryError } = await supabase
+      .from('changelog_entries')
+      .select('id, release_date')
+      .eq('version', version)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingEntryError) throw existingEntryError;
+
+    let entryId = existingEntry?.id ?? null;
+
+    if (entryId) {
+      const nextReleaseDate = existingEntry.release_date > releaseDate ? existingEntry.release_date : releaseDate;
+      const updatePayload: Record<string, unknown> = {
+        release_date: nextReleaseDate,
+      };
+      if (description !== null) updatePayload.description = description;
+      if (activeBatchLabel !== null) updatePayload.active_batch_label = activeBatchLabel;
+
+      const { error: updateEntryError } = await supabase
+        .from('changelog_entries')
+        .update(updatePayload)
+        .eq('id', entryId);
+      if (updateEntryError) throw updateEntryError;
+    } else {
+      const { data: insertedEntry, error: insertEntryError } = await supabase
+        .from('changelog_entries')
+        .insert({
+          version,
+          release_date: releaseDate,
+          description,
+          active_batch_label: activeBatchLabel,
+          created_by: user?.id ?? null,
+        })
+        .select('id')
+        .single();
+
+      if (insertEntryError) throw insertEntryError;
+      entryId = insertedEntry.id;
+    }
+
+    if (data.changes.length === 0) return entryId;
+
+    const { data: lastChange, error: lastChangeError } = await supabase
+      .from('changelog_changes')
+      .select('display_order')
+      .eq('entry_id', entryId)
+      .order('display_order', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastChangeError) throw lastChangeError;
+
+    const nextDisplayOrder = (lastChange?.display_order ?? -1) + 1;
+    const { error: insertChangesError } = await supabase.from('changelog_changes').insert(
+      data.changes.map((change, index) => ({
+        entry_id: entryId,
+        change_type: change.type,
+        description: change.description,
+        display_order: nextDisplayOrder + index,
+        scope: change.scope ?? 'both',
+        commit_hash: change.commit_hash?.trim() || null,
+        pushed_at: change.pushed_at?.trim() || new Date().toISOString(),
+        details: change.details ?? null,
+      })),
+    );
+    if (insertChangesError) throw insertChangesError;
+
+    return entryId;
   };
 
   const runImportForFile = async (name: string): Promise<{ ok: boolean; errorMessage: string | null }> => {
@@ -321,32 +479,16 @@ const ResearcherChangelog = () => {
     const valid = parsedEntries.filter((e) => e.version && e.release_date);
     if (valid.length === 0) return { ok: false, errorMessage: 'No entries with version and release_date' };
     for (const { version, release_date, description, active_batch_label, changes } of valid) {
-      const { data: entry, error: entryError } = await supabase
-        .from('changelog_entries')
-        .insert({
+      try {
+        await upsertChangelogVersionEntry({
           version,
           release_date,
-          description: description?.trim() || null,
-          active_batch_label: active_batch_label?.trim() || null,
-          created_by: user?.id ?? null
-        })
-        .select('id')
-        .single();
-      if (entryError) {
-        return { ok: false, errorMessage: entryError.message };
-      }
-      if (entry && changes.length > 0) {
-        const { error: chErr } = await supabase.from('changelog_changes').insert(
-          changes.map((c, i) => ({
-            entry_id: entry.id,
-            change_type: c.type,
-            description: c.description,
-            display_order: i,
-            scope: c.scope ?? 'both',
-            commit_hash: c.commit_hash ?? null
-          }))
-        );
-        if (chErr) return { ok: false, errorMessage: chErr.message };
+          description,
+          active_batch_label,
+          changes,
+        });
+      } catch (error) {
+        return { ok: false, errorMessage: error instanceof Error ? error.message : 'Failed to upsert changelog entry' };
       }
     }
     return { ok: true, errorMessage: null };
@@ -504,37 +646,17 @@ const ResearcherChangelog = () => {
     }
     try {
       for (const { version, release_date, description, active_batch_label, changes } of valid) {
-        const { data: entry, error: entryError } = await supabase
-          .from('changelog_entries')
-          .insert({
-            version,
-            release_date,
-            description: description?.trim() || null,
-            active_batch_label: active_batch_label?.trim() || null,
-            created_by: user?.id ?? null
-          })
-          .select('id')
-          .single();
-        if (entryError) {
-          setTestImportStatus(`Error: ${entryError.message}`);
-          return;
-        }
-        if (entry && changes.length > 0) {
-          const { error: chErr } = await supabase.from('changelog_changes').insert(
-            changes.map((c, i) => ({
-              entry_id: entry.id,
-              change_type: c.type,
-              description: c.description,
-              display_order: i,
-              scope: c.scope ?? 'both',
-              commit_hash: c.commit_hash ?? null
-            }))
-          );
-          if (chErr) {
-            setTestImportStatus(`Error (changes): ${chErr.message}`);
-            return;
-          }
-        }
+        await upsertChangelogVersionEntry({
+          version,
+          release_date,
+          description,
+          active_batch_label,
+          changes: changes.map((change) => ({
+            ...change,
+            pushed_at: change.pushed_at ?? new Date().toISOString(),
+            details: change.details ?? { summary_simple: 'Diagnostic test change' },
+          })),
+        });
       }
       setTestImportStatus('Success');
       queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
@@ -595,60 +717,112 @@ const ResearcherChangelog = () => {
     if (scopeFilter !== 'all') {
       list = list.filter(e => e.changes.length > 0);
     }
-    const sorted = [...list].sort((a, b) => {
-      // Sort by version number (newest first = desc = 1.1.5 before 1.1.1). Tie-break: release_date, created_at.
-      const d = sortOrder === 'desc' ? -1 : 1;
-      const versionCmp = compareVersions(a.version || '', b.version || '');
-      if (versionCmp !== 0) return versionCmp * d;
-      // Tie-break: release_date, then created_at
-      if (a.release_date !== b.release_date) {
-        return a.release_date < b.release_date ? -d : d;
+
+    const groups = new Map<string, ChangelogVersionGroup>();
+    for (const entry of list) {
+      const versionKey = entry.version.trim();
+      const pushedAt = entry.created_at || `${entry.release_date}T00:00:00.000Z`;
+      const changesForEntry: ChangelogChangeWithPush[] = entry.changes.map((change) => ({
+        ...change,
+        pushed_at: change.pushed_at || change.created_at || pushedAt,
+      }));
+
+      const existing = groups.get(versionKey);
+      if (!existing) {
+        groups.set(versionKey, {
+          id: versionKey,
+          version: entry.version,
+          release_date: entry.release_date,
+          description: entry.description,
+          active_batch_label: entry.active_batch_label,
+          inferredBatchLabel: entry.inferredBatchLabel,
+          created_at: pushedAt,
+          reviewedAll: !!entry.reviewed,
+          flaggedAny: !!entry.flagged,
+          entryIds: [entry.id],
+          primaryEntryId: entry.id,
+          changes: changesForEntry,
+        });
+        continue;
       }
-      return (a.created_at || '').localeCompare(b.created_at || '');
-    });
+
+      existing.entryIds.push(entry.id);
+      existing.reviewedAll = existing.reviewedAll && !!entry.reviewed;
+      existing.flaggedAny = existing.flaggedAny || !!entry.flagged;
+      existing.changes.push(...changesForEntry);
+      if (entry.release_date > existing.release_date) existing.release_date = entry.release_date;
+      if (pushedAt > existing.created_at) {
+        existing.created_at = pushedAt;
+        existing.primaryEntryId = entry.id;
+        existing.description = entry.description;
+        existing.active_batch_label = entry.active_batch_label;
+        existing.inferredBatchLabel = entry.inferredBatchLabel;
+      }
+    }
+
+    const sorted = Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        changes: [...group.changes].sort((a, b) => {
+          const aTime = Date.parse(a.pushed_at || '');
+          const bTime = Date.parse(b.pushed_at || '');
+          const aValid = Number.isFinite(aTime);
+          const bValid = Number.isFinite(bTime);
+
+          if (aValid && bValid && aTime !== bTime) {
+            return sortOrder === 'desc' ? bTime - aTime : aTime - bTime;
+          }
+          if (aValid !== bValid) return aValid ? -1 : 1;
+
+          return a.display_order - b.display_order;
+        }),
+      }))
+      .sort((a, b) => {
+        const createdCmp = (a.created_at || '').localeCompare(b.created_at || '');
+        if (createdCmp !== 0) return sortOrder === 'desc' ? -createdCmp : createdCmp;
+        const versionCmp = compareVersions(a.version || '', b.version || '');
+        return sortOrder === 'desc' ? -versionCmp : versionCmp;
+      });
     return sorted;
   }, [entries, batchFilter, scopeFilter, sortOrder, getBatchActiveOnDate]);
 
+  const groupedEntryIdMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const group of filteredAndSortedEntries) map.set(group.id, group.entryIds);
+    return map;
+  }, [filteredAndSortedEntries]);
+
+  const selectedResolvedEntryIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const selectedId of selectedEntryIds) {
+      const sourceIds = groupedEntryIdMap.get(selectedId) ?? [selectedId];
+      sourceIds.forEach((id) => ids.add(id));
+    }
+    return [...ids];
+  }, [selectedEntryIds, groupedEntryIdMap]);
+
   // Add entry mutation
   const addEntryMutation = useMutation({
-    mutationFn: async (data: { version: string; release_date: string; description?: string | null; active_batch_label?: string | null; changes: { type: ChangeType; description: string; scope?: ChangeScope; commit_hash?: string | null }[] }) => {
-      const { data: entry, error: entryError } = await supabase
-        .from('changelog_entries')
-        .insert({
-          version: data.version,
-          release_date: data.release_date,
-          description: data.description?.trim() || null,
-          active_batch_label: data.active_batch_label?.trim() || null,
-          created_by: user?.id ?? null
-        })
-        .select()
-        .single();
-      
-      if (entryError) throw entryError;
-      
-      if (data.changes.length > 0) {
-        const { error: changesError } = await supabase
-          .from('changelog_changes')
-          .insert(data.changes.map((c, i) => ({
-            entry_id: entry.id,
-            change_type: c.type,
-            description: c.description,
-            display_order: i,
-            scope: c.scope ?? 'both',
-            commit_hash: c.commit_hash?.trim() || null
-          })));
-        
-        if (changesError) throw changesError;
-      }
-      
-      return entry;
+    mutationFn: async (data: { version: string; release_date: string; description?: string | null; active_batch_label?: string | null; changes: { type: ChangeType; description: string; scope?: ChangeScope; commit_hash?: string | null; pushed_at?: string; details?: Json | null }[] }) => {
+      return upsertChangelogVersionEntry({
+        version: data.version,
+        release_date: data.release_date,
+        description: data.description ?? undefined,
+        active_batch_label: data.active_batch_label ?? undefined,
+        changes: data.changes.map((change) => ({
+          ...change,
+          commit_hash: change.commit_hash ?? undefined,
+          pushed_at: change.pushed_at ?? new Date().toISOString(),
+          details: change.details ?? null,
+        })),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
       setShowAddEntry(false);
       setEntryForm({ version: '', release_date: '', description: '', active_batch_label: '' });
       setNewChanges([]);
-      toast.success('Changelog entry added');
+      toast.success('Changelog updated');
     },
     onError: () => toast.error('Failed to add entry')
   });
@@ -757,7 +931,9 @@ const ResearcherChangelog = () => {
           type: c.change_type,
           description: c.description,
           scope: c.scope,
-          commit_hash: c.commit_hash ?? undefined
+          commit_hash: c.commit_hash ?? undefined,
+          pushed_at: c.pushed_at ?? c.created_at,
+          details: c.details ?? undefined,
         }))
       })),
       delete_entry_ids: [] as string[]
@@ -776,7 +952,7 @@ const ResearcherChangelog = () => {
     release_date: string;
     description?: string | null;
     active_batch_label?: string | null;
-    changes: { type: string; description: string; scope?: string; commit_hash?: string }[];
+    changes: { type: string; description: string; scope?: string; commit_hash?: string; pushed_at?: string; details?: Json }[];
   };
   const applyEditsMutation = useMutation({
     mutationFn: async (payload: { entries: ApplyEditsEntry[]; delete_entry_ids?: string[] }) => {
@@ -790,7 +966,9 @@ const ResearcherChangelog = () => {
           description: String(c.description || '').trim(),
           scope: (c.scope === 'participant' || c.scope === 'researcher' || c.scope === 'both') ? c.scope : 'both',
           display_order: i,
-          commit_hash: c.commit_hash?.trim() || null
+          commit_hash: c.commit_hash?.trim() || null,
+          pushed_at: c.pushed_at?.trim() || new Date().toISOString(),
+          details: c.details ?? null,
         })).filter((c) => c.description.length > 0);
 
         const existingById = entry.id ? (await supabase.from('changelog_entries').select('id').eq('id', entry.id).single()).data : null;
@@ -853,12 +1031,14 @@ const ResearcherChangelog = () => {
         description: c.description,
         scope: c.scope,
         display_order: 0,
-        commit_hash: c.commit_hash ?? null
+        commit_hash: c.commit_hash ?? null,
+        pushed_at: c.pushed_at ?? c.created_at,
+        details: c.details ?? null,
       })));
       const uniq = allChanges.reduce((acc, c, i) => {
         acc.push({ ...c, display_order: i });
         return acc;
-      }, [] as { change_type: ChangeType; description: string; scope: ChangeScope; display_order: number; commit_hash: string | null }[]);
+      }, [] as { change_type: ChangeType; description: string; scope: ChangeScope; display_order: number; commit_hash: string | null; pushed_at: string | null; details: Json | null }[]);
       const keepId = inRange[inRange.length - 1].id;
       const deleteIds = inRange.filter((e) => e.id !== keepId).map((e) => e.id);
       await supabase.from('changelog_entries').update({
@@ -892,10 +1072,19 @@ const ResearcherChangelog = () => {
 
   // Add change mutation
   const addChangeMutation = useMutation({
-    mutationFn: async (data: { entry_id: string; type: ChangeType; description: string; scope?: ChangeScope; commit_hash?: string | null }) => {
+    mutationFn: async (data: { entry_id: string; type: ChangeType; description: string; scope?: ChangeScope; commit_hash?: string | null; details?: Json | null; pushed_at?: string | null }) => {
       const { error } = await supabase
         .from('changelog_changes')
-        .insert({ entry_id: data.entry_id, change_type: data.type, description: data.description, display_order: 999, scope: data.scope ?? 'both', commit_hash: data.commit_hash?.trim() || null });
+        .insert({
+          entry_id: data.entry_id,
+          change_type: data.type,
+          description: data.description,
+          display_order: 999,
+          scope: data.scope ?? 'both',
+          commit_hash: data.commit_hash?.trim() || null,
+          details: data.details ?? null,
+          pushed_at: data.pushed_at ?? new Date().toISOString(),
+        });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -907,10 +1096,16 @@ const ResearcherChangelog = () => {
 
   // Update change mutation
   const updateChangeMutation = useMutation({
-    mutationFn: async (data: { id: string; type: ChangeType; description: string; scope: ChangeScope; commit_hash?: string | null }) => {
+    mutationFn: async (data: { id: string; type: ChangeType; description: string; scope: ChangeScope; commit_hash?: string | null; details?: Json | null }) => {
       const { error } = await supabase
         .from('changelog_changes')
-        .update({ change_type: data.type, description: data.description, scope: data.scope, commit_hash: data.commit_hash?.trim() || null })
+        .update({
+          change_type: data.type,
+          description: data.description,
+          scope: data.scope,
+          commit_hash: data.commit_hash?.trim() || null,
+          details: data.details ?? null,
+        })
         .eq('id', data.id);
       if (error) throw error;
     },
@@ -937,7 +1132,7 @@ const ResearcherChangelog = () => {
   });
 
   const handleAddNewChange = () => {
-    setNewChanges([...newChanges, { type: 'added', description: '', scope: 'both' }]);
+    setNewChanges([...newChanges, { type: 'added', description: '', scope: 'both', details_text: '' }]);
   };
 
   // Scroll to last-clicked entry when returning from external commit link
@@ -1022,44 +1217,44 @@ const ResearcherChangelog = () => {
       release_date: entryForm.release_date,
       description: entryForm.description.trim() || undefined,
       active_batch_label: entryForm.active_batch_label.trim() || undefined,
-      changes: newChanges.filter(c => c.description.trim()).map(c => ({ type: c.type, description: c.description.trim(), scope: c.scope, commit_hash: c.commit_hash?.trim() || undefined }))
+      changes: newChanges
+        .filter(c => c.description.trim())
+        .map(c => ({
+          type: c.type,
+          description: c.description.trim(),
+          scope: c.scope,
+          commit_hash: c.commit_hash?.trim() || undefined,
+          pushed_at: new Date().toISOString(),
+          details: parseDetailsFromEditor(c.details_text ?? ''),
+        }))
     });
   };
 
   const handleImportJson = async () => {
     try {
-      type ImportChange = { type: string; description: string; scope?: string; commit_hash?: string };
       const parsed = JSON.parse(importJsonText) as
         | { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }
         | { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }[];
-      const validScopes = ['participant', 'researcher', 'both'] as const;
-      const normalizeEntry = (obj: { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }) => {
-        const version = typeof obj.version === 'string' ? obj.version.trim() : '';
-        const release_date = typeof obj.release_date === 'string' ? obj.release_date.trim() : '';
-        const description = typeof obj.description === 'string' ? obj.description.trim() : undefined;
-        const active_batch_label = typeof obj.active_batch_label === 'string' ? obj.active_batch_label.trim() : undefined;
-        const rawChanges = Array.isArray(obj.changes) ? obj.changes : [];
-        const changes = rawChanges
-          .filter((c): c is ImportChange & { type: ChangeType } =>
-            c && typeof c.type === 'string' && ['added', 'changed', 'fixed', 'removed'].includes(c.type) && typeof c.description === 'string'
-          )
-          .map((c) => ({
-            type: c.type as ChangeType,
-            description: String(c.description).trim(),
-            scope: (validScopes.includes(c.scope as ChangeScope) ? c.scope : 'both') as ChangeScope,
-            commit_hash: typeof c.commit_hash === 'string' ? (c.commit_hash.trim() || undefined) : undefined
-          }))
-          .filter((c) => c.description.length > 0);
-        return { version, release_date, description, active_batch_label, changes };
-      };
-      const entries = Array.isArray(parsed) ? parsed.map(normalizeEntry) : [normalizeEntry(parsed)];
+      const entries = Array.isArray(parsed)
+        ? parsed.map((entry) => normalizeChangelogEntry(entry))
+        : [normalizeChangelogEntry(parsed)];
       const valid = entries.filter((e) => e.version && e.release_date);
       if (valid.length === 0) {
         toast.error('JSON must include at least one entry with "version" and "release_date"');
         return;
       }
       for (const { version, release_date, description, active_batch_label, changes } of valid) {
-        await addEntryMutation.mutateAsync({ version, release_date, description: description || undefined, active_batch_label: active_batch_label || undefined, changes });
+        await addEntryMutation.mutateAsync({
+          version,
+          release_date,
+          description: description || undefined,
+          active_batch_label: active_batch_label || undefined,
+          changes: changes.map((change) => ({
+            ...change,
+            pushed_at: change.pushed_at ?? new Date().toISOString(),
+            details: change.details ?? null,
+          })),
+        });
       }
       setShowImportDialog(false);
       setImportJsonText('');
@@ -1341,21 +1536,21 @@ const ResearcherChangelog = () => {
               <>
                 {selectedEntryIds.size > 0 && (
                   <div className="flex flex-wrap items-center gap-2 py-2 px-3 mb-2 rounded-md bg-muted/50 border">
-                    <span className="text-sm font-medium">{selectedEntryIds.size} selected</span>
-                    <Button size="sm" variant="outline" onClick={() => batchUpdateEntriesMutation.mutate({ ids: [...selectedEntryIds], reviewed: true })} disabled={batchUpdateEntriesMutation.isPending}>
+                    <span className="text-sm font-medium">{selectedEntryIds.size} version{selectedEntryIds.size === 1 ? '' : 's'} selected</span>
+                    <Button size="sm" variant="outline" onClick={() => batchUpdateEntriesMutation.mutate({ ids: selectedResolvedEntryIds, reviewed: true })} disabled={batchUpdateEntriesMutation.isPending}>
                       Mark reviewed
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => batchUpdateEntriesMutation.mutate({ ids: [...selectedEntryIds], flagged: true })} disabled={batchUpdateEntriesMutation.isPending}>
+                    <Button size="sm" variant="outline" onClick={() => batchUpdateEntriesMutation.mutate({ ids: selectedResolvedEntryIds, flagged: true })} disabled={batchUpdateEntriesMutation.isPending}>
                       Flag
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => batchUpdateEntriesMutation.mutate({ ids: [...selectedEntryIds], flagged: false })} disabled={batchUpdateEntriesMutation.isPending}>
+                    <Button size="sm" variant="outline" onClick={() => batchUpdateEntriesMutation.mutate({ ids: selectedResolvedEntryIds, flagged: false })} disabled={batchUpdateEntriesMutation.isPending}>
                       Clear flag
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setSelectedEntryIds(new Set())}>
                       Deselect all
                     </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleteConfirm({ type: 'entries', ids: [...selectedEntryIds] })} disabled={batchDeleteEntriesMutation.isPending}>
-                      Delete {selectedEntryIds.size} {selectedEntryIds.size === 1 ? 'entry' : 'entries'}
+                    <Button size="sm" variant="destructive" onClick={() => setDeleteConfirm({ type: 'entries', ids: selectedResolvedEntryIds })} disabled={batchDeleteEntriesMutation.isPending}>
+                      Delete {selectedEntryIds.size} version{selectedEntryIds.size === 1 ? '' : 's'}
                     </Button>
                   </div>
                 )}
@@ -1366,7 +1561,7 @@ const ResearcherChangelog = () => {
                       key={entry.id}
                       ref={(el) => { entryRefsMap.current[entry.id] = el; }}
                       data-entry-id={entry.id}
-                      className={entry.flagged ? 'border-l-2 border-l-destructive pl-4' : 'border-l-2 border-primary/20 pl-4'}
+                      className={entry.flaggedAny ? 'border-l-2 border-l-destructive pl-4' : 'border-l-2 border-primary/20 pl-4'}
                     >
                       <div className="flex items-center gap-3 mb-3 flex-wrap">
                         <Checkbox
@@ -1380,7 +1575,7 @@ const ResearcherChangelog = () => {
                           }}
                           aria-label={`Select ${entry.version}`}
                         />
-                        {editingEntry?.id === entry.id ? (
+                        {editingEntry?.id === entry.primaryEntryId ? (
                           <>
                             <Input
                               value={editingEntry.version}
@@ -1394,7 +1589,7 @@ const ResearcherChangelog = () => {
                               onChange={(e) => setEditingEntry({ ...editingEntry, release_date: e.target.value })}
                               className="w-40"
                             />
-                            <Button size="sm" variant="ghost" onClick={() => updateEntryMutation.mutate({ id: entry.id, version: editingEntry.version, release_date: editingEntry.release_date, description: editingEntry.description ?? null, active_batch_label: editingEntry.active_batch_label ?? null })}>
+                            <Button size="sm" variant="ghost" onClick={() => updateEntryMutation.mutate({ id: entry.primaryEntryId, version: editingEntry.version, release_date: editingEntry.release_date, description: editingEntry.description ?? null, active_batch_label: editingEntry.active_batch_label ?? null })}>
                               <Check className="h-4 w-4" />
                             </Button>
                             <Button size="sm" variant="ghost" onClick={() => setEditingEntry(null)}>
@@ -1408,37 +1603,47 @@ const ResearcherChangelog = () => {
                               {entry.release_date}
                               {entry.created_at ? ` · ${new Date(entry.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ''}
                             </span>
+                            {entry.entryIds.length > 1 ? (
+                              <span className="text-xs text-muted-foreground">{entry.entryIds.length} pushes</span>
+                            ) : null}
                             <Button
                               size="sm"
-                              variant={entry.reviewed ? 'secondary' : 'ghost'}
-                              className={entry.reviewed ? 'opacity-100' : 'opacity-70'}
-                              onClick={() => updateEntryMutation.mutate({ id: entry.id, version: entry.version, release_date: entry.release_date, description: entry.description ?? null, active_batch_label: entry.active_batch_label ?? null, reviewed: !entry.reviewed })}
-                              title={entry.reviewed ? 'Reviewed' : 'Mark reviewed'}
+                              variant={entry.reviewedAll ? 'secondary' : 'ghost'}
+                              className={entry.reviewedAll ? 'opacity-100' : 'opacity-70'}
+                              onClick={() => batchUpdateEntriesMutation.mutate({ ids: entry.entryIds, reviewed: !entry.reviewedAll })}
+                              title={entry.reviewedAll ? 'Reviewed' : 'Mark reviewed'}
                             >
                               <Eye className="h-3.5 w-3.5 mr-1" />
-                              {entry.reviewed ? 'Reviewed' : 'Review'}
+                              {entry.reviewedAll ? 'Reviewed' : 'Review'}
                             </Button>
                             <Button
                               size="sm"
-                              variant={entry.flagged ? 'destructive' : 'ghost'}
-                              onClick={() => updateEntryMutation.mutate({ id: entry.id, version: entry.version, release_date: entry.release_date, description: entry.description ?? null, active_batch_label: entry.active_batch_label ?? null, flagged: !entry.flagged })}
-                              title={entry.flagged ? 'Flagged' : 'Flag'}
+                              variant={entry.flaggedAny ? 'destructive' : 'ghost'}
+                              onClick={() => batchUpdateEntriesMutation.mutate({ ids: entry.entryIds, flagged: !entry.flaggedAny })}
+                              title={entry.flaggedAny ? 'Flagged' : 'Flag'}
                             >
                               <Flag className="h-3.5 w-3.5 mr-1" />
-                              {entry.flagged ? 'Flagged' : 'Flag'}
+                              {entry.flaggedAny ? 'Flagged' : 'Flag'}
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEditingEntry(entry)}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                const primaryEntry = entries.find((candidate) => candidate.id === entry.primaryEntryId);
+                                if (primaryEntry) setEditingEntry(primaryEntry);
+                              }}
+                            >
                               <Pencil className="h-3 w-3" />
                             </Button>
                             {isSuperAdmin && (
-                              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteConfirm({ type: 'entry', id: entry.id })}>
+                              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteConfirm({ type: 'entries', ids: entry.entryIds })}>
                                 <Trash2 className="h-3 w-3" />
                               </Button>
                             )}
                           </>
                         )}
                       </div>
-                      {editingEntry?.id === entry.id ? (
+                      {editingEntry?.id === entry.primaryEntryId ? (
                         <div className="space-y-2 mb-2">
                           <div>
                             <label className="text-xs text-muted-foreground">Version description (optional)</label>
@@ -1474,51 +1679,76 @@ const ResearcherChangelog = () => {
                       )}
                       <ul className="space-y-2">
                         {entry.changes.map((change) => (
-                          <li key={change.id} className="flex items-start gap-2">
+                          <li key={change.id} className="space-y-2">
                             {editingChange?.id === change.id ? (
-                              <>
-                                <Select value={editingChange.type} onValueChange={(v) => setEditingChange({ ...editingChange, type: v as ChangeType })}>
-                                  <SelectTrigger className="w-24">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="added">added</SelectItem>
-                                    <SelectItem value="changed">changed</SelectItem>
-                                    <SelectItem value="fixed">fixed</SelectItem>
-                                    <SelectItem value="removed">removed</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Select value={editingChange.scope} onValueChange={(v) => setEditingChange({ ...editingChange, scope: v as ChangeScope })}>
-                                  <SelectTrigger className="w-28">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="participant">Participant</SelectItem>
-                                    <SelectItem value="researcher">Researcher</SelectItem>
-                                    <SelectItem value="both">Both</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Input
-                                  value={editingChange.description}
-                                  onChange={(e) => setEditingChange({ ...editingChange, description: e.target.value })}
-                                  className="flex-1"
-                                />
-                                <Input
-                                  placeholder="Commit hash"
-                                  value={editingChange.commit_hash ?? ''}
-                                  onChange={(e) => setEditingChange({ ...editingChange, commit_hash: e.target.value || undefined })}
-                                  className="w-32 font-mono text-xs"
-                                  title="Git commit hash (e.g. abc123f)"
-                                />
-                                <Button size="sm" variant="ghost" onClick={() => updateChangeMutation.mutate(editingChange)}>
-                                  <Check className="h-4 w-4" />
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => setEditingChange(null)}>
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </>
+                              <div className="space-y-2 rounded-md border bg-muted/20 p-2">
+                                <div className="flex items-start gap-2 flex-wrap">
+                                  <Select value={editingChange.type} onValueChange={(v) => setEditingChange({ ...editingChange, type: v as ChangeType })}>
+                                    <SelectTrigger className="w-24">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="added">added</SelectItem>
+                                      <SelectItem value="changed">changed</SelectItem>
+                                      <SelectItem value="fixed">fixed</SelectItem>
+                                      <SelectItem value="removed">removed</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Select value={editingChange.scope} onValueChange={(v) => setEditingChange({ ...editingChange, scope: v as ChangeScope })}>
+                                    <SelectTrigger className="w-28">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="participant">Participant</SelectItem>
+                                      <SelectItem value="researcher">Researcher</SelectItem>
+                                      <SelectItem value="both">Both</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Input
+                                    value={editingChange.description}
+                                    onChange={(e) => setEditingChange({ ...editingChange, description: e.target.value })}
+                                    className="flex-1 min-w-[260px]"
+                                  />
+                                  <Input
+                                    placeholder="Commit hash"
+                                    value={editingChange.commit_hash ?? ''}
+                                    onChange={(e) => setEditingChange({ ...editingChange, commit_hash: e.target.value || undefined })}
+                                    className="w-32 font-mono text-xs"
+                                    title="Git commit hash (e.g. abc123f)"
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() =>
+                                      updateChangeMutation.mutate({
+                                        id: editingChange.id,
+                                        type: editingChange.type,
+                                        description: editingChange.description,
+                                        scope: editingChange.scope,
+                                        commit_hash: editingChange.commit_hash,
+                                        details: parseDetailsFromEditor(editingChange.details_text),
+                                      })
+                                    }
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => setEditingChange(null)}>
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">Long details (plain language, JSON optional)</Label>
+                                  <Textarea
+                                    value={editingChange.details_text}
+                                    onChange={(e) => setEditingChange({ ...editingChange, details_text: e.target.value })}
+                                    placeholder='{"summary_simple":"...", "changed_locations":["/questionnaire"], "flow_impact":"..."}'
+                                    className="mt-1 min-h-[110px] font-mono text-xs"
+                                  />
+                                </div>
+                              </div>
                             ) : (
-                              <>
+                              <div className="space-y-2">
+                                <div className="flex items-start gap-2">
                                 <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${typeColors[change.change_type as ChangeType]}`}>
                                   {change.change_type}
                                 </span>
@@ -1526,6 +1756,26 @@ const ResearcherChangelog = () => {
                                   {scopeLabels[(change.scope as ChangeScope) || 'both']}
                                 </span>
                                 <span className="text-sm flex-1">{change.description}</span>
+                                <span className="text-xs text-muted-foreground whitespace-nowrap" title="Push timestamp">
+                                  {formatPushTimestamp(change.pushed_at)}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-1.5 text-xs"
+                                  onClick={() =>
+                                    setExpandedChangeIds((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(change.id)) next.delete(change.id);
+                                      else next.add(change.id);
+                                      return next;
+                                    })
+                                  }
+                                  title="Show/hide long details"
+                                >
+                                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${expandedChangeIds.has(change.id) ? 'rotate-90' : ''}`} />
+                                  Details
+                                </Button>
                                 {change.commit_hash ? (
                                   <a
                                     href={commitUrl(change.commit_hash)}
@@ -1543,7 +1793,7 @@ const ResearcherChangelog = () => {
                                     {visitedCommitIds.has(change.id) && <span className="text-[10px] text-muted-foreground">Viewed</span>}
                                   </a>
                                 ) : null}
-                                <Button size="sm" variant="ghost" onClick={() => setEditingChange({ id: change.id, type: change.change_type as ChangeType, description: change.description, scope: (change.scope as ChangeScope) || 'both', commit_hash: change.commit_hash ?? undefined })}>
+                                <Button size="sm" variant="ghost" onClick={() => setEditingChange({ id: change.id, type: change.change_type as ChangeType, description: change.description, scope: (change.scope as ChangeScope) || 'both', commit_hash: change.commit_hash ?? undefined, details_text: formatDetailsForEditor(change.details ?? null) })}>
                                   <Pencil className="h-3 w-3" />
                                 </Button>
                                 {isSuperAdmin && (
@@ -1551,7 +1801,61 @@ const ResearcherChangelog = () => {
                                     <Trash2 className="h-3 w-3" />
                                   </Button>
                                 )}
-                              </>
+                                </div>
+                                {expandedChangeIds.has(change.id) ? (
+                                  <div className="ml-2 rounded-md border bg-muted/20 p-3 text-xs space-y-2">
+                                    {typeof change.details === 'string' ? (
+                                      <p className="text-sm">{change.details}</p>
+                                    ) : (
+                                      <>
+                                        {(() => {
+                                          const knownSummary = getDetailString(change.details, 'summary_simple');
+                                          const knownLocations = getDetailStringArray(change.details, 'changed_locations');
+                                          const knownAffected = getDetailString(change.details, 'affected_users');
+                                          const knownFlow = getDetailString(change.details, 'flow_impact');
+                                          const knownOutcome = getDetailString(change.details, 'user_visible_outcome');
+                                          const knownRisk = getDetailString(change.details, 'risk_notes');
+                                          const hasKnownFields =
+                                            !!knownSummary ||
+                                            knownLocations.length > 0 ||
+                                            !!knownAffected ||
+                                            !!knownFlow ||
+                                            !!knownOutcome ||
+                                            !!knownRisk;
+                                          return (
+                                            <>
+                                              {knownSummary ? (
+                                                <p><span className="font-medium">Summary:</span> {knownSummary}</p>
+                                              ) : null}
+                                              {knownLocations.length > 0 ? (
+                                                <p><span className="font-medium">Changed locations:</span> {knownLocations.join(', ')}</p>
+                                              ) : null}
+                                              {knownAffected ? (
+                                                <p><span className="font-medium">Affected users:</span> {knownAffected}</p>
+                                              ) : null}
+                                              {knownFlow ? (
+                                                <p><span className="font-medium">Flow impact:</span> {knownFlow}</p>
+                                              ) : null}
+                                              {knownOutcome ? (
+                                                <p><span className="font-medium">User-visible outcome:</span> {knownOutcome}</p>
+                                              ) : null}
+                                              {knownRisk ? (
+                                                <p><span className="font-medium">Risk/notes:</span> {knownRisk}</p>
+                                              ) : null}
+                                              {!change.details ? (
+                                                <p className="text-muted-foreground">No detailed notes yet.</p>
+                                              ) : null}
+                                              {!hasKnownFields && isObject(change.details) ? (
+                                                <pre className="whitespace-pre-wrap rounded bg-background/70 p-2 text-[11px]">{JSON.stringify(change.details, null, 2)}</pre>
+                                              ) : null}
+                                            </>
+                                          );
+                                        })()}
+                                      </>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
                             )}
                           </li>
                         ))}
@@ -1560,7 +1864,22 @@ const ResearcherChangelog = () => {
                         size="sm"
                         variant="ghost"
                         className="mt-2 text-muted-foreground"
-                        onClick={() => addChangeMutation.mutate({ entry_id: entry.id, type: 'added', description: 'New change', scope: 'both' })}
+                        onClick={() =>
+                          addChangeMutation.mutate({
+                            entry_id: entry.primaryEntryId,
+                            type: 'added',
+                            description: 'New change',
+                            scope: 'both',
+                            details: {
+                              summary_simple: '',
+                              changed_locations: [],
+                              affected_users: 'both',
+                              flow_impact: '',
+                              user_visible_outcome: '',
+                              risk_notes: '',
+                            },
+                          })
+                        }
                       >
                         <Plus className="h-3 w-3 mr-1" />
                         Add change
@@ -1778,60 +2097,72 @@ const ResearcherChangelog = () => {
               <label className="text-sm font-medium">Changes</label>
               <div className="space-y-2 mt-2">
                 {newChanges.map((change, idx) => (
-                  <div key={idx} className="flex flex-wrap gap-2 items-center">
-                    <Select value={change.type} onValueChange={(v) => {
-                      const updated = [...newChanges];
-                      updated[idx].type = v as ChangeType;
-                      setNewChanges(updated);
-                    }}>
-                      <SelectTrigger className="w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="added">added</SelectItem>
-                        <SelectItem value="changed">changed</SelectItem>
-                        <SelectItem value="fixed">fixed</SelectItem>
-                        <SelectItem value="removed">removed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={change.scope} onValueChange={(v) => {
-                      const updated = [...newChanges];
-                      updated[idx].scope = v as ChangeScope;
-                      setNewChanges(updated);
-                    }}>
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="participant">Participant</SelectItem>
-                        <SelectItem value="researcher">Researcher</SelectItem>
-                        <SelectItem value="both">Both</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      placeholder="Description"
-                      value={change.description}
+                  <div key={idx} className="space-y-2 rounded-md border p-2">
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <Select value={change.type} onValueChange={(v) => {
+                        const updated = [...newChanges];
+                        updated[idx].type = v as ChangeType;
+                        setNewChanges(updated);
+                      }}>
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="added">added</SelectItem>
+                          <SelectItem value="changed">changed</SelectItem>
+                          <SelectItem value="fixed">fixed</SelectItem>
+                          <SelectItem value="removed">removed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={change.scope} onValueChange={(v) => {
+                        const updated = [...newChanges];
+                        updated[idx].scope = v as ChangeScope;
+                        setNewChanges(updated);
+                      }}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="participant">Participant</SelectItem>
+                          <SelectItem value="researcher">Researcher</SelectItem>
+                          <SelectItem value="both">Both</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder="Description"
+                        value={change.description}
+                        onChange={(e) => {
+                          const updated = [...newChanges];
+                          updated[idx].description = e.target.value;
+                          setNewChanges(updated);
+                        }}
+                        className="flex-1"
+                      />
+                      <Input
+                        placeholder="Commit"
+                        value={change.commit_hash ?? ''}
+                        onChange={(e) => {
+                          const updated = [...newChanges];
+                          updated[idx].commit_hash = e.target.value || undefined;
+                          setNewChanges(updated);
+                        }}
+                        className="w-24 font-mono text-xs"
+                        title="Git commit hash"
+                      />
+                      <Button size="icon" variant="ghost" onClick={() => setNewChanges(newChanges.filter((_, i) => i !== idx))}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <Textarea
+                      placeholder='Long details (plain language or JSON), e.g. {"summary_simple":"...","changed_locations":["/questionnaire"]}'
+                      value={change.details_text ?? ''}
                       onChange={(e) => {
                         const updated = [...newChanges];
-                        updated[idx].description = e.target.value;
+                        updated[idx].details_text = e.target.value;
                         setNewChanges(updated);
                       }}
-                      className="flex-1"
+                      className="min-h-[100px] font-mono text-xs"
                     />
-                    <Input
-                      placeholder="Commit"
-                      value={change.commit_hash ?? ''}
-                      onChange={(e) => {
-                        const updated = [...newChanges];
-                        updated[idx].commit_hash = e.target.value || undefined;
-                        setNewChanges(updated);
-                      }}
-                      className="w-24 font-mono text-xs"
-                      title="Git commit hash"
-                    />
-                    <Button size="icon" variant="ghost" onClick={() => setNewChanges(newChanges.filter((_, i) => i !== idx))}>
-                      <X className="h-4 w-4" />
-                    </Button>
                   </div>
                 ))}
                 <Button variant="outline" size="sm" onClick={handleAddNewChange}>
