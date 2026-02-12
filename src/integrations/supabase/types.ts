@@ -331,7 +331,7 @@ export type Database = {
           e6: number
           e6_position: number
           early_access_notes: string | null
-          early_access_notify: boolean
+          early_access_notify: boolean | null
           experiment_feedback: string
           flagged: boolean
           formality: number
@@ -376,6 +376,8 @@ export type Database = {
           pets_total: number
           pets_ut: number
           prolific_id: string
+          researcher_notes: string | null
+          researcher_notes_at: string | null
           reviewed_by_researcher: boolean
           tias_1: number | null
           tias_1_position: number | null
@@ -469,7 +471,7 @@ export type Database = {
           e6: number
           e6_position: number
           early_access_notes?: string | null
-          early_access_notify?: boolean
+          early_access_notify?: boolean | null
           experiment_feedback: string
           flagged?: boolean
           formality: number
@@ -514,6 +516,8 @@ export type Database = {
           pets_total: number
           pets_ut: number
           prolific_id: string
+          researcher_notes?: string | null
+          researcher_notes_at?: string | null
           reviewed_by_researcher?: boolean
           tias_1?: number | null
           tias_1_position?: number | null
@@ -607,7 +611,7 @@ export type Database = {
           e6?: number
           e6_position?: number
           early_access_notes?: string | null
-          early_access_notify?: boolean
+          early_access_notify?: boolean | null
           experiment_feedback?: string
           flagged?: boolean
           formality?: number
@@ -652,6 +656,8 @@ export type Database = {
           pets_total?: number
           pets_ut?: number
           prolific_id?: string
+          researcher_notes?: string | null
+          researcher_notes_at?: string | null
           reviewed_by_researcher?: boolean
           tias_1?: number | null
           tias_1_position?: number | null

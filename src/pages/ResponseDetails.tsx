@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   ArrowLeft, 
   User, 
@@ -29,7 +30,8 @@ import {
   Minimize2,
   Check,
   Flag,
-  AlertTriangle
+  AlertTriangle,
+  StickyNote
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import { cn } from '@/lib/utils';
@@ -958,6 +960,7 @@ const SessionReplayPanel = ({
 
 // Section navigation items - in experiment flow order
 const SECTIONS = [
+  { id: 'notes', label: 'Notes', icon: StickyNote },
   { id: 'journey', label: 'Journey', icon: Route },
   { id: 'replay', label: 'Replay', icon: MousePointer2 },
   { id: 'demographics', label: 'Demographics', icon: User },
@@ -1008,6 +1011,8 @@ const ResponseDetails = () => {
   const [replayBatchProgress, setReplayBatchProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [replayMarkers, setReplayMarkers] = useState<ReplayMarker[]>([]);
   const [pendingMarkerEvents, setPendingMarkerEvents] = useState<Pick<NavigationEvent, 'call_id' | 'page_name' | 'event_type' | 'metadata' | 'created_at'>[]>([]);
+  const [researcherNotesDraft, setResearcherNotesDraft] = useState('');
+  const [researcherNotesSaving, setResearcherNotesSaving] = useState(false);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
   const setMergedFieldState = useCallback((field: FeedbackFieldKey, next: MergedDictationAudioState) => {
@@ -2237,6 +2242,39 @@ const ResponseDetails = () => {
     }
   };
 
+  useEffect(() => {
+    if (data?.researcher_notes !== undefined) setResearcherNotesDraft(data.researcher_notes ?? '');
+  }, [data?.id, data?.researcher_notes]);
+
+  const handleSaveResearcherNotes = async () => {
+    if (!data?.id || isPendingRecord || isGuestMode) return;
+    setResearcherNotesSaving(true);
+    try {
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from('experiment_responses')
+        .update({
+          researcher_notes: researcherNotesDraft.trim() || null,
+          researcher_notes_at: researcherNotesDraft.trim() ? now : null,
+        })
+        .eq('id', data.id);
+      if (error) throw error;
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              researcher_notes: researcherNotesDraft.trim() || null,
+              researcher_notes_at: researcherNotesDraft.trim() ? now : null,
+            }
+          : null
+      );
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setResearcherNotesSaving(false);
+    }
+  };
+
   const renderFeedbackTextWithHighlights = (field: FeedbackFieldKey, value: string | null | undefined) => {
     if (!value) {
       return <span className="italic text-muted-foreground">No feedback provided</span>;
@@ -2556,9 +2594,11 @@ const ResponseDetails = () => {
                 <p className="text-sm">
                   {isPendingRecord
                     ? 'Pending response'
-                    : data.early_access_notify
+                    : data.early_access_notify === true
                       ? 'Yes'
-                      : 'No'}
+                      : data.early_access_notify === false
+                        ? 'No'
+                        : 'NA'}
                 </p>
               </div>
               <div className="col-span-2 md:col-span-4">
@@ -2572,6 +2612,42 @@ const ResponseDetails = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Researcher notes */}
+        <section ref={el => sectionRefs.current['notes'] = el} id="notes" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <StickyNote className="h-5 w-5" />
+                Researcher notes
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Private notes for this response. Not visible to participants.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.researcher_notes_at != null && (
+                <p className="text-xs text-muted-foreground">
+                  Last updated: {new Date(data.researcher_notes_at).toLocaleString()}
+                </p>
+              )}
+              <Textarea
+                className="min-h-[120px] resize-y"
+                placeholder="Add notes…"
+                value={researcherNotesDraft}
+                onChange={(e) => setResearcherNotesDraft(e.target.value)}
+                disabled={isPendingRecord || isGuestMode}
+              />
+              <Button
+                size="sm"
+                onClick={handleSaveResearcherNotes}
+                disabled={isPendingRecord || isGuestMode || researcherNotesSaving}
+              >
+                {researcherNotesSaving ? 'Saving…' : 'Save notes'}
+              </Button>
+            </CardContent>
+          </Card>
+        </section>
 
         {/* Journey Section */}
         <section ref={el => sectionRefs.current['journey'] = el} id="journey" className="scroll-mt-32">
@@ -3336,16 +3412,20 @@ const ResponseDetails = () => {
                     variant={
                       isPendingRecord
                         ? "outline"
-                        : data.early_access_notify
+                        : data.early_access_notify === true
                           ? "default"
-                          : "secondary"
+                          : data.early_access_notify === false
+                            ? "secondary"
+                            : "outline"
                     }
                   >
                     {isPendingRecord
                       ? "Pending response"
-                      : data.early_access_notify
+                      : data.early_access_notify === true
                         ? "Opted in"
-                        : "Did not opt in"}
+                        : data.early_access_notify === false
+                          ? "Did not opt in"
+                          : "Not available"}
                   </Badge>
                 </div>
                 <p className="mt-1 p-3 bg-muted/50 rounded-lg text-sm whitespace-pre-wrap">
