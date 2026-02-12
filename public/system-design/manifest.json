@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-02-12T23:19:27.953Z",
+  "latest_snapshot": "snapshots/system-design-snapshot-2026-02-12-231927-1.1.8.json",
+  "latest_diff": "diffs/system-design-diff-2026-02-12-231039-1.1.8-to-2026-02-12-231927-1.1.8.md",
+  "snapshots": [
+    "snapshots/system-design-snapshot-2026-02-12-231039-1.1.8.json",
+    "snapshots/system-design-snapshot-2026-02-12-231927-1.1.8.json"
+  ],
+  "diffs": [
+    "diffs/system-design-diff-2026-02-12-225914-1.1.8-to-2026-02-12-231039-1.1.8.md",
+    "diffs/system-design-diff-2026-02-12-231039-1.1.8-to-2026-02-12-231927-1.1.8.md"
+  ]
+}

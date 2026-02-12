@@ -2,13 +2,20 @@
 
 import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
+import { createClient } from '@supabase/supabase-js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { basename, extname, join, relative } from 'node:path';
+import { basename, extname, join, relative, resolve } from 'node:path';
+import process from 'node:process';
 
 const ROOT = process.cwd();
-const SNAPSHOT_DIR = join(ROOT, 'docs/system-design/snapshots');
-const DIFF_DIR = join(ROOT, 'docs/system-design/diffs');
+const DOCS_SNAPSHOT_DIR = join(ROOT, 'docs/system-design/snapshots');
+const DOCS_DIFF_DIR = join(ROOT, 'docs/system-design/diffs');
+const PUBLIC_SYSTEM_DESIGN_DIR = join(ROOT, 'public/system-design');
+const PUBLIC_SNAPSHOT_DIR = join(PUBLIC_SYSTEM_DESIGN_DIR, 'snapshots');
+const PUBLIC_DIFF_DIR = join(PUBLIC_SYSTEM_DESIGN_DIR, 'diffs');
+const PUBLIC_MANIFEST_PATH = join(PUBLIC_SYSTEM_DESIGN_DIR, 'manifest.json');
 const PUSH_WORKFLOW_CONFIG_PATH = join(ROOT, 'docs/push-workflow-config.json');
+const AUTO_MARK_RELEASE_SETTING_KEY = 'auto_mark_release_on_push';
 
 const RELEVANT_PATTERNS = [
   /^src\/lib\/study-map\//,
@@ -64,6 +71,76 @@ function parseArgs(argv) {
   return args;
 }
 
+function loadDotEnv(filename) {
+  const filePath = resolve(ROOT, filename);
+  if (!existsSync(filePath)) return;
+  const content = readFileSync(filePath, 'utf8');
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = trimmed.slice(0, eqIndex).trim();
+    let value = trimmed.slice(eqIndex + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (!(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+function parseBooleanString(value, fallback = null) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  return fallback;
+}
+
+async function getAutoMarkReleaseOnPushFromDb() {
+  loadDotEnv('.env.local');
+  loadDotEnv('.env');
+
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey =
+    process.env.SUPABASE_PUBLISHABLE_KEY ||
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.SUPABASE_ANON_KEY;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+
+  try {
+    const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false },
+    });
+    const { data: rpcValue, error: rpcError } = await anonClient.rpc('get_auto_mark_release_on_push');
+    if (!rpcError) {
+      return parseBooleanString(rpcValue, null);
+    }
+
+    if (!supabaseServiceRoleKey) return null;
+
+    const serviceClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { persistSession: false },
+    });
+    const { data, error } = await serviceClient
+      .from('experiment_settings')
+      .select('setting_value')
+      .eq('setting_key', AUTO_MARK_RELEASE_SETTING_KEY)
+      .maybeSingle();
+
+    if (error) return null;
+
+    return parseBooleanString(data?.setting_value ?? null, null);
+  } catch {
+    return null;
+  }
+}
+
 function matchesRelevant(path) {
   return RELEVANT_PATTERNS.some((pattern) => pattern.test(path));
 }
@@ -92,8 +169,10 @@ function getTrackedFiles() {
 }
 
 function ensureDirs() {
-  mkdirSync(SNAPSHOT_DIR, { recursive: true });
-  mkdirSync(DIFF_DIR, { recursive: true });
+  mkdirSync(DOCS_SNAPSHOT_DIR, { recursive: true });
+  mkdirSync(DOCS_DIFF_DIR, { recursive: true });
+  mkdirSync(PUBLIC_SNAPSHOT_DIR, { recursive: true });
+  mkdirSync(PUBLIC_DIFF_DIR, { recursive: true });
 }
 
 function getIsoParts(date) {
@@ -104,7 +183,7 @@ function getIsoParts(date) {
 }
 
 function getLatestVersionFallback() {
-  const files = safeRun("ls -1 docs/changelog-import-*.json 2>/dev/null");
+  const files = safeRun('ls -1 docs/changelog-import-*.json 2>/dev/null');
   const names = toLines(files).map((f) => basename(f));
   const withVersion = names
     .map((name) => {
@@ -132,21 +211,34 @@ function readJsonIfExists(path) {
   }
 }
 
-function getAutoMarkReleaseOnPush() {
+async function getAutoMarkReleaseOnPushSetting() {
+  const fromDb = await getAutoMarkReleaseOnPushFromDb();
+  if (typeof fromDb === 'boolean') {
+    return { value: fromDb, source: 'experiment_settings' };
+  }
+
   const config = readJsonIfExists(PUSH_WORKFLOW_CONFIG_PATH);
   if (config && typeof config.auto_mark_release_on_push === 'boolean') {
-    return config.auto_mark_release_on_push;
+    return {
+      value: config.auto_mark_release_on_push,
+      source: 'docs/push-workflow-config.json',
+    };
   }
-  return true;
+
+  return { value: true, source: 'default' };
+}
+
+function listFilesByMtime(dirPath, extension) {
+  if (!existsSync(dirPath)) return [];
+  return readdirSync(dirPath)
+    .filter((name) => extname(name) === extension)
+    .map((name) => join(dirPath, name))
+    .filter((path) => statSync(path).isFile())
+    .sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs);
 }
 
 function listSnapshotFiles() {
-  if (!existsSync(SNAPSHOT_DIR)) return [];
-  return readdirSync(SNAPSHOT_DIR)
-    .filter((name) => extname(name) === '.json')
-    .map((name) => join(SNAPSHOT_DIR, name))
-    .filter((path) => statSync(path).isFile())
-    .sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs);
+  return listFilesByMtime(DOCS_SNAPSHOT_DIR, '.json');
 }
 
 function compareSnapshots(prevSnapshot, nextSnapshot) {
@@ -178,7 +270,7 @@ function compareSnapshots(prevSnapshot, nextSnapshot) {
   };
 }
 
-function writeDiffMarkdown(prevSnapshot, nextSnapshot, diff, outputPath) {
+function buildDiffMarkdown(prevSnapshot, nextSnapshot, diff) {
   const lines = [];
   lines.push('# System Design Diff');
   lines.push('');
@@ -217,10 +309,27 @@ function writeDiffMarkdown(prevSnapshot, nextSnapshot, diff, outputPath) {
   lines.push('- Confirm push approval before final commit/push.');
   lines.push('');
 
-  writeFileSync(outputPath, `${lines.join('\n')}\n`, 'utf8');
+  return `${lines.join('\n')}\n`;
 }
 
-function main() {
+function writePublicManifest() {
+  const snapshots = listFilesByMtime(PUBLIC_SNAPSHOT_DIR, '.json').map((path) => `snapshots/${basename(path)}`);
+  const diffs = listFilesByMtime(PUBLIC_DIFF_DIR, '.md').map((path) => `diffs/${basename(path)}`);
+
+  const manifest = {
+    schema_version: 1,
+    generated_at: new Date().toISOString(),
+    latest_snapshot: snapshots.length > 0 ? snapshots[snapshots.length - 1] : null,
+    latest_diff: diffs.length > 0 ? diffs[diffs.length - 1] : null,
+    snapshots,
+    diffs,
+  };
+
+  writeFileSync(PUBLIC_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return manifest;
+}
+
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   ensureDirs();
 
@@ -228,7 +337,8 @@ function main() {
   const relevantChangedFiles = changedFiles.filter(matchesRelevant);
 
   const version = resolveVersion(args.version);
-  const autoMarkReleaseOnPush = getAutoMarkReleaseOnPush();
+  const autoMarkReleaseSetting = await getAutoMarkReleaseOnPushSetting();
+  const autoMarkReleaseOnPush = autoMarkReleaseSetting.value;
   const now = new Date();
   const { iso, day, compactTime } = getIsoParts(now);
   const versionTag = version.replace(/[^0-9a-zA-Z.-]/g, '-');
@@ -240,12 +350,18 @@ function main() {
   const shouldWrite = args.force || relevantChangedFiles.length > 0 || (prevSnapshot && prevSnapshot.version !== version);
   if (!shouldWrite) {
     process.stdout.write(
-      `${JSON.stringify({
-        updated: false,
-        reason: 'No relevant System Design changes detected.',
-        relevant_changed_files: [],
-        version,
-      }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          updated: false,
+          reason: 'No relevant System Design changes detected.',
+          relevant_changed_files: [],
+          version,
+          auto_mark_release_on_push: autoMarkReleaseOnPush,
+          auto_mark_release_on_push_source: autoMarkReleaseSetting.source,
+        },
+        null,
+        2,
+      )}\n`,
     );
     return;
   }
@@ -265,7 +381,8 @@ function main() {
 
   const snapshotId = `${day}-${compactTime}-${versionTag}`;
   const snapshotFileName = `system-design-snapshot-${snapshotId}.json`;
-  const snapshotPath = join(SNAPSHOT_DIR, snapshotFileName);
+  const docsSnapshotPath = join(DOCS_SNAPSHOT_DIR, snapshotFileName);
+  const publicSnapshotPath = join(PUBLIC_SNAPSHOT_DIR, snapshotFileName);
 
   const snapshot = {
     schema_version: 1,
@@ -274,6 +391,7 @@ function main() {
     version,
     release_status: args.releaseStatus,
     auto_mark_release_on_push: autoMarkReleaseOnPush,
+    auto_mark_release_on_push_source: autoMarkReleaseSetting.source,
     reason: args.reason || null,
     relevant_changed_files: relevantChangedFiles,
     relevant_files: relevantFileData,
@@ -285,29 +403,50 @@ function main() {
     },
   };
 
-  writeFileSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
+  const snapshotJson = `${JSON.stringify(snapshot, null, 2)}\n`;
+  writeFileSync(docsSnapshotPath, snapshotJson, 'utf8');
+  writeFileSync(publicSnapshotPath, snapshotJson, 'utf8');
 
   const diff = compareSnapshots(prevSnapshot, snapshot);
   const prevId = prevSnapshot?.snapshot_id || 'none';
   const diffFileName = `system-design-diff-${prevId}-to-${snapshotId}.md`;
-  const diffPath = join(DIFF_DIR, diffFileName);
-  writeDiffMarkdown(prevSnapshot, snapshot, diff, diffPath);
+  const docsDiffPath = join(DOCS_DIFF_DIR, diffFileName);
+  const publicDiffPath = join(PUBLIC_DIFF_DIR, diffFileName);
+  const diffMarkdown = buildDiffMarkdown(prevSnapshot, snapshot, diff);
+  writeFileSync(docsDiffPath, diffMarkdown, 'utf8');
+  writeFileSync(publicDiffPath, diffMarkdown, 'utf8');
+
+  const manifest = writePublicManifest();
 
   process.stdout.write(
-    `${JSON.stringify({
-      updated: true,
-      version,
-      snapshot: relative(ROOT, snapshotPath),
-      diff: relative(ROOT, diffPath),
-      relevant_changed_files: relevantChangedFiles,
-      summary: {
-        changed: diff.changed.length,
-        added: diff.added.length,
-        removed: diff.removed.length,
+    `${JSON.stringify(
+      {
+        updated: true,
+        version,
+        snapshot: relative(ROOT, docsSnapshotPath),
+        diff: relative(ROOT, docsDiffPath),
+        public_snapshot: relative(ROOT, publicSnapshotPath),
+        public_diff: relative(ROOT, publicDiffPath),
+        manifest: relative(ROOT, PUBLIC_MANIFEST_PATH),
+        latest_manifest_snapshot: manifest.latest_snapshot,
+        latest_manifest_diff: manifest.latest_diff,
+        relevant_changed_files: relevantChangedFiles,
+        summary: {
+          changed: diff.changed.length,
+          added: diff.added.length,
+          removed: diff.removed.length,
+        },
+        auto_mark_release_on_push: autoMarkReleaseOnPush,
+        auto_mark_release_on_push_source: autoMarkReleaseSetting.source,
       },
-      auto_mark_release_on_push: autoMarkReleaseOnPush,
-    }, null, 2)}\n`,
+      null,
+      2,
+    )}\n`,
   );
 }
 
-main();
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`generate-system-design-artifacts failed: ${message}\n`);
+  process.exit(1);
+});
