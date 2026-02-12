@@ -356,6 +356,88 @@ export const partialEtaSquared = (ssEffect: number, ssError: number): number => 
   return ssEffect / (ssEffect + ssError);
 };
 
+/** Pearson correlation. Returns r and two-tailed p-value (t-test on r). */
+export interface CorrelationResult {
+  r: number;
+  pValue: number;
+  n: number;
+}
+
+export function pearsonCorrelation(x: number[], y: number[]): CorrelationResult {
+  const n = Math.min(x.length, y.length);
+  if (n < 3) return { r: 0, pValue: 1, n };
+  const mx = mean(x);
+  const my = mean(y);
+  let ssx = 0, ssy = 0, sp = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = x[i] - mx, dy = y[i] - my;
+    ssx += dx * dx;
+    ssy += dy * dy;
+    sp += dx * dy;
+  }
+  const den = Math.sqrt(ssx * ssy);
+  const r = den === 0 ? 0 : sp / den;
+  const t = r * Math.sqrt((n - 2) / (1 - r * r));
+  const pValue = Number.isFinite(t) ? 2 * (1 - tCDF(Math.abs(t), n - 2)) : 1;
+  return { r, pValue, n };
+}
+
+/** Spearman rank correlation. Returns rho and two-tailed p-value. */
+export function spearmanCorrelation(x: number[], y: number[]): CorrelationResult {
+  const n = Math.min(x.length, y.length);
+  if (n < 3) return { r: 0, pValue: 1, n };
+  const rank = (arr: number[]): number[] => {
+    const sorted = arr.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v);
+    const out: number[] = new Array(arr.length);
+    let r = 1;
+    for (let i = 0; i < sorted.length; i++) {
+      const idx = sorted[i].i;
+      if (i > 0 && sorted[i].v !== sorted[i - 1].v) r = i + 1;
+      out[idx] = r;
+    }
+    return out;
+  };
+  const rx = rank(x.slice(0, n));
+  const ry = rank(y.slice(0, n));
+  return pearsonCorrelation(rx, ry);
+}
+
+/** One-way ANOVA (k groups). Returns F, df1, df2, p-value, eta-squared. */
+export interface AnovaResult {
+  F: number;
+  df1: number;
+  df2: number;
+  pValue: number;
+  etaSq: number;
+  groupMeans: number[];
+  groupNs: number[];
+}
+
+export function oneWayAnova(groups: number[][]): AnovaResult {
+  const k = groups.length;
+  const groupNs = groups.map(g => g.length);
+  const n = groupNs.reduce((a, b) => a + b, 0);
+  if (k < 2 || n < k + 1) {
+    return { F: 0, df1: 0, df2: 0, pValue: 1, etaSq: 0, groupMeans: groups.map(g => mean(g)), groupNs };
+  }
+  const grandMean = mean(groups.flat());
+  const groupMeans = groups.map(g => mean(g));
+  let ssBetween = 0;
+  for (let i = 0; i < k; i++) ssBetween += groupNs[i] * (groupMeans[i] - grandMean) ** 2;
+  let ssWithin = 0;
+  for (let i = 0; i < k; i++) {
+    for (let j = 0; j < groups[i].length; j++) ssWithin += (groups[i][j] - groupMeans[i]) ** 2;
+  }
+  const df1 = k - 1;
+  const df2 = n - k;
+  const msBetween = ssBetween / df1;
+  const msWithin = df2 > 0 ? ssWithin / df2 : 0;
+  const F = msWithin > 0 ? msBetween / msWithin : 0;
+  const pValue = 1 - fCDF(F, df1, df2);
+  const etaSq = ssBetween + ssWithin > 0 ? ssBetween / (ssBetween + ssWithin) : 0;
+  return { F, df1, df2, pValue, etaSq, groupMeans, groupNs };
+}
+
 // Interpret Cohen's d
 export const interpretCohensD = (d: number): string => {
   const absD = Math.abs(d);
