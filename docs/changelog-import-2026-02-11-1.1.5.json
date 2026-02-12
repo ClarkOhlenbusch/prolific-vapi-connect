@@ -1,0 +1,14 @@
+[
+  {
+    "version": "1.1.5",
+    "release_date": "2026-02-11",
+    "description": "Changelog import from docs in dev, debug UI, archive attempts, version sort",
+    "active_batch_label": "",
+    "changes": [
+      { "type": "added", "description": "Migration changelog_import_attempts archived_at and researcher update policy", "scope": "researcher", "commit_hash": "894be23" },
+      { "type": "changed", "description": "Serve /changelog from docs in dev so JSON is not HTML, no restart needed", "scope": "researcher", "commit_hash": "5ccf09b" },
+      { "type": "changed", "description": "Import debug UI reorder, test import, archive attempts, version sort, console logs", "scope": "researcher", "commit_hash": "0339247" },
+      { "type": "added", "description": "Add changelog import files v1.1.4 and test", "scope": "researcher", "commit_hash": "30e5fa5" }
+    ]
+  }
+]
