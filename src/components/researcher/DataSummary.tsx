@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, Phone, Archive, ArrowUpDown, Users } from 'lucide-react';
+import { ArrowUpDown } from 'lucide-react';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -300,19 +300,6 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-4" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-16" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
         <Card>
           <CardHeader>
             <Skeleton className="h-6 w-48" />
@@ -397,120 +384,6 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
             </PopoverContent>
           </Popover>
         </div>
-      </div>
-
-      {/* Count Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              {assistantFilter === 'both' ? 'Total Responses' : `${assistantFilter.charAt(0).toUpperCase() + assistantFilter.slice(1)} Responses`}
-            </CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.totalResponses || 0}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Calls</CardTitle>
-            <Phone className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.totalCalls || 0}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Prolific Demographics</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.prolificDemographicsCount ?? 0}</div>
-            <p className="text-xs text-muted-foreground">Participants with uploaded CSV</p>
-          </CardContent>
-        </Card>
-
-        {isSuperAdmin && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Archived</CardTitle>
-              <Archive className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{data?.totalArchived || 0}</div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Average Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Average PETS Total</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.avgPetsTotal.toFixed(2) || '0.00'}</div>
-            <p className="text-xs text-muted-foreground">Scale: 10-70</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Average TIAS Total</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.avgTiasTotal.toFixed(2) || '0.00'}</div>
-            <p className="text-xs text-muted-foreground">Scale: 12-84</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Average Formality Rating</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.avgFormality.toFixed(2) || '0.00'}</div>
-            <p className="text-xs text-muted-foreground">Scale: 1-7</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Additional Stats Row */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Average Godspeed Anthropomorphism</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.avgGodspeedAnthro.toFixed(2) || '0.00'}</div>
-            <p className="text-xs text-muted-foreground">Scale: 1-5</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Average Godspeed Likeability</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.avgGodspeedLike.toFixed(2) || '0.00'}</div>
-            <p className="text-xs text-muted-foreground">Scale: 1-5</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Average Godspeed Intelligence</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.avgGodspeedIntel.toFixed(2) || '0.00'}</div>
-            <p className="text-xs text-muted-foreground">Scale: 1-5</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Formal vs Informal Comparison - Only show when filter is "both" */}
