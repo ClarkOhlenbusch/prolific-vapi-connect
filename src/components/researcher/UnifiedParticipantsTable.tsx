@@ -127,10 +127,9 @@ import { SourceFilterValue } from './GlobalSourceFilter';
 
 interface UnifiedParticipantsTableProps {
   sourceFilter: SourceFilterValue;
-  includePending: boolean;
 }
 
-export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter, includePending }: UnifiedParticipantsTableProps) => {
+export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: UnifiedParticipantsTableProps) => {
   const navigate = useNavigate();
   const [data, setData] = useState<UnifiedParticipant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -139,7 +138,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter, inc
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<string>('completed'); // Default to completed
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [conditionFilter, setConditionFilter] = useState<string>('all');
   const [batchFilter, setBatchFilter] = useState<string>('all');
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
@@ -195,10 +194,6 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter, inc
         .from('experiment_responses' as any)
         .select('id, call_id, prolific_id, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged');
 
-      if (!includePending) {
-        responsesQuery = responsesQuery.eq('submission_status', 'submitted');
-      }
-
       const { data: responses, error: responsesError } = await responsesQuery;
 
       if (responsesError) throw responsesError;
@@ -227,14 +222,21 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter, inc
       const prolificDemoMap = new Map<string, (typeof prolificDemo)[0]>();
       prolificDemo?.forEach(d => prolificDemoMap.set(d.prolific_id, d));
 
-      // Combine data: prefer Prolific export demographics when present; flag mismatch when both exist and differ
-      // In-app stores birth year in demographics.age; Prolific export has age. Use survey response year for age-at-survey, ±1 year tolerance.
+      // Combine data: prefer Prolific export demographics when present; otherwise convert in-app birth year to age.
+      // In-app stores birth year in demographics.age; Prolific export stores age.
       const norm = (s: string | null | undefined) => (s ?? '').toString().trim().toLowerCase();
       const unified: UnifiedParticipant[] = callsFiltered.map(call => {
         const response = responseMap.get(call.call_id);
         const demo = demographicsMap.get(call.prolific_id);
         const pDemo = prolificDemoMap.get(call.prolific_id);
-        const age = pDemo?.age != null ? String(pDemo.age) : demo?.age;
+        const birthYearRaw = (demo?.age ?? '').toString().trim();
+        const birthYear = /^\d{4}$/.test(birthYearRaw) ? parseInt(birthYearRaw, 10) : null;
+        const surveyYear = demo?.created_at ? new Date(demo.created_at).getUTCFullYear() : null;
+        const computedAgeFromBirthYear =
+          birthYear != null && surveyYear != null && surveyYear >= birthYear
+            ? String(surveyYear - birthYear)
+            : null;
+        const age = pDemo?.age != null ? String(pDemo.age) : computedAgeFromBirthYear;
         const gender = pDemo?.gender ?? demo?.gender;
 
         let demographics_mismatch = false;
@@ -246,9 +248,6 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter, inc
             demographics_mismatch_reasons.push('gender');
           }
           // In-app age = birth year (string). Survey year from demographics.created_at. Prolific = age (integer).
-          const birthYearRaw = (demo.age ?? '').toString().trim();
-          const birthYear = /^\d{4}$/.test(birthYearRaw) ? parseInt(birthYearRaw, 10) : null;
-          const surveyYear = demo.created_at ? new Date(demo.created_at).getUTCFullYear() : null;
           const prolificAgeNum = pDemo.age != null && Number.isFinite(Number(pDemo.age)) ? Number(pDemo.age) : null;
           if (birthYear != null && surveyYear != null && prolificAgeNum != null) {
             const ageAtSurvey = surveyYear - birthYear;
@@ -302,7 +301,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter, inc
 
   useEffect(() => {
     fetchData();
-  }, [includePending]);
+  }, []);
 
   // Helper to detect researcher IDs (Prolific IDs are exactly 24 characters)
   const isResearcherId = (prolificId: string): boolean => {
