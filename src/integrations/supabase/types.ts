@@ -89,7 +89,7 @@ export type Database = {
         Row: {
           active_batch_label: string | null
           created_at: string
-          created_by: string | null
+          created_by: string
           description: string | null
           flagged: boolean
           id: string
@@ -101,7 +101,7 @@ export type Database = {
         Insert: {
           active_batch_label?: string | null
           created_at?: string
-          created_by?: string | null
+          created_by: string
           description?: string | null
           flagged?: boolean
           id?: string
@@ -124,42 +124,45 @@ export type Database = {
         }
         Relationships: []
       }
-      changelog_imported_sources: {
-        Row: {
-          source_key: string
-          imported_at: string
-        }
-        Insert: {
-          source_key: string
-          imported_at?: string
-        }
-        Update: {
-          source_key?: string
-          imported_at?: string
-        }
-        Relationships: []
-      }
       changelog_import_attempts: {
         Row: {
+          archived_at: string | null
+          attempted_at: string
+          error_message: string | null
           id: string
           source_key: string
           status: string
-          error_message: string | null
-          attempted_at: string
         }
         Insert: {
+          archived_at?: string | null
+          attempted_at?: string
+          error_message?: string | null
           id?: string
           source_key: string
           status: string
-          error_message?: string | null
-          attempted_at?: string
         }
         Update: {
+          archived_at?: string | null
+          attempted_at?: string
+          error_message?: string | null
           id?: string
           source_key?: string
           status?: string
-          error_message?: string | null
-          attempted_at?: string
+        }
+        Relationships: []
+      }
+      changelog_imported_sources: {
+        Row: {
+          imported_at: string
+          source_key: string
+        }
+        Insert: {
+          imported_at?: string
+          source_key: string
+        }
+        Update: {
+          imported_at?: string
+          source_key?: string
         }
         Relationships: []
       }
@@ -225,47 +228,6 @@ export type Database = {
           voice_assistant_usage_frequency?: number | null
         }
         Relationships: []
-      }
-      prolific_export_demographics: {
-        Row: {
-          prolific_id: string
-          age: number | null
-          gender: string | null
-          ethnicity_simplified: string | null
-          country_of_residence: string | null
-          employment_status: string | null
-          language: string | null
-          raw_columns: Json | null
-          imported_at: string
-          imported_by: string | null
-        }
-        Insert: {
-          prolific_id: string
-          age?: number | null
-          gender?: string | null
-          ethnicity_simplified?: string | null
-          country_of_residence?: string | null
-          employment_status?: string | null
-          language?: string | null
-          raw_columns?: Json | null
-          imported_at?: string
-          imported_by?: string | null
-        }
-        Update: {
-          prolific_id?: string
-          age?: number | null
-          gender?: string | null
-          ethnicity_simplified?: string | null
-          country_of_residence?: string | null
-          employment_status?: string | null
-          language?: string | null
-          raw_columns?: Json | null
-          imported_at?: string
-          imported_by?: string | null
-        }
-        Relationships: [
-          { foreignKeyName: "prolific_export_demographics_imported_by_fkey"; columns: ["imported_by"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
-        ]
       }
       dictation_recordings: {
         Row: {
@@ -368,7 +330,10 @@ export type Database = {
           e5_position: number
           e6: number
           e6_position: number
+          early_access_notes: string | null
+          early_access_notify: boolean
           experiment_feedback: string
+          flagged: boolean
           formality: number
           godspeed_anthro_1: number | null
           godspeed_anthro_1_position: number | null
@@ -411,6 +376,7 @@ export type Database = {
           pets_total: number
           pets_ut: number
           prolific_id: string
+          reviewed_by_researcher: boolean
           tias_1: number | null
           tias_1_position: number | null
           tias_10: number | null
@@ -476,8 +442,6 @@ export type Database = {
           u4: number
           u4_position: number
           voice_assistant_feedback: string
-          reviewed_by_researcher: boolean
-          flagged: boolean
         }
         Insert: {
           ai_formality_calculated_at?: string | null
@@ -504,7 +468,10 @@ export type Database = {
           e5_position: number
           e6: number
           e6_position: number
+          early_access_notes?: string | null
+          early_access_notify?: boolean
           experiment_feedback: string
+          flagged?: boolean
           formality: number
           godspeed_anthro_1?: number | null
           godspeed_anthro_1_position?: number | null
@@ -547,6 +514,7 @@ export type Database = {
           pets_total: number
           pets_ut: number
           prolific_id: string
+          reviewed_by_researcher?: boolean
           tias_1?: number | null
           tias_1_position?: number | null
           tias_10?: number | null
@@ -612,8 +580,6 @@ export type Database = {
           u4: number
           u4_position: number
           voice_assistant_feedback: string
-          reviewed_by_researcher?: boolean
-          flagged?: boolean
         }
         Update: {
           ai_formality_calculated_at?: string | null
@@ -640,7 +606,10 @@ export type Database = {
           e5_position?: number
           e6?: number
           e6_position?: number
+          early_access_notes?: string | null
+          early_access_notify?: boolean
           experiment_feedback?: string
+          flagged?: boolean
           formality?: number
           godspeed_anthro_1?: number | null
           godspeed_anthro_1_position?: number | null
@@ -683,6 +652,7 @@ export type Database = {
           pets_total?: number
           pets_ut?: number
           prolific_id?: string
+          reviewed_by_researcher?: boolean
           tias_1?: number | null
           tias_1_position?: number | null
           tias_10?: number | null
@@ -748,8 +718,6 @@ export type Database = {
           u4?: number
           u4_position?: number
           voice_assistant_feedback?: string
-          reviewed_by_researcher?: boolean
-          flagged?: boolean
         }
         Relationships: []
       }
@@ -1125,6 +1093,45 @@ export type Database = {
           u2?: number
           u3?: number
           u4?: number
+        }
+        Relationships: []
+      }
+      prolific_export_demographics: {
+        Row: {
+          age: number | null
+          country_of_residence: string | null
+          employment_status: string | null
+          ethnicity_simplified: string | null
+          gender: string | null
+          imported_at: string
+          imported_by: string | null
+          language: string | null
+          prolific_id: string
+          raw_columns: Json | null
+        }
+        Insert: {
+          age?: number | null
+          country_of_residence?: string | null
+          employment_status?: string | null
+          ethnicity_simplified?: string | null
+          gender?: string | null
+          imported_at?: string
+          imported_by?: string | null
+          language?: string | null
+          prolific_id: string
+          raw_columns?: Json | null
+        }
+        Update: {
+          age?: number | null
+          country_of_residence?: string | null
+          employment_status?: string | null
+          ethnicity_simplified?: string | null
+          gender?: string | null
+          imported_at?: string
+          imported_by?: string | null
+          language?: string | null
+          prolific_id?: string
+          raw_columns?: Json | null
         }
         Relationships: []
       }
