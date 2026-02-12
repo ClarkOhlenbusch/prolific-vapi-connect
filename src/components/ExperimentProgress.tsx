@@ -12,6 +12,7 @@ const EXPERIMENT_STEPS = [
   { path: '/questionnaire/intention', label: 'Intention' },
   { path: '/questionnaire/tipi', label: 'TIPI' },
   { path: '/questionnaire/feedback', label: 'Feedback' },
+  { path: '/early-access', label: 'Early access' },
   { path: '/debriefing', label: 'Debriefing' },
   { path: '/complete', label: 'Complete' },
 ];

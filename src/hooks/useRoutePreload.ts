@@ -14,7 +14,8 @@ const EXPERIMENT_FLOW: Record<string, string> = {
   '/questionnaire/intention': '/questionnaire/tipi',
   '/questionnaire/tipi': '/questionnaire/formality',
   '/questionnaire/formality': '/questionnaire/feedback',
-  '/questionnaire/feedback': '/debriefing',
+  '/questionnaire/feedback': '/early-access',
+  '/early-access': '/debriefing',
   '/debriefing': '/complete',
 };
 
@@ -32,6 +33,7 @@ const ROUTE_IMPORTS: Record<string, () => Promise<unknown>> = {
   '/questionnaire/tipi': () => import('@/pages/TipiQuestionnaire'),
   '/questionnaire/formality': () => import('@/pages/FormalityQuestionnaire'),
   '/questionnaire/feedback': () => import('@/pages/FeedbackQuestionnaire'),
+  '/early-access': () => import('@/pages/EarlyAccessSignup'),
   '/debriefing': () => import('@/pages/Debriefing'),
   '/complete': () => import('@/pages/Complete'),
 };

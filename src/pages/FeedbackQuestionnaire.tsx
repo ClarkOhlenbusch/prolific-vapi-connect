@@ -34,7 +34,6 @@ const DICTATION_AUDIO_BUCKET = "dictation-audio";
 const FEEDBACK_AUTOSAVE_EVENT_TYPE = "feedback_draft_autosave";
 const FEEDBACK_AUTOSAVE_DEBOUNCE_MS = 2500;
 const FEEDBACK_AUTOSAVE_HEARTBEAT_MS = 15000;
-const RESEARCHER_ROTATE_PENDING_KEY = "researcher-session-rotate-pending";
 
 interface DictationRecorderState {
   recorder: MediaRecorder | null;
@@ -1478,7 +1477,6 @@ const FeedbackQuestionnaire = () => {
           const completionMarked = await markSessionComplete(sessionToken);
           if (isResearcherMode) {
             sessionStorage.setItem("flowStep", "5");
-            sessionStorage.setItem(RESEARCHER_ROTATE_PENDING_KEY, "1");
           }
           toast({
             title: "Already Submitted",
@@ -1486,7 +1484,7 @@ const FeedbackQuestionnaire = () => {
               ? "You have already completed this questionnaire. This session was marked completed."
               : "You have already completed this questionnaire.",
           });
-          navigate(isResearcherMode ? "/debriefing" : "/complete");
+          navigate("/early-access");
           return;
         }
 
@@ -1514,7 +1512,6 @@ const FeedbackQuestionnaire = () => {
           const completionMarked = await markSessionComplete(sessionToken);
           if (isResearcherMode) {
             sessionStorage.setItem("flowStep", "5");
-            sessionStorage.setItem(RESEARCHER_ROTATE_PENDING_KEY, "1");
           }
           toast({
             title: "Submission Recovered",
@@ -1522,7 +1519,7 @@ const FeedbackQuestionnaire = () => {
               ? "Your responses were already saved and this session was marked as completed."
               : "Your responses were already saved.",
           });
-          navigate(isResearcherMode ? "/debriefing" : "/complete");
+          navigate("/early-access");
           return;
         }
 
@@ -1554,16 +1551,11 @@ const FeedbackQuestionnaire = () => {
       sessionStorage.removeItem("formalityData");
 
       sessionStorage.setItem("flowStep", "5");
-      if (isResearcherMode) {
-        sessionStorage.setItem(RESEARCHER_ROTATE_PENDING_KEY, "1");
-      }
       toast({
-        title: isResearcherMode ? "Researcher Preview Submitted" : "Success",
-        description: isResearcherMode
-          ? "Researcher responses have been submitted successfully."
-          : "Your responses have been submitted successfully.",
+        title: "One more step",
+        description: "Tell us if you'd like early access when Cali launches.",
       });
-      navigate("/debriefing");
+      navigate("/early-access");
     } catch (err) {
       console.error("Unexpected error submitting questionnaire:", err);
       toast({

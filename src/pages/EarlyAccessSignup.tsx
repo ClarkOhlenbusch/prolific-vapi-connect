@@ -8,10 +8,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { ExperimentProgress } from '@/components/ExperimentProgress';
 import { usePageTracking } from '@/hooks/usePageTracking';
+import { useResearcherMode } from '@/contexts/ResearcherModeContext';
+
+const RESEARCHER_ROTATE_PENDING_KEY = 'researcher-session-rotate-pending';
 
 const EarlyAccessSignup = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isResearcherMode } = useResearcherMode();
   const [prolificId, setProlificId] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -26,6 +30,7 @@ const EarlyAccessSignup = () => {
     setProlificId(storedProlificId);
     setCallId(storedCallId);
     setSessionToken(storedSessionToken);
+    sessionStorage.setItem('flowStep', '5');
   }, []);
 
   usePageTracking({
@@ -78,6 +83,10 @@ const EarlyAccessSignup = () => {
       title: 'Thank you',
       description: notifyWhenReady ? "We'll notify you when Cali is ready." : 'Your response has been saved.',
     });
+
+    if (isResearcherMode) {
+      sessionStorage.setItem(RESEARCHER_ROTATE_PENDING_KEY, '1');
+    }
     navigate('/debriefing');
   };
 

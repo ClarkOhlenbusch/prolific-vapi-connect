@@ -20,6 +20,7 @@ const SKIP_VALIDATION_PATHS = [
   '/demographics',
   '/voiceassistant-familiarity',
   '/practice',
+  '/early-access',
   '/debriefing',
   '/complete',
 ];

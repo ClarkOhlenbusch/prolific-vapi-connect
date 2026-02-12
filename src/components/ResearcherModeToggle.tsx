@@ -21,6 +21,7 @@ const PARTICIPANT_PAGE_LINKS = [
   { label: 'Intention', to: '/questionnaire/intention', match: '/questionnaire/intention' },
   { label: 'TIPI', to: '/questionnaire/tipi', match: '/questionnaire/tipi' },
   { label: 'Feedback', to: '/questionnaire/feedback', match: '/questionnaire/feedback' },
+  { label: 'Early Access', to: '/early-access', match: '/early-access' },
   { label: 'Debriefing', to: '/debriefing', match: '/debriefing' },
   { label: 'Complete', to: '/complete', match: '/complete' },
 ];
@@ -116,7 +117,7 @@ export const ResearcherModeToggle = () => {
   useEffect(() => {
     if (!isResearcherMode) return;
     if (location.pathname.startsWith('/researcher')) return;
-    if (location.pathname === '/debriefing' || location.pathname === '/complete') return;
+    if (location.pathname === '/early-access' || location.pathname === '/debriefing' || location.pathname === '/complete') return;
     if (sessionStorage.getItem(RESEARCHER_ROTATE_PENDING_KEY) !== '1') return;
 
     void startResearcherSession().then((success) => {

@@ -28,6 +28,7 @@ const IntentionQuestionnaire = lazy(() => import("./pages/IntentionQuestionnaire
 const TipiQuestionnaire = lazy(() => import("./pages/TipiQuestionnaire"));
 const FormalityQuestionnaire = lazy(() => import("./pages/FormalityQuestionnaire"));
 const FeedbackQuestionnaire = lazy(() => import("./pages/FeedbackQuestionnaire"));
+const EarlyAccessSignup = lazy(() => import("./pages/EarlyAccessSignup"));
 const Debriefing = lazy(() => import("./pages/Debriefing"));
 const Complete = lazy(() => import("./pages/Complete"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -86,6 +87,7 @@ const App = () => (
                 <Route path="/questionnaire/tipi" element={<SessionValidator><TipiQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/formality" element={<SessionValidator><FormalityQuestionnaire /></SessionValidator>} />
                 <Route path="/questionnaire/feedback" element={<SessionValidator><FeedbackQuestionnaire /></SessionValidator>} />
+                <Route path="/early-access" element={<SessionValidator><EarlyAccessSignup /></SessionValidator>} />
                 <Route path="/debriefing" element={<Debriefing />} />
                 <Route path="/complete" element={<Complete />} />
                 <Route path="/researcher" element={<ResearcherLogin />} />
