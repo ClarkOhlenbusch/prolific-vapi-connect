@@ -27,9 +27,12 @@ import {
   shapiroWilk,
   holmCorrection,
   descriptiveStats,
+  mean,
   interpretCohensD,
   interpretRankBiserial,
   chiSquare2xK,
+  spearmanCorrelation,
+  oneWayAnova,
   TTestResult,
   MannWhitneyResult,
   LeveneResult,
@@ -187,9 +190,60 @@ const toFiniteNumber = (value: unknown): number | null => {
   return null;
 };
 
+function getDemographicValue(demo: ProlificDemographicRow, pred: typeof DEMOGRAPHIC_PREDICTORS[0]): string | number | null {
+  if (pred.key === 'age') return demo.age != null && Number.isFinite(demo.age) ? demo.age : null;
+  if (pred.key === 'gender') return (demo.gender ?? '').trim() || null;
+  if (pred.key === 'ethnicity_simplified') return (demo.ethnicity_simplified ?? '').trim() || null;
+  if (pred.key === 'employment_status') return (demo.employment_status ?? '').trim() || null;
+  const raw = demo.raw_columns != null && typeof demo.raw_columns === 'object'
+    ? demo.raw_columns
+    : typeof demo.raw_columns === 'string'
+      ? (() => { try { return JSON.parse(demo.raw_columns as string) as Record<string, unknown>; } catch { return null; } })()
+      : null;
+  if (pred.rawKeys && raw) {
+    let rawVal: string | null = null;
+    for (const rk of pred.rawKeys) {
+      const v = raw[rk];
+      if (v != null) {
+        rawVal = String(v).trim();
+        break;
+      }
+    }
+    if (pred.key === 'ai_chatbots' && rawVal !== null) {
+      if (!rawVal || /none|^$/i.test(rawVal)) return 'None';
+      return 'Any';
+    }
+    return rawVal;
+  }
+  return null;
+}
+
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
 
-type ProlificDemographicRow = { prolific_id: string; age: number | null; gender: string | null; ethnicity_simplified: string | null };
+type ProlificDemographicRow = {
+  prolific_id: string;
+  age: number | null;
+  gender: string | null;
+  ethnicity_simplified: string | null;
+  country_of_residence?: string | null;
+  employment_status?: string | null;
+  raw_columns?: Record<string, unknown> | null;
+};
+
+/** Demographic predictors for exploratory Demographics × Outcomes. rawKey = key in raw_columns (CSV header). */
+const DEMOGRAPHIC_PREDICTORS: { key: string; label: string; type: 'continuous' | 'categorical'; rawKeys?: string[] }[] = [
+  { key: 'age', label: 'Age', type: 'continuous' },
+  { key: 'gender', label: 'Gender', type: 'categorical' },
+  { key: 'ethnicity_simplified', label: 'Ethnicity', type: 'categorical' },
+  { key: 'employment_status', label: 'Employment', type: 'categorical' },
+  { key: 'telemedicine', label: 'Telemedicine', type: 'categorical', rawKeys: ['Telemedicine', 'Telemedicine '] },
+  { key: 'hearing_difficulties', label: 'Hearing difficulties', type: 'categorical', rawKeys: ['Hearing difficulties'] },
+  { key: 'speech_disorders', label: 'Speech disorders', type: 'categorical', rawKeys: ['Speech disorders'] },
+  { key: 'depression', label: 'Depression', type: 'categorical', rawKeys: ['Depression'] },
+  { key: 'mental_health_diagnosis', label: 'Mental health diagnosis', type: 'categorical', rawKeys: ['Mental health diagnosis'] },
+  { key: 'ai_chatbots', label: 'AI chatbots (None vs Any)', type: 'categorical', rawKeys: ['Ai chatbots'] },
+  { key: 'harmful_content', label: 'Harmful content', type: 'categorical', rawKeys: ['Harmful content'] },
+];
 
 const StatisticalAnalysis = () => {
   const navigate = useNavigate();
@@ -252,7 +306,7 @@ const StatisticalAnalysis = () => {
 
           const { data: demoData } = await supabase
             .from('prolific_export_demographics')
-            .select('prolific_id, age, gender, ethnicity_simplified');
+            .select('prolific_id, age, gender, ethnicity_simplified, country_of_residence, employment_status, raw_columns');
           setProlificDemographics((demoData as ProlificDemographicRow[]) ?? []);
         }
       } catch (error) {
@@ -496,6 +550,94 @@ const StatisticalAnalysis = () => {
       demographicBaselineResults,
       progressionResults: progressionByMeasure,
     };
+  }, [responses, prolificDemographics]);
+
+  type DemoExploratoryCell = {
+    predictorKey: string;
+    predictorLabel: string;
+    outcomeKey: string;
+    outcomeLabel: string;
+    type: 'continuous' | 'categorical';
+    pValue: number;
+    effectSizeLabel: string;
+    n: number;
+    detail?: string;
+  };
+
+  const demographicExploratoryResults = useMemo((): DemoExploratoryCell[] => {
+    const demoMap = new Map<string, ProlificDemographicRow>();
+    prolificDemographics.forEach((d) => demoMap.set(d.prolific_id, d));
+    const responsesWithDemo = responses.filter(
+      (r) => (r.assistant_type === 'formal' || r.assistant_type === 'informal') && demoMap.has(r.prolific_id)
+    );
+    if (responsesWithDemo.length < 5) return [];
+
+    const cells: DemoExploratoryCell[] = [];
+    for (const pred of DEMOGRAPHIC_PREDICTORS) {
+      for (const dv of ALL_DVS) {
+        const pairs: { demoVal: string | number; outcomeVal: number }[] = [];
+        for (const r of responsesWithDemo) {
+          const demo = demoMap.get(r.prolific_id)!;
+          const demoVal = getDemographicValue(demo, pred);
+          const outcomeVal = toFiniteNumber(r[dv.key]);
+          if (demoVal != null && demoVal !== '' && outcomeVal != null) {
+            pairs.push({ demoVal: demoVal as string | number, outcomeVal });
+          }
+        }
+        if (pairs.length < 5) continue;
+
+        if (pred.type === 'continuous') {
+          const x = pairs.map((p) => p.demoVal as number);
+          const y = pairs.map((p) => p.outcomeVal);
+          const { r, pValue, n } = spearmanCorrelation(x, y);
+          cells.push({
+            predictorKey: pred.key,
+            predictorLabel: pred.label,
+            outcomeKey: dv.key,
+            outcomeLabel: dv.label,
+            type: 'continuous',
+            pValue,
+            effectSizeLabel: `ρ = ${r.toFixed(2)}`,
+            n,
+            detail: `ρ = ${r.toFixed(2)}, n = ${n}`,
+          });
+        } else {
+          const byCat = new Map<string, number[]>();
+          for (const { demoVal, outcomeVal } of pairs) {
+            const cat = String(demoVal).trim() || 'Unknown';
+            if (!byCat.has(cat)) byCat.set(cat, []);
+            byCat.get(cat)!.push(outcomeVal);
+          }
+          const groups = [...byCat.values()].filter((g) => g.length >= 2);
+          if (groups.length < 2) continue;
+          const groupMeans = groups.map((g) => mean(g));
+          const groupNs = groups.map((g) => g.length);
+          let pValue = 1;
+          let effectSizeLabel = '—';
+          if (groups.length === 2) {
+            const t = welchTTest(groups[0], groups[1]);
+            pValue = t.pValue;
+            effectSizeLabel = `d = ${t.cohensD.toFixed(2)}`;
+          } else {
+            const anova = oneWayAnova(groups);
+            pValue = anova.pValue;
+            effectSizeLabel = `η² = ${anova.etaSq.toFixed(2)}`;
+          }
+          cells.push({
+            predictorKey: pred.key,
+            predictorLabel: pred.label,
+            outcomeKey: dv.key,
+            outcomeLabel: dv.label,
+            type: 'categorical',
+            pValue,
+            effectSizeLabel,
+            n: pairs.length,
+            detail: `${groups.length} groups, n = ${pairs.length}`,
+          });
+        }
+      }
+    }
+    return cells;
   }, [responses, prolificDemographics]);
 
   const generatePythonScript = () => {
@@ -987,11 +1129,19 @@ run_moderation_analysis <- function(df) {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
             <GlobalSourceFilter value={sourceFilter} onChange={setSourceFilter} />
             <div className="flex gap-2 self-start md:self-auto">
-              <Button variant="outline" onClick={generatePythonScript}>
+              <Button
+                variant="outline"
+                onClick={generatePythonScript}
+                title="Scripts are not finalized yet; they will be generated once the statistical tests are finished and determined."
+              >
                 <Download className="h-4 w-4 mr-2" />
                 Python
               </Button>
-              <Button variant="outline" onClick={generateRScript}>
+              <Button
+                variant="outline"
+                onClick={generateRScript}
+                title="Scripts are not finalized yet; they will be generated once the statistical tests are finished and determined."
+              >
                 <Download className="h-4 w-4 mr-2" />
                 R Script
               </Button>
@@ -1036,7 +1186,7 @@ run_moderation_analysis <- function(df) {
                     Requires moderation analysis
                   </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className="text-xs text-muted-foreground mt-2" title="Scripts are not finalized yet; they will be generated once the statistical tests are finished and determined.">
                   Download Python/R scripts for full moderation analysis with interaction terms.
                 </p>
               </div>
@@ -1048,6 +1198,7 @@ run_moderation_analysis <- function(df) {
           <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
             <TabsTrigger value="baseline">Baseline Balance</TabsTrigger>
+            <TabsTrigger value="demographics">Demographics × Outcomes</TabsTrigger>
             <TabsTrigger value="manipulation">Manipulation Check</TabsTrigger>
             <TabsTrigger value="exploratory">Exploratory</TabsTrigger>
             <TabsTrigger value="progression">Progression</TabsTrigger>
@@ -1344,6 +1495,62 @@ run_moderation_analysis <- function(df) {
                     <p className="text-sm text-muted-foreground">No ethnicity data. Upload a Prolific CSV with &quot;Ethnicity simplified&quot;.</p>
                   )}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Demographics × Outcomes (exploratory) */}
+          <TabsContent value="demographics" className="space-y-6">
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>Exploratory: Demographics × Outcomes</AlertTitle>
+              <AlertDescription>
+                Effect of demographic predictors (from Prolific export) on each outcome. Age: Spearman ρ. Categorical: group comparison (t-test or one-way ANOVA). Interpret as exploratory; with small n (~25–150) many tests are underpowered. Use &quot;Responses&quot; to upload a CSV with columns like Telemedicine, Hearing difficulties, Ai chatbots, etc.
+              </AlertDescription>
+            </Alert>
+            <Card>
+              <CardHeader>
+                <CardTitle>Predictor × Outcome grid</CardTitle>
+                <CardDescription>
+                  p &lt; 0.05 highlighted. Effect: ρ (Age), Cohen&apos;s d (2 groups), or η² (3+ groups).
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {demographicExploratoryResults.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Need at least 5 participants with both Prolific demographics and outcome data. Upload a Prolific demographic CSV in the Responses tab.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Predictor</TableHead>
+                          <TableHead>Outcome</TableHead>
+                          <TableHead className="text-right">n</TableHead>
+                          <TableHead className="text-right">p</TableHead>
+                          <TableHead className="text-right">Effect</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {demographicExploratoryResults
+                          .sort((a, b) => a.pValue - b.pValue)
+                          .map((cell, idx) => (
+                            <TableRow
+                              key={`${cell.predictorKey}-${cell.outcomeKey}-${idx}`}
+                              className={cell.pValue < 0.05 ? 'bg-amber-50/50 dark:bg-amber-950/20' : undefined}
+                            >
+                              <TableCell className="font-medium">{cell.predictorLabel}</TableCell>
+                              <TableCell>{cell.outcomeLabel}</TableCell>
+                              <TableCell className="text-right font-mono">{cell.n}</TableCell>
+                              <TableCell className="text-right font-mono">{formatP(cell.pValue)}</TableCell>
+                              <TableCell className="text-right font-mono">{cell.effectSizeLabel}</TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
