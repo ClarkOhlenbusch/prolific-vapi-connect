@@ -1258,6 +1258,7 @@ export type Database = {
       is_researcher: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       next_researcher_prolific_id: { Args: never; Returns: string }
+      get_latest_changelog_version: { Args: never; Returns: string }
       remove_duplicate_changelog_entries: { Args: never; Returns: number }
     }
     Enums: {
