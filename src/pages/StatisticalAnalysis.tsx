@@ -596,7 +596,10 @@ const StatisticalAnalysis = () => {
           setProlificDemographics([]);
         } else {
           const [{ data, error }, { archivedResponseKeys }] = await Promise.all([
-            supabase.from('experiment_responses').select('*'),
+            supabase
+              .from('experiment_responses' as any)
+              .select('*')
+              .eq('submission_status', 'submitted'),
             fetchArchivedFilters(),
           ]);
 

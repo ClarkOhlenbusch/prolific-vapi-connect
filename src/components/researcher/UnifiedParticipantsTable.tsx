@@ -74,6 +74,7 @@ interface UnifiedParticipant {
   is_completed: boolean;
   // From experiment_responses (optional)
   response_id?: string;
+  response_submission_status?: 'pending' | 'submitted' | 'abandoned' | null;
   assistant_type?: string | null;
   batch_label?: string | null;
   pets_total?: number | null;
@@ -126,9 +127,10 @@ import { SourceFilterValue } from './GlobalSourceFilter';
 
 interface UnifiedParticipantsTableProps {
   sourceFilter: SourceFilterValue;
+  includePending: boolean;
 }
 
-export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: UnifiedParticipantsTableProps) => {
+export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter, includePending }: UnifiedParticipantsTableProps) => {
   const navigate = useNavigate();
   const [data, setData] = useState<UnifiedParticipant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -189,9 +191,15 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       const callsFiltered = (calls || []).filter((c) => !archivedParticipantCallIds.has(c.id));
 
       // Fetch experiment_responses
-      const { data: responses, error: responsesError } = await supabase
-        .from('experiment_responses')
-        .select('id, call_id, prolific_id, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged');
+      let responsesQuery = supabase
+        .from('experiment_responses' as any)
+        .select('id, call_id, prolific_id, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged');
+
+      if (!includePending) {
+        responsesQuery = responsesQuery.eq('submission_status', 'submitted');
+      }
+
+      const { data: responses, error: responsesError } = await responsesQuery;
 
       if (responsesError) throw responsesError;
 
@@ -258,6 +266,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           created_at: call.created_at,
           is_completed: call.is_completed,
           response_id: response?.id,
+          response_submission_status: response?.submission_status ?? null,
           assistant_type: response?.assistant_type,
           batch_label: response?.batch_label,
           pets_total: response?.pets_total,
@@ -293,7 +302,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [includePending]);
 
   // Helper to detect researcher IDs (Prolific IDs are exactly 24 characters)
   const isResearcherId = (prolificId: string): boolean => {

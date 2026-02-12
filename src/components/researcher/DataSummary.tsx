@@ -181,7 +181,10 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
     const fetchSummary = async () => {
       try {
         const [responsesRes, callsRes, archivedRes, prolificDemoRes, archivedFilters] = await Promise.all([
-          supabase.from('experiment_responses').select('*', { count: 'exact', head: false }),
+          supabase
+            .from('experiment_responses' as any)
+            .select('*', { count: 'exact', head: false })
+            .eq('submission_status', 'submitted'),
           supabase.from('participant_calls').select('id'),
           isSuperAdmin 
             ? supabase.from('archived_responses').select('*', { count: 'exact', head: true })

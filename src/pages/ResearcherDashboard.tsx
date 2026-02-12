@@ -4,6 +4,8 @@ import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import {
   FlaskConical,
   LogOut,
@@ -38,6 +40,7 @@ const StudyMap = lazy(() => import('@/components/researcher/StudyMap'));
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
+const INCLUDE_PENDING_STORAGE_KEY = 'researcher-dashboard-include-pending-responses';
 
 export type SourceFilterValue = 'all' | 'participant' | 'researcher';
 
@@ -57,6 +60,9 @@ const ResearcherDashboard = () => {
     if (saved === 'all' || saved === 'participant' || saved === 'researcher') return saved;
     return 'participant'; // Default to participants only
   });
+  const [includePendingResponses, setIncludePendingResponses] = useState<boolean>(() => {
+    return sessionStorage.getItem(INCLUDE_PENDING_STORAGE_KEY) === 'true';
+  });
   const [displayUsername, setDisplayUsername] = useState('');
 
   useEffect(() => {
@@ -73,6 +79,10 @@ const ResearcherDashboard = () => {
   useEffect(() => {
     sessionStorage.setItem(SOURCE_FILTER_STORAGE_KEY, sourceFilter);
   }, [sourceFilter]);
+
+  useEffect(() => {
+    sessionStorage.setItem(INCLUDE_PENDING_STORAGE_KEY, includePendingResponses ? 'true' : 'false');
+  }, [includePendingResponses]);
 
   useEffect(() => {
     const s = location.state as { openTab?: string; openBatchCreate?: boolean } | undefined;
@@ -230,9 +240,24 @@ const ResearcherDashboard = () => {
                   <p className="text-sm font-medium text-muted-foreground mb-1">Prolific demographics</p>
                   <ProlificDemographicsImport />
                 </div>
+                <div className="mt-3 pt-3 border-t">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="include-pending-responses"
+                      checked={includePendingResponses}
+                      onCheckedChange={setIncludePendingResponses}
+                    />
+                    <Label htmlFor="include-pending-responses" className="text-sm">
+                      Include pending drafts (debug incomplete sessions)
+                    </Label>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
-                <UnifiedParticipantsTable sourceFilter={sourceFilter} />
+                <UnifiedParticipantsTable
+                  sourceFilter={sourceFilter}
+                  includePending={includePendingResponses}
+                />
               </CardContent>
             </Card>
           </TabsContent>
