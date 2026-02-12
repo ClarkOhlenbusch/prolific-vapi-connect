@@ -1503,9 +1503,10 @@ const FeedbackQuestionnaire = () => {
 
         // If save succeeded server-side but client saw a non-2xx/network edge-case, recover gracefully.
         const { data: existingResponse, error: existingResponseError } = await supabase
-          .from("experiment_responses")
-          .select("id")
+          .from("experiment_responses" as any)
+          .select("id, submission_status")
           .eq("prolific_id", prolificId)
+          .eq("submission_status", "submitted")
           .maybeSingle();
 
         if (!existingResponseError && existingResponse) {

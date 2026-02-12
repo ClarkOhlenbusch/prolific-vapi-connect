@@ -162,9 +162,10 @@ const TiasQuestionnaire = () => {
       const isLikelyProlificParticipant = storedId?.length === 24;
       if (!isResearcherMode && isLikelyProlificParticipant) {
         const { data: existingResponse, error } = await supabase
-          .from("experiment_responses")
-          .select("prolific_id")
+          .from("experiment_responses" as any)
+          .select("prolific_id, submission_status")
           .eq("prolific_id", storedId)
+          .eq("submission_status", "submitted")
           .maybeSingle();
 
         if (error && error.code !== "PGRST116") {
