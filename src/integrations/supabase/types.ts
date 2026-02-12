@@ -443,6 +443,8 @@ export type Database = {
           u3_position: number
           u4: number
           u4_position: number
+          vapi_structured_output: Json | null
+          vapi_structured_output_at: string | null
           voice_assistant_feedback: string
         }
         Insert: {
@@ -583,6 +585,8 @@ export type Database = {
           u3_position: number
           u4: number
           u4_position: number
+          vapi_structured_output?: Json | null
+          vapi_structured_output_at?: string | null
           voice_assistant_feedback: string
         }
         Update: {
@@ -723,6 +727,8 @@ export type Database = {
           u3_position?: number
           u4?: number
           u4_position?: number
+          vapi_structured_output?: Json | null
+          vapi_structured_output_at?: string | null
           voice_assistant_feedback?: string
         }
         Relationships: []
@@ -1248,11 +1254,39 @@ export type Database = {
           },
         ]
       }
+      vapi_structured_output_runs: {
+        Row: {
+          call_ids: string[]
+          created_at: string
+          id: string
+          status: string
+          updated_at: string
+          workflow_id: string
+        }
+        Insert: {
+          call_ids: string[]
+          created_at?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          workflow_id: string
+        }
+        Update: {
+          call_ids?: string[]
+          created_at?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          workflow_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      get_latest_changelog_version: { Args: never; Returns: string }
       get_next_condition_assignment: {
         Args: { p_prolific_id: string }
         Returns: Json
@@ -1264,7 +1298,6 @@ export type Database = {
       is_researcher: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       next_researcher_prolific_id: { Args: never; Returns: string }
-      get_latest_changelog_version: { Args: never; Returns: string }
       remove_duplicate_changelog_entries: { Args: never; Returns: number }
     }
     Enums: {
