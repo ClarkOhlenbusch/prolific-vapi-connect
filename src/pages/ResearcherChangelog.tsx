@@ -40,6 +40,8 @@ import {
   History
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 const GITHUB_REPO = (import.meta.env.VITE_GITHUB_REPO as string) || 'ClarkOhlenbusch/prolific-vapi-connect';
 const VISITED_COMMITS_KEY = 'changelog-visited-commit-ids';
@@ -147,6 +149,13 @@ const ResearcherChangelog = () => {
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
   const [lastRemovedDuplicates, setLastRemovedDuplicates] = useState<number | null>(null);
   const [visitedCommitIds, setVisitedCommitIds] = useState<Set<string>>(getVisitedSet);
+  const [showApplyEditsDialog, setShowApplyEditsDialog] = useState(false);
+  const [applyEditsJsonText, setApplyEditsJsonText] = useState('');
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [mergeFromVersion, setMergeFromVersion] = useState('');
+  const [mergeToVersion, setMergeToVersion] = useState('');
+  const [mergeTargetVersion, setMergeTargetVersion] = useState('');
+  const [mergeDescription, setMergeDescription] = useState('');
   const entryRefsMap = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Form state for new/edit entry
@@ -396,12 +405,13 @@ const ResearcherChangelog = () => {
         return;
       }
       const changelogFiles = Array.isArray(list) ? list.filter((n) => typeof n === 'string' && n.startsWith('changelog-import-') && n.endsWith('.json')) : [];
-      const newFiles = changelogFiles.filter((name) => !importedSourceKeys.includes(name));
-      console.log('[changelog auto-import] manifest files', changelogFiles.length, 'already imported', importedSourceKeys.length, 'new to import', newFiles.length, newFiles);
-      if (newFiles.length === 0) return;
+      const mergeFiles = Array.isArray(list) ? list.filter((n) => typeof n === 'string' && n.startsWith('changelog-merge-') && n.endsWith('.json')) : [];
+      const newImportFiles = changelogFiles.filter((name) => !importedSourceKeys.includes(name));
+      const newMergeFiles = mergeFiles.filter((name) => !importedSourceKeys.includes(name));
+      console.log('[changelog auto-import] manifest import files', changelogFiles.length, 'new', newImportFiles.length, 'merge files', mergeFiles.length, 'new merge', newMergeFiles.length);
 
       let importedCount = 0;
-      for (const name of newFiles) {
+      for (const name of newImportFiles) {
         const result = await runImportForFile(name);
         console.log('[changelog auto-import]', name, result.ok ? 'ok' : 'failed', result.errorMessage ?? '');
         if (result.ok) {
@@ -417,6 +427,59 @@ const ResearcherChangelog = () => {
         queryClient.invalidateQueries({ queryKey: ['changelog-imported-sources'] });
         queryClient.invalidateQueries({ queryKey: ['changelog-import-attempts'] });
         toast.success(importedCount === 1 ? '1 changelog file imported' : `${importedCount} changelog files imported`);
+      }
+
+      for (const name of newMergeFiles) {
+        let raw: string;
+        try {
+          const r = await fetch(`/changelog/${encodeURIComponent(name)}`);
+          if (!r.ok) {
+            await logImportAttempt(name, 'failure', `Fetch ${r.status}`);
+            continue;
+          }
+          raw = await r.text();
+        } catch (e) {
+          await logImportAttempt(name, 'failure', e instanceof Error ? e.message : 'Fetch failed');
+          continue;
+        }
+        if (raw.trim().startsWith('<')) {
+          await logImportAttempt(name, 'failure', 'Server returned HTML');
+          continue;
+        }
+        let payload: { merge_versions?: { from_version?: string; to_version?: string; target_version?: string; description?: string } };
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          await logImportAttempt(name, 'failure', 'Invalid JSON');
+          continue;
+        }
+        const m = payload.merge_versions;
+        if (!m?.from_version?.trim() || !m?.to_version?.trim()) {
+          await logImportAttempt(name, 'failure', 'Missing merge_versions.from_version or to_version');
+          continue;
+        }
+        await queryClient.prefetchQuery({ queryKey: ['changelog-entries'] });
+        const entriesFresh = queryClient.getQueryData(['changelog-entries']) as ChangelogEntry[] | undefined;
+        try {
+          await mergeVersionsMutation.mutateAsync({
+            fromVersion: m.from_version.trim(),
+            toVersion: m.to_version.trim(),
+            targetVersion: (m.target_version || m.to_version || '').trim(),
+            description: (m.description || '').trim(),
+            entriesOverride: entriesFresh ?? [],
+            fromAutoApply: true
+          });
+          await supabase.from('changelog_imported_sources').insert({ source_key: name });
+          await logImportAttempt(name, 'success', null);
+          queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+          queryClient.invalidateQueries({ queryKey: ['changelog-imported-sources'] });
+          queryClient.invalidateQueries({ queryKey: ['changelog-import-attempts'] });
+          toast.success(`Merge applied: ${name}`);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Merge failed';
+          await logImportAttempt(name, 'failure', msg);
+          toast.error(`${name}: ${msg}`);
+        }
       }
     };
     run();
@@ -533,7 +596,7 @@ const ResearcherChangelog = () => {
       list = list.filter(e => e.changes.length > 0);
     }
     const sorted = [...list].sort((a, b) => {
-      // Primary: version (desc = newest first = highest version, asc = oldest first = lowest version)
+      // Sort by version number (newest first = desc = 1.1.5 before 1.1.1). Tie-break: release_date, created_at.
       const d = sortOrder === 'desc' ? -1 : 1;
       const versionCmp = compareVersions(a.version || '', b.version || '');
       if (versionCmp !== 0) return versionCmp * d;
@@ -680,6 +743,151 @@ const ResearcherChangelog = () => {
       toast.success(deletedCount === 0 ? 'No duplicate entries found' : `${deletedCount} duplicate ${deletedCount === 1 ? 'entry' : 'entries'} removed`);
     },
     onError: () => toast.error('Failed to remove duplicates')
+  });
+
+  const exportReleaseHistory = () => {
+    const payload = {
+      entries: entries.map((e) => ({
+        id: e.id,
+        version: e.version,
+        release_date: e.release_date,
+        description: e.description ?? '',
+        active_batch_label: e.active_batch_label ?? '',
+        changes: e.changes.map((c) => ({
+          type: c.change_type,
+          description: c.description,
+          scope: c.scope,
+          commit_hash: c.commit_hash ?? undefined
+        }))
+      })),
+      delete_entry_ids: [] as string[]
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `changelog-release-history-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  type ApplyEditsEntry = {
+    id?: string;
+    version: string;
+    release_date: string;
+    description?: string | null;
+    active_batch_label?: string | null;
+    changes: { type: string; description: string; scope?: string; commit_hash?: string }[];
+  };
+  const applyEditsMutation = useMutation({
+    mutationFn: async (payload: { entries: ApplyEditsEntry[]; delete_entry_ids?: string[] }) => {
+      const { entries: edits, delete_entry_ids = [] } = payload;
+      for (const entry of edits) {
+        const version = (entry.version || '').trim();
+        const release_date = (entry.release_date || '').trim();
+        if (!version || !release_date) continue;
+        const changes = (entry.changes || []).map((c, i) => ({
+          change_type: ['added', 'changed', 'fixed', 'removed'].includes(c.type) ? c.type : 'changed',
+          description: String(c.description || '').trim(),
+          scope: (c.scope === 'participant' || c.scope === 'researcher' || c.scope === 'both') ? c.scope : 'both',
+          display_order: i,
+          commit_hash: c.commit_hash?.trim() || null
+        })).filter((c) => c.description.length > 0);
+
+        const existingById = entry.id ? (await supabase.from('changelog_entries').select('id').eq('id', entry.id).single()).data : null;
+        const existingByVersion = !existingById ? (await supabase.from('changelog_entries').select('id').eq('version', version).eq('release_date', release_date).maybeSingle()).data : null;
+        const existingId = existingById?.id ?? existingByVersion?.id ?? null;
+
+        if (existingId) {
+          await supabase.from('changelog_entries').update({
+            version,
+            release_date,
+            description: (entry.description ?? '').trim() || null,
+            active_batch_label: (entry.active_batch_label ?? '').trim() || null
+          }).eq('id', existingId);
+          await supabase.from('changelog_changes').delete().eq('entry_id', existingId);
+          if (changes.length > 0) {
+            await supabase.from('changelog_changes').insert(changes.map((c) => ({ ...c, entry_id: existingId })));
+          }
+        } else {
+          const { data: newEntry, error: insertErr } = await supabase.from('changelog_entries').insert({
+            version,
+            release_date,
+            description: (entry.description ?? '').trim() || null,
+            active_batch_label: (entry.active_batch_label ?? '').trim() || null,
+            created_by: user?.id ?? null
+          }).select('id').single();
+          if (insertErr) throw insertErr;
+          if (newEntry && changes.length > 0) {
+            await supabase.from('changelog_changes').insert(changes.map((c) => ({ ...c, entry_id: newEntry.id })));
+          }
+        }
+      }
+      if (delete_entry_ids.length > 0) {
+        await supabase.from('changelog_changes').delete().in('entry_id', delete_entry_ids);
+        const { error: delErr } = await supabase.from('changelog_entries').delete().in('id', delete_entry_ids);
+        if (delErr) throw delErr;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+      setShowApplyEditsDialog(false);
+      setApplyEditsJsonText('');
+      toast.success('Edits applied');
+    },
+    onError: (e: Error) => toast.error(e.message)
+  });
+
+  const mergeVersionsMutation = useMutation({
+    mutationFn: async (params: { fromVersion: string; toVersion: string; targetVersion: string; description: string; entriesOverride?: ChangelogEntry[]; fromAutoApply?: boolean }) => {
+      const { fromVersion, toVersion, targetVersion, description, entriesOverride } = params;
+      const list = entriesOverride ?? entries;
+      const inRange = list
+        .filter((e) => {
+          const v = e.version || '';
+          return compareVersions(v, fromVersion) >= 0 && compareVersions(v, toVersion) <= 0;
+        })
+        .sort((a, b) => compareVersions(a.version || '', b.version || ''));
+      if (inRange.length === 0) throw new Error('No entries in version range');
+      const allChanges = inRange.flatMap((e) => e.changes.map((c) => ({
+        change_type: c.change_type,
+        description: c.description,
+        scope: c.scope,
+        display_order: 0,
+        commit_hash: c.commit_hash ?? null
+      })));
+      const uniq = allChanges.reduce((acc, c, i) => {
+        acc.push({ ...c, display_order: i });
+        return acc;
+      }, [] as { change_type: ChangeType; description: string; scope: ChangeScope; display_order: number; commit_hash: string | null }[]);
+      const keepId = inRange[inRange.length - 1].id;
+      const deleteIds = inRange.filter((e) => e.id !== keepId).map((e) => e.id);
+      await supabase.from('changelog_entries').update({
+        version: targetVersion.trim(),
+        release_date: inRange[inRange.length - 1].release_date,
+        description: description.trim() || null,
+        active_batch_label: inRange[inRange.length - 1].active_batch_label ?? null
+      }).eq('id', keepId);
+      await supabase.from('changelog_changes').delete().eq('entry_id', keepId);
+      if (uniq.length > 0) {
+        await supabase.from('changelog_changes').insert(uniq.map((c, i) => ({ ...c, entry_id: keepId, display_order: i })));
+      }
+      if (deleteIds.length > 0) {
+        await supabase.from('changelog_changes').delete().in('entry_id', deleteIds);
+        await supabase.from('changelog_entries').delete().in('id', deleteIds);
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+      setShowMergeDialog(false);
+      setShowApplyEditsDialog(false);
+      setApplyEditsJsonText('');
+      setMergeFromVersion('');
+      setMergeToVersion('');
+      setMergeTargetVersion('');
+      setMergeDescription('');
+      if (!variables.fromAutoApply) toast.success('Versions merged');
+    },
+    onError: (e: Error) => toast.error(e.message)
   });
 
   // Add change mutation
@@ -911,7 +1119,7 @@ const ResearcherChangelog = () => {
                       Release checklist
                     </CardTitle>
                     <CardDescription>
-                      Push → Changelog → Import → New batch (prepilot / pilot / main)
+                      Push (changelog file every time) → Import / Edit from JSON → New batch when ready
                     </CardDescription>
                   </div>
                   <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${checklistOpen ? 'rotate-180' : ''}`} />
@@ -921,10 +1129,9 @@ const ResearcherChangelog = () => {
             <CollapsibleContent>
               <CardContent className="pt-0">
                 <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                  <li><strong className="text-foreground">Push</strong> — Deploy is instant; push code when ready.</li>
-                  <li><strong className="text-foreground">Update changelog</strong> — Run /changelog add (or add entry), set <em>active_batch_label</em> in <code className="text-xs bg-muted px-1 rounded">docs/researcher-changelog-latest.json</code> for the version that was live.</li>
-                  <li><strong className="text-foreground">Import or add entry</strong> — Paste the draft here (Import from JSON) or add an entry manually.</li>
-                  <li><strong className="text-foreground">Create new batch</strong> — Click &quot;Create new batch&quot; above (e.g. prepilot, pilot, main) so the next wave uses the new batch. You can also create batches from Experiment Settings.</li>
+                  <li><strong className="text-foreground">Push</strong> — Use /push to commit and push. A changelog file is added every time (same version until a new version is cut). When the assistant suggests it, say whether to start a new version.</li>
+                  <li><strong className="text-foreground">Changelog</strong> — New pushes are auto-imported when you open this page. You can also paste JSON (Import from JSON) or <strong className="text-foreground">edit release history from JSON</strong> (Export, edit in chat or in a file, then Apply edits) to merge versions or bulk-edit.</li>
+                  <li><strong className="text-foreground">Create new batch</strong> — When starting a new wave, click &quot;Create new batch&quot; above (e.g. prepilot, pilot, main). You can also create batches from Experiment Settings.</li>
                 </ol>
               </CardContent>
             </CollapsibleContent>
@@ -1046,19 +1253,32 @@ const ResearcherChangelog = () => {
                 Track all changes, improvements, and fixes to the research platform
               </CardDescription>
             </div>
-            {isSuperAdmin && (
-              <div className="flex flex-col items-end gap-1">
-                <Button variant="outline" size="sm" onClick={() => removeDuplicateEntriesMutation.mutate()} disabled={removeDuplicateEntriesMutation.isPending} title="Remove duplicate entries (same version + release date)">
-                  {removeDuplicateEntriesMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                  Remove duplicates
-                </Button>
-                {lastRemovedDuplicates !== null && (
-                  <span className="text-xs text-muted-foreground">
-                    {lastRemovedDuplicates === 0 ? 'No duplicates found' : `${lastRemovedDuplicates} duplicate${lastRemovedDuplicates === 1 ? '' : 's'} removed`}
-                  </span>
-                )}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={exportReleaseHistory} title="Download release history as JSON (edit and apply via Edit from JSON)">
+                <Download className="h-4 w-4 mr-1" />
+                Export
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowApplyEditsDialog(true)} title="Paste JSON to upsert entries and/or delete by id">
+                <FileJson className="h-4 w-4 mr-1" />
+                Edit from JSON
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowMergeDialog(true)} title="Merge a version range into one entry">
+                Merge versions
+              </Button>
+              {isSuperAdmin && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => removeDuplicateEntriesMutation.mutate()} disabled={removeDuplicateEntriesMutation.isPending} title="Remove duplicate entries (same version + release date)">
+                    {removeDuplicateEntriesMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    Remove duplicates
+                  </Button>
+                  {lastRemovedDuplicates !== null && (
+                    <span className="text-xs text-muted-foreground">
+                      {lastRemovedDuplicates === 0 ? 'No duplicates found' : `${lastRemovedDuplicates} duplicate${lastRemovedDuplicates === 1 ? '' : 's'} removed`}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {entries.length > 0 && (
@@ -1184,7 +1404,10 @@ const ResearcherChangelog = () => {
                         ) : (
                           <>
                             <span className="text-lg font-semibold">v{entry.version}</span>
-                            <span className="text-sm text-muted-foreground">{entry.release_date}</span>
+                            <span className="text-sm text-muted-foreground" title={entry.created_at ? new Date(entry.created_at).toLocaleString() : entry.release_date}>
+                              {entry.release_date}
+                              {entry.created_at ? ` · ${new Date(entry.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ''}
+                            </span>
                             <Button
                               size="sm"
                               variant={entry.reviewed ? 'secondary' : 'ghost'}
@@ -1414,6 +1637,91 @@ const ResearcherChangelog = () => {
             <Button onClick={handleImportJson} disabled={addEntryMutation.isPending}>
               {addEntryMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Import
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit release history from JSON */}
+      <Dialog open={showApplyEditsDialog} onOpenChange={(open) => { setShowApplyEditsDialog(open); if (!open) setApplyEditsJsonText(''); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Edit release history from JSON</DialogTitle>
+            <DialogDescription>
+              Use Export to download the current history. Edit in a file or in chat, then paste here. Format: <code className="text-xs bg-muted px-1 rounded">{"{ \"entries\": [...], \"delete_entry_ids\"?: [...] }"}</code> to upsert/delete, or <code className="text-xs bg-muted px-1 rounded">{"{ \"merge_versions\": { \"from_version\", \"to_version\", \"target_version\", \"description\" } }"}</code> to merge a version range (no export needed).
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            className="flex-1 min-h-[240px] font-mono text-sm"
+            placeholder='{ "entries": [...], "delete_entry_ids": [] }'
+            value={applyEditsJsonText}
+            onChange={(e) => setApplyEditsJsonText(e.target.value)}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowApplyEditsDialog(false); setApplyEditsJsonText(''); }}>Cancel</Button>
+            <Button onClick={() => {
+              try {
+                const payload = JSON.parse(applyEditsJsonText) as {
+                  entries?: ApplyEditsEntry[];
+                  delete_entry_ids?: string[];
+                  merge_versions?: { from_version: string; to_version: string; target_version: string; description: string };
+                };
+                if (payload.merge_versions) {
+                  const m = payload.merge_versions;
+                  mergeVersionsMutation.mutate({
+                    fromVersion: (m.from_version || '').trim(),
+                    toVersion: (m.to_version || '').trim(),
+                    targetVersion: (m.target_version || m.to_version || '').trim(),
+                    description: (m.description || '').trim()
+                  });
+                  return;
+                }
+                const entriesList = Array.isArray(payload.entries) ? payload.entries : [];
+                const deleteIds = Array.isArray(payload.delete_entry_ids) ? payload.delete_entry_ids : [];
+                applyEditsMutation.mutate({ entries: entriesList, delete_entry_ids: deleteIds });
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : 'Invalid JSON');
+              }
+            }} disabled={applyEditsMutation.isPending || mergeVersionsMutation.isPending || !applyEditsJsonText.trim()}>
+            {(applyEditsMutation.isPending || mergeVersionsMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Apply edits
+          </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Merge versions */}
+      <Dialog open={showMergeDialog} onOpenChange={(open) => { setShowMergeDialog(open); if (!open) { setMergeFromVersion(''); setMergeToVersion(''); setMergeTargetVersion(''); setMergeDescription(''); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Merge versions</DialogTitle>
+            <DialogDescription>
+              Combine all entries from version A through B into a single entry (e.g. from 1.1.1 to 1.1.5). The highest version in range is kept; others are deleted. All changes are merged into one entry.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>From version (inclusive)</Label>
+              <Input placeholder="1.1.1" value={mergeFromVersion} onChange={(e) => setMergeFromVersion(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>To version (inclusive)</Label>
+              <Input placeholder="1.1.5" value={mergeToVersion} onChange={(e) => setMergeToVersion(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>Target version</Label>
+              <Input placeholder="1.1.5" value={mergeTargetVersion} onChange={(e) => setMergeTargetVersion(e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Input placeholder="Any changes and pushes are automatically added as a changelog" value={mergeDescription} onChange={(e) => setMergeDescription(e.target.value)} className="mt-1" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMergeDialog(false)}>Cancel</Button>
+            <Button onClick={() => mergeVersionsMutation.mutate({ fromVersion: mergeFromVersion.trim(), toVersion: mergeToVersion.trim(), targetVersion: mergeTargetVersion.trim() || mergeToVersion.trim(), description: mergeDescription.trim() })} disabled={mergeVersionsMutation.isPending || !mergeFromVersion.trim() || !mergeToVersion.trim()}>
+              {mergeVersionsMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Merge
             </Button>
           </DialogFooter>
         </DialogContent>
