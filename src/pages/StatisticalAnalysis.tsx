@@ -170,6 +170,42 @@ interface MeasureProgression {
   points: ProgressionPoint[];
 }
 
+type PredictorType = 'continuous' | 'categorical';
+
+type PredictorDefinition = {
+  key: string;
+  label: string;
+  type: PredictorType;
+  rawKeys?: string[];
+};
+
+interface EarlyAccessPredictorResult {
+  predictorKey: string;
+  predictorLabel: string;
+  type: PredictorType;
+  n: number;
+  optInN: number;
+  optOutN: number;
+  pValue: number;
+  adjustedP: number;
+  significant: boolean;
+  effectSizeLabel: string;
+  detail: string;
+}
+
+interface EarlyAccessSummary {
+  totalN: number;
+  optInN: number;
+  optOutN: number;
+  optInRate: number;
+  formalN: number;
+  formalOptInN: number;
+  formalOptInRate: number | null;
+  informalN: number;
+  informalOptInN: number;
+  informalOptInRate: number | null;
+}
+
 // Helper to detect researcher IDs (Prolific IDs are exactly 24 characters)
 const isResearcherId = (prolificId: string): boolean => {
   return prolificId.length !== 24;
@@ -190,7 +226,22 @@ const toFiniteNumber = (value: unknown): number | null => {
   return null;
 };
 
-function getDemographicValue(demo: ProlificDemographicRow, pred: typeof DEMOGRAPHIC_PREDICTORS[0]): string | number | null {
+const toBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return null;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+  }
+  return null;
+};
+
+function getDemographicValue(demo: ProlificDemographicRow, pred: PredictorDefinition): string | number | null {
   if (pred.key === 'age') return demo.age != null && Number.isFinite(demo.age) ? demo.age : null;
   if (pred.key === 'gender') return (demo.gender ?? '').trim() || null;
   if (pred.key === 'ethnicity_simplified') return (demo.ethnicity_simplified ?? '').trim() || null;
@@ -231,7 +282,7 @@ type ProlificDemographicRow = {
 };
 
 /** Demographic predictors for exploratory Demographics × Outcomes. rawKey = key in raw_columns (CSV header). */
-const DEMOGRAPHIC_PREDICTORS: { key: string; label: string; type: 'continuous' | 'categorical'; rawKeys?: string[] }[] = [
+const DEMOGRAPHIC_PREDICTORS: PredictorDefinition[] = [
   { key: 'age', label: 'Age', type: 'continuous' },
   { key: 'gender', label: 'Gender', type: 'categorical' },
   { key: 'ethnicity_simplified', label: 'Ethnicity', type: 'categorical' },
@@ -243,6 +294,11 @@ const DEMOGRAPHIC_PREDICTORS: { key: string; label: string; type: 'continuous' |
   { key: 'mental_health_diagnosis', label: 'Mental health diagnosis', type: 'categorical', rawKeys: ['Mental health diagnosis'] },
   { key: 'ai_chatbots', label: 'AI chatbots (None vs Any)', type: 'categorical', rawKeys: ['Ai chatbots'] },
   { key: 'harmful_content', label: 'Harmful content', type: 'categorical', rawKeys: ['Harmful content'] },
+];
+
+const EARLY_ACCESS_PREDICTORS: PredictorDefinition[] = [
+  { key: 'assistant_type', label: 'Condition (formal vs informal)', type: 'categorical' },
+  ...DEMOGRAPHIC_PREDICTORS,
 ];
 
 const StatisticalAnalysis = () => {
@@ -319,7 +375,19 @@ const StatisticalAnalysis = () => {
     fetchData();
   }, [sourceFilter, isGuestMode]);
 
-  const { formalResponses, informalResponses, analysisResults, hypothesisResults, manipulationResults, exploratoryResults, baselineResults, demographicBaselineResults, progressionResults } = useMemo(() => {
+  const {
+    formalResponses,
+    informalResponses,
+    analysisResults,
+    hypothesisResults,
+    manipulationResults,
+    exploratoryResults,
+    baselineResults,
+    demographicBaselineResults,
+    earlyAccessResults,
+    earlyAccessSummary,
+    progressionResults,
+  } = useMemo(() => {
     const formal = responses.filter(r => r.assistant_type === 'formal');
     const informal = responses.filter(r => r.assistant_type === 'informal');
 
@@ -461,6 +529,155 @@ const StatisticalAnalysis = () => {
       ethnicity: { formalCounts: ethnicityFormalCounts, informalCounts: ethnicityInformalCounts, chi: ethnicityChi },
     };
 
+    const earlyAccessRows = responses
+      .map((r) => {
+        const optedIn = toBoolean(r.early_access_notify);
+        if (optedIn === null) return null;
+        const assistantType = r.assistant_type === 'formal' || r.assistant_type === 'informal'
+          ? r.assistant_type
+          : null;
+        return {
+          prolificId: r.prolific_id,
+          assistantType,
+          optedIn,
+        };
+      })
+      .filter((row): row is { prolificId: string; assistantType: 'formal' | 'informal' | null; optedIn: boolean } => row !== null);
+
+    const formalEarlyAccess = earlyAccessRows.filter((row) => row.assistantType === 'formal');
+    const informalEarlyAccess = earlyAccessRows.filter((row) => row.assistantType === 'informal');
+    const totalOptInN = earlyAccessRows.filter((row) => row.optedIn).length;
+    const formalOptInN = formalEarlyAccess.filter((row) => row.optedIn).length;
+    const informalOptInN = informalEarlyAccess.filter((row) => row.optedIn).length;
+
+    const earlyAccessSummary: EarlyAccessSummary = {
+      totalN: earlyAccessRows.length,
+      optInN: totalOptInN,
+      optOutN: Math.max(0, earlyAccessRows.length - totalOptInN),
+      optInRate: earlyAccessRows.length > 0 ? totalOptInN / earlyAccessRows.length : 0,
+      formalN: formalEarlyAccess.length,
+      formalOptInN,
+      formalOptInRate: formalEarlyAccess.length > 0 ? formalOptInN / formalEarlyAccess.length : null,
+      informalN: informalEarlyAccess.length,
+      informalOptInN,
+      informalOptInRate: informalEarlyAccess.length > 0 ? informalOptInN / informalEarlyAccess.length : null,
+    };
+
+    const rawEarlyAccessResults: Omit<EarlyAccessPredictorResult, 'adjustedP' | 'significant'>[] = [];
+
+    for (const pred of EARLY_ACCESS_PREDICTORS) {
+      const pairs: { predictorValue: string | number; optedIn: boolean }[] = [];
+      for (const row of earlyAccessRows) {
+        let predictorValue: string | number | null = null;
+        if (pred.key === 'assistant_type') {
+          predictorValue = row.assistantType;
+        } else {
+          const demo = demoMap.get(row.prolificId);
+          if (demo) predictorValue = getDemographicValue(demo, pred);
+        }
+        if (predictorValue != null && predictorValue !== '') {
+          pairs.push({ predictorValue, optedIn: row.optedIn });
+        }
+      }
+
+      if (pairs.length < 8) continue;
+      const optInN = pairs.filter((p) => p.optedIn).length;
+      const optOutN = pairs.length - optInN;
+      if (optInN === 0 || optOutN === 0) continue;
+
+      if (pred.type === 'continuous') {
+        const optInValues = pairs
+          .filter((p) => p.optedIn)
+          .map((p) => p.predictorValue)
+          .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+        const optOutValues = pairs
+          .filter((p) => !p.optedIn)
+          .map((p) => p.predictorValue)
+          .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+        if (optInValues.length < 2 || optOutValues.length < 2) continue;
+
+        const t = welchTTest(optInValues, optOutValues);
+        rawEarlyAccessResults.push({
+          predictorKey: pred.key,
+          predictorLabel: pred.label,
+          type: pred.type,
+          n: pairs.length,
+          optInN,
+          optOutN,
+          pValue: t.pValue,
+          effectSizeLabel: `d = ${t.cohensD.toFixed(2)}`,
+          detail: `Opt-in mean ${mean(optInValues).toFixed(2)} vs opt-out mean ${mean(optOutValues).toFixed(2)}`,
+        });
+      } else {
+        const optInCounts: Record<string, number> = {};
+        const optOutCounts: Record<string, number> = {};
+        for (const { predictorValue, optedIn } of pairs) {
+          const category = String(predictorValue).trim() || 'Unknown';
+          const target = optedIn ? optInCounts : optOutCounts;
+          target[category] = (target[category] ?? 0) + 1;
+        }
+        const categories = [...new Set([...Object.keys(optInCounts), ...Object.keys(optOutCounts)])];
+        if (categories.length < 2) continue;
+
+        const chi = chiSquare2xK(optInCounts, optOutCounts);
+        const cramersV = pairs.length > 0 ? Math.sqrt(Math.max(0, chi.chi2) / pairs.length) : 0;
+        let effectSizeLabel = `V = ${cramersV.toFixed(2)}`;
+        let detail = `${categories.length} categories`;
+
+        if (pred.key === 'assistant_type') {
+          const formalOptIn = optInCounts.formal ?? 0;
+          const formalOptOut = optOutCounts.formal ?? 0;
+          const informalOptIn = optInCounts.informal ?? 0;
+          const informalOptOut = optOutCounts.informal ?? 0;
+
+          const formalTotal = formalOptIn + formalOptOut;
+          const informalTotal = informalOptIn + informalOptOut;
+
+          if (formalTotal > 0 && informalTotal > 0) {
+            const a = formalOptIn + 0.5;
+            const b = formalOptOut + 0.5;
+            const c = informalOptIn + 0.5;
+            const d = informalOptOut + 0.5;
+            const oddsRatio = (a * d) / (b * c);
+            const seLogOr = Math.sqrt((1 / a) + (1 / b) + (1 / c) + (1 / d));
+            const ciLow = Math.exp(Math.log(oddsRatio) - 1.96 * seLogOr);
+            const ciHigh = Math.exp(Math.log(oddsRatio) + 1.96 * seLogOr);
+            effectSizeLabel = `OR = ${oddsRatio.toFixed(2)} [${ciLow.toFixed(2)}, ${ciHigh.toFixed(2)}]`;
+            detail =
+              `Formal ${formalOptIn}/${formalTotal} (${((formalOptIn / formalTotal) * 100).toFixed(1)}%) vs ` +
+              `Informal ${informalOptIn}/${informalTotal} (${((informalOptIn / informalTotal) * 100).toFixed(1)}%)`;
+          }
+        }
+
+        rawEarlyAccessResults.push({
+          predictorKey: pred.key,
+          predictorLabel: pred.label,
+          type: pred.type,
+          n: pairs.length,
+          optInN,
+          optOutN,
+          pValue: chi.pValue,
+          effectSizeLabel,
+          detail,
+        });
+      }
+    }
+
+    const earlyAccessAdjustedPs = rawEarlyAccessResults.length > 0
+      ? holmCorrection(rawEarlyAccessResults.map((r) => r.pValue))
+      : [];
+
+    const earlyAccessResults: EarlyAccessPredictorResult[] = rawEarlyAccessResults
+      .map((result, index) => ({
+        ...result,
+        adjustedP: earlyAccessAdjustedPs[index] ?? 1,
+        significant: (earlyAccessAdjustedPs[index] ?? 1) < 0.05,
+      }))
+      .sort((a, b) => {
+        if (a.adjustedP !== b.adjustedP) return a.adjustedP - b.adjustedP;
+        return a.pValue - b.pValue;
+      });
+
     const conditionResponses = responses.filter(
       (r) => r.assistant_type === 'formal' || r.assistant_type === 'informal'
     );
@@ -548,6 +765,8 @@ const StatisticalAnalysis = () => {
       exploratoryResults: expResults,
       baselineResults: baseResults,
       demographicBaselineResults,
+      earlyAccessResults,
+      earlyAccessSummary,
       progressionResults: progressionByMeasure,
     };
   }, [responses, prolificDemographics]);
@@ -1099,6 +1318,15 @@ run_moderation_analysis <- function(df) {
     return p.toFixed(3);
   };
 
+  const formatPercent = (value: number | null) => {
+    if (value === null) return '—';
+    return `${(value * 100).toFixed(1)}%`;
+  };
+
+  const conditionEarlyAccessResult = earlyAccessResults.find(
+    (result) => result.predictorKey === 'assistant_type'
+  );
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background p-6">
@@ -1195,10 +1423,11 @@ run_moderation_analysis <- function(df) {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-9">
             <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
             <TabsTrigger value="baseline">Baseline Balance</TabsTrigger>
             <TabsTrigger value="demographics">Demographics × Outcomes</TabsTrigger>
+            <TabsTrigger value="early-access">Early Access</TabsTrigger>
             <TabsTrigger value="manipulation">Manipulation Check</TabsTrigger>
             <TabsTrigger value="exploratory">Exploratory</TabsTrigger>
             <TabsTrigger value="progression">Progression</TabsTrigger>
@@ -1547,6 +1776,133 @@ run_moderation_analysis <- function(df) {
                               <TableCell className="text-right font-mono">{cell.effectSizeLabel}</TableCell>
                             </TableRow>
                           ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Early Access (exploratory) */}
+          <TabsContent value="early-access" className="space-y-6">
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>Exploratory: Early Access Opt-In Drivers</AlertTitle>
+              <AlertDescription>
+                Outcome is binary: opted in (`early_access_notify = true`) vs opted out. This section checks which predictors are associated with opt-in likelihood, including condition (formal/informal), demographics, and imported Prolific variables.
+              </AlertDescription>
+            </Alert>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Opt-In Overview</CardTitle>
+                <CardDescription>
+                  Overall uptake and condition-level rates in the selected source filter.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {earlyAccessSummary.totalN === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No early-access responses found yet.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Analyzed</p>
+                        <p className="text-2xl font-semibold">{earlyAccessSummary.totalN}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Opted In</p>
+                        <p className="text-2xl font-semibold">{earlyAccessSummary.optInN}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Opted Out</p>
+                        <p className="text-2xl font-semibold">{earlyAccessSummary.optOutN}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground">Overall Opt-In Rate</p>
+                        <p className="text-2xl font-semibold">{formatPercent(earlyAccessSummary.optInRate)}</p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border p-4 space-y-2">
+                      <p className="text-sm font-medium">Condition split</p>
+                      <p className="text-sm text-muted-foreground">
+                        Formal: {earlyAccessSummary.formalOptInN}/{earlyAccessSummary.formalN} ({formatPercent(earlyAccessSummary.formalOptInRate)}) | Informal: {earlyAccessSummary.informalOptInN}/{earlyAccessSummary.informalN} ({formatPercent(earlyAccessSummary.informalOptInRate)})
+                      </p>
+                      {conditionEarlyAccessResult ? (
+                        <p className="text-sm">
+                          <span className="font-mono">{conditionEarlyAccessResult.effectSizeLabel}</span>
+                          <span className="text-muted-foreground ml-2">
+                            p = {formatP(conditionEarlyAccessResult.pValue)}, p(adj) = {formatP(conditionEarlyAccessResult.adjustedP)}
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Condition test not available (insufficient data).
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Predictors of Opt-In Likelihood</CardTitle>
+                <CardDescription>
+                  Predictors ranked by Holm-adjusted p-value. p(adj) &lt; .05 rows are highlighted.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {earlyAccessResults.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Need more complete predictor coverage (demographics/Prolific import) to estimate opt-in drivers.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Predictor</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead className="text-right">n</TableHead>
+                          <TableHead className="text-right">Opt-In %</TableHead>
+                          <TableHead className="text-right">p</TableHead>
+                          <TableHead className="text-right">p (adj)</TableHead>
+                          <TableHead className="text-right">Effect</TableHead>
+                          <TableHead>Detail</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {earlyAccessResults.map((result) => (
+                          <TableRow
+                            key={result.predictorKey}
+                            className={result.significant ? 'bg-amber-50/50 dark:bg-amber-950/20' : undefined}
+                          >
+                            <TableCell className="font-medium">{result.predictorLabel}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {result.type === 'continuous' ? 'Continuous' : 'Categorical'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">{result.n}</TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatPercent(result.n > 0 ? result.optInN / result.n : null)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">{formatP(result.pValue)}</TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className={result.significant ? 'font-semibold text-amber-700 dark:text-amber-400' : undefined}>
+                                {formatP(result.adjustedP)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">{result.effectSizeLabel}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{result.detail}</TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   </div>
@@ -2031,6 +2387,14 @@ run_moderation_analysis <- function(df) {
             <p>
               H4 requires moderation analysis with interaction terms. Download the Python or R scripts 
               for complete moderation analysis including voice_assistant_familiarity × condition interactions.
+            </p>
+
+            <h4>Exploratory: Early Access Opt-In</h4>
+            <p>
+              Early access opt-in rate was {formatPercent(earlyAccessSummary.optInRate)} ({earlyAccessSummary.optInN}/{earlyAccessSummary.totalN} participants with valid opt-in data).
+              {conditionEarlyAccessResult
+                ? ` Condition effect: ${conditionEarlyAccessResult.effectSizeLabel}, p = ${formatP(conditionEarlyAccessResult.pValue)}, p(adj) = ${formatP(conditionEarlyAccessResult.adjustedP)}.`
+                : ' Condition effect could not be estimated due to limited data.'}
             </p>
 
             <h4>Exploratory: Godspeed Subscales</h4>
