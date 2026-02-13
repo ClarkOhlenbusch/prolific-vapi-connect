@@ -1,0 +1,45 @@
+[
+  {
+    "version": "1.1.8",
+    "release_date": "2026-02-13",
+    "description": "Improve System Design review with GitHub-style code diff UX and merged graph mode, and publish fresh dev comparison artifacts.",
+    "active_batch_label": "",
+    "release_status": "released",
+    "auto_mark_release_on_push": true,
+    "changes": [
+      {
+        "type": "added",
+        "description": "add GitHub-style System Design file diff viewer and merged graph mode",
+        "scope": "researcher",
+        "commit_hash": "9b514a1",
+        "pushed_at": "2026-02-13T00:36:41Z",
+        "details": {
+          "summary_simple": "System Design diff now shows side-by-side red/green code changes with expandable fullscreen review, plus merged graph mode.",
+          "changed_locations": [
+            "src/components/researcher/StudyMap.tsx",
+            "vite-changelog-plugin.js"
+          ],
+          "affected_users": "Researcher only",
+          "risk_notes": "Diff API route is dev-server middleware; restart local dev server if route is not available."
+        }
+      },
+      {
+        "type": "changed",
+        "description": "publish latest System Design artifacts for dev compare",
+        "scope": "researcher",
+        "commit_hash": "d0485e2",
+        "pushed_at": "2026-02-13T00:36:41Z",
+        "details": {
+          "summary_simple": "Published updated snapshot and diff artifacts for comparing current dev System Design state.",
+          "changed_locations": [
+            "public/system-design/manifest.json",
+            "docs/system-design/snapshots/system-design-snapshot-2026-02-13-003630-1.1.8.json",
+            "docs/system-design/diffs/system-design-diff-2026-02-13-003527-1.1.8-to-2026-02-13-003630-1.1.8.md"
+          ],
+          "affected_users": "Researcher only",
+          "risk_notes": "No participant-facing behavior changes."
+        }
+      }
+    ]
+  }
+]
