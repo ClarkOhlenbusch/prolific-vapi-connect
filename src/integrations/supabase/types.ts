@@ -49,8 +49,8 @@ export type Database = {
           change_type: string
           commit_hash: string | null
           created_at: string
-          details: Json | null
           description: string
+          details: Json | null
           display_order: number
           entry_id: string
           id: string
@@ -61,8 +61,8 @@ export type Database = {
           change_type: string
           commit_hash?: string | null
           created_at?: string
-          details?: Json | null
           description: string
+          details?: Json | null
           display_order?: number
           entry_id: string
           id?: string
@@ -73,8 +73,8 @@ export type Database = {
           change_type?: string
           commit_hash?: string | null
           created_at?: string
-          details?: Json | null
           description?: string
+          details?: Json | null
           display_order?: number
           entry_id?: string
           id?: string
@@ -322,25 +322,25 @@ export type Database = {
           batch_label: string | null
           call_attempt_number: number
           call_id: string
-          communication_style_feedback: string
+          communication_style_feedback: string | null
           created_at: string
-          e1: number
-          e1_position: number
-          e2: number
-          e2_position: number
-          e3: number
-          e3_position: number
-          e4: number
-          e4_position: number
-          e5: number
-          e5_position: number
-          e6: number
-          e6_position: number
+          e1: number | null
+          e1_position: number | null
+          e2: number | null
+          e2_position: number | null
+          e3: number | null
+          e3_position: number | null
+          e4: number | null
+          e4_position: number | null
+          e5: number | null
+          e5_position: number | null
+          e6: number | null
+          e6_position: number | null
           early_access_notes: string | null
           early_access_notify: boolean | null
-          experiment_feedback: string
+          experiment_feedback: string | null
           flagged: boolean
-          formality: number
+          formality: number | null
           godspeed_anthro_1: number | null
           godspeed_anthro_1_position: number | null
           godspeed_anthro_2: number | null
@@ -376,17 +376,20 @@ export type Database = {
           godspeed_like_5_position: number | null
           godspeed_like_total: number | null
           id: string
-          intention_1: number
-          intention_2: number
-          pets_er: number
-          pets_total: number
-          pets_ut: number
+          intention_1: number | null
+          intention_2: number | null
+          last_saved_at: string | null
+          last_step: string | null
+          pets_er: number | null
+          pets_total: number | null
+          pets_ut: number | null
           prolific_id: string
           researcher_notes: string | null
           researcher_notes_at: string | null
           reviewed_by_researcher: boolean
-          vapi_structured_output: Json | null
-          vapi_structured_output_at: string | null
+          session_token: string | null
+          submission_status: string
+          submitted_at: string | null
           tias_1: number | null
           tias_1_position: number | null
           tias_10: number | null
@@ -443,17 +446,17 @@ export type Database = {
           tipi_emotional_stability: number | null
           tipi_extraversion: number | null
           tipi_openness: number | null
-          u1: number
-          u1_position: number
-          u2: number
-          u2_position: number
-          u3: number
-          u3_position: number
-          u4: number
-          u4_position: number
+          u1: number | null
+          u1_position: number | null
+          u2: number | null
+          u2_position: number | null
+          u3: number | null
+          u3_position: number | null
+          u4: number | null
+          u4_position: number | null
           vapi_structured_output: Json | null
           vapi_structured_output_at: string | null
-          voice_assistant_feedback: string
+          voice_assistant_feedback: string | null
         }
         Insert: {
           ai_formality_calculated_at?: string | null
@@ -466,25 +469,25 @@ export type Database = {
           batch_label?: string | null
           call_attempt_number?: number
           call_id: string
-          communication_style_feedback?: string
+          communication_style_feedback?: string | null
           created_at?: string
-          e1: number
-          e1_position: number
-          e2: number
-          e2_position: number
-          e3: number
-          e3_position: number
-          e4: number
-          e4_position: number
-          e5: number
-          e5_position: number
-          e6: number
-          e6_position: number
+          e1?: number | null
+          e1_position?: number | null
+          e2?: number | null
+          e2_position?: number | null
+          e3?: number | null
+          e3_position?: number | null
+          e4?: number | null
+          e4_position?: number | null
+          e5?: number | null
+          e5_position?: number | null
+          e6?: number | null
+          e6_position?: number | null
           early_access_notes?: string | null
           early_access_notify?: boolean | null
-          experiment_feedback: string
+          experiment_feedback?: string | null
           flagged?: boolean
-          formality: number
+          formality?: number | null
           godspeed_anthro_1?: number | null
           godspeed_anthro_1_position?: number | null
           godspeed_anthro_2?: number | null
@@ -520,17 +523,20 @@ export type Database = {
           godspeed_like_5_position?: number | null
           godspeed_like_total?: number | null
           id?: string
-          intention_1: number
-          intention_2: number
-          pets_er: number
-          pets_total: number
-          pets_ut: number
+          intention_1?: number | null
+          intention_2?: number | null
+          last_saved_at?: string | null
+          last_step?: string | null
+          pets_er?: number | null
+          pets_total?: number | null
+          pets_ut?: number | null
           prolific_id: string
           researcher_notes?: string | null
           researcher_notes_at?: string | null
           reviewed_by_researcher?: boolean
-          vapi_structured_output?: Json | null
-          vapi_structured_output_at?: string | null
+          session_token?: string | null
+          submission_status?: string
+          submitted_at?: string | null
           tias_1?: number | null
           tias_1_position?: number | null
           tias_10?: number | null
@@ -587,17 +593,17 @@ export type Database = {
           tipi_emotional_stability?: number | null
           tipi_extraversion?: number | null
           tipi_openness?: number | null
-          u1: number
-          u1_position: number
-          u2: number
-          u2_position: number
-          u3: number
-          u3_position: number
-          u4: number
-          u4_position: number
+          u1?: number | null
+          u1_position?: number | null
+          u2?: number | null
+          u2_position?: number | null
+          u3?: number | null
+          u3_position?: number | null
+          u4?: number | null
+          u4_position?: number | null
           vapi_structured_output?: Json | null
           vapi_structured_output_at?: string | null
-          voice_assistant_feedback: string
+          voice_assistant_feedback?: string | null
         }
         Update: {
           ai_formality_calculated_at?: string | null
@@ -610,25 +616,25 @@ export type Database = {
           batch_label?: string | null
           call_attempt_number?: number
           call_id?: string
-          communication_style_feedback?: string
+          communication_style_feedback?: string | null
           created_at?: string
-          e1?: number
-          e1_position?: number
-          e2?: number
-          e2_position?: number
-          e3?: number
-          e3_position?: number
-          e4?: number
-          e4_position?: number
-          e5?: number
-          e5_position?: number
-          e6?: number
-          e6_position?: number
+          e1?: number | null
+          e1_position?: number | null
+          e2?: number | null
+          e2_position?: number | null
+          e3?: number | null
+          e3_position?: number | null
+          e4?: number | null
+          e4_position?: number | null
+          e5?: number | null
+          e5_position?: number | null
+          e6?: number | null
+          e6_position?: number | null
           early_access_notes?: string | null
           early_access_notify?: boolean | null
-          experiment_feedback?: string
+          experiment_feedback?: string | null
           flagged?: boolean
-          formality?: number
+          formality?: number | null
           godspeed_anthro_1?: number | null
           godspeed_anthro_1_position?: number | null
           godspeed_anthro_2?: number | null
@@ -664,17 +670,20 @@ export type Database = {
           godspeed_like_5_position?: number | null
           godspeed_like_total?: number | null
           id?: string
-          intention_1?: number
-          intention_2?: number
-          pets_er?: number
-          pets_total?: number
-          pets_ut?: number
+          intention_1?: number | null
+          intention_2?: number | null
+          last_saved_at?: string | null
+          last_step?: string | null
+          pets_er?: number | null
+          pets_total?: number | null
+          pets_ut?: number | null
           prolific_id?: string
           researcher_notes?: string | null
           researcher_notes_at?: string | null
           reviewed_by_researcher?: boolean
-          vapi_structured_output?: Json | null
-          vapi_structured_output_at?: string | null
+          session_token?: string | null
+          submission_status?: string
+          submitted_at?: string | null
           tias_1?: number | null
           tias_1_position?: number | null
           tias_10?: number | null
@@ -731,44 +740,17 @@ export type Database = {
           tipi_emotional_stability?: number | null
           tipi_extraversion?: number | null
           tipi_openness?: number | null
-          u1?: number
-          u1_position?: number
-          u2?: number
-          u2_position?: number
-          u3?: number
-          u3_position?: number
-          u4?: number
-          u4_position?: number
+          u1?: number | null
+          u1_position?: number | null
+          u2?: number | null
+          u2_position?: number | null
+          u3?: number | null
+          u3_position?: number | null
+          u4?: number | null
+          u4_position?: number | null
           vapi_structured_output?: Json | null
           vapi_structured_output_at?: string | null
-          voice_assistant_feedback?: string
-        }
-        Relationships: []
-      }
-      vapi_structured_output_runs: {
-        Row: {
-          id: string
-          workflow_id: string
-          call_ids: string[]
-          status: string
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          workflow_id: string
-          call_ids: string[]
-          status?: string
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          workflow_id?: string
-          call_ids?: string[]
-          status?: string
-          created_at?: string
-          updated_at?: string
+          voice_assistant_feedback?: string | null
         }
         Relationships: []
       }
@@ -1325,6 +1307,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_auto_mark_release_on_push: { Args: never; Returns: boolean }
       get_latest_changelog_version: { Args: never; Returns: string }
       get_next_condition_assignment: {
         Args: { p_prolific_id: string }
