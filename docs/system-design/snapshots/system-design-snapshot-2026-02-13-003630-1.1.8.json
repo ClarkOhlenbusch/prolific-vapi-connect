@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "snapshot_id": "2026-02-13-003630-1.1.8",
+  "generated_at": "2026-02-13T00:36:30.335Z",
+  "version": "1.1.8",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": true,
+  "auto_mark_release_on_push_source": "experiment_settings",
+  "reason": "dev push artifacts",
+  "relevant_changed_files": [],
+  "relevant_files": [
+    {
+      "path": "src/App.tsx",
+      "sha256": "4353f094411164058ee8b4a9d23283465ae709b8206a650e838b39f10ba0a198",
+      "bytes": 7001
+    },
+    {
+      "path": "src/components/researcher/StudyMap.tsx",
+      "sha256": "2e1587362d6f4ea6494de9fc61dece97765472a8dd2fa9cb9f9a70ef16d63be4",
+      "bytes": 73927
+    },
+    {
+      "path": "src/hooks/usePageTracking.ts",
+      "sha256": "0a43018e558aad7f6c7ecbe0a2c46b2701cf72c9c01f69a98c47c0a156128ac4",
+      "bytes": 2394
+    },
+    {
+      "path": "src/lib/study-map/masterDiagram.ts",
+      "sha256": "4c3c94498eaf00780ccdff35613630f9d2192737f597de66080a642daad98ad0",
+      "bytes": 6103
+    },
+    {
+      "path": "src/pages/Complete.tsx",
+      "sha256": "aa9e831bc031278358ed8a348fa84211e3efdc5e4013603f93b80c56b57ab907",
+      "bytes": 2961
+    },
+    {
+      "path": "src/pages/Consent.tsx",
+      "sha256": "7df0c5757acc685859bb66a28c9b247ffa551cea5899d05e5ecb8836df362215",
+      "bytes": 10422
+    },
+    {
+      "path": "src/pages/Debriefing.tsx",
+      "sha256": "2b73b0978278411a637c4e55e3454d89f37b766c6660c43fd1c6435cd985bdd2",
+      "bytes": 5715
+    },
+    {
+      "path": "src/pages/EarlyAccessSignup.tsx",
+      "sha256": "43b09cc3023b0bbd57f8b3c75b829bb0b249a97d485e3815808d52fcac77ee5a",
+      "bytes": 5886
+    },
+    {
+      "path": "src/pages/FeedbackQuestionnaire.tsx",
+      "sha256": "3df1fe9bc8e92983a4e00c67450b8d07745996a4a5484aa2939ffa2913f1ba7b",
+      "bytes": 85381
+    },
+    {
+      "path": "src/pages/GodspeedQuestionnaire.tsx",
+      "sha256": "bba9bdac5f02f605359f46dccb4c834811454677cc8d46eb7ff68eca0cb734f0",
+      "bytes": 20058
+    },
+    {
+      "path": "src/pages/NoConsent.tsx",
+      "sha256": "024473ccbbcb4d3e9e0b5351281f7908378d3348ba74de2643f97815198d5b85",
+      "bytes": 2825
+    },
+    {
+      "path": "src/pages/ProlificId.tsx",
+      "sha256": "7f09b985db87e97a7240b0da26038682adfd3d615705e303fc7a90e86b30fe06",
+      "bytes": 5849
+    },
+    {
+      "path": "src/pages/Questionnaire.tsx",
+      "sha256": "554c22ba18c7c56a519715bbae28fc168c66d7002ab635cfcc548bff03080cff",
+      "bytes": 13200
+    },
+    {
+      "path": "src/pages/ResearcherChangelog.tsx",
+      "sha256": "6176192575f743d7f97da28406dadd68c2cf7f727d7e3f1c322d4969db9d1727",
+      "bytes": 113974
+    },
+    {
+      "path": "src/pages/ResearcherDashboard.tsx",
+      "sha256": "e0c610a4cc16ec0589c78372a15bb52552fe7cdd0d4033668b616ac7d5719008",
+      "bytes": 12662
+    },
+    {
+      "path": "src/pages/TiasQuestionnaire.tsx",
+      "sha256": "03f9f53d55cd525515d524cdf22d9a5cdaf750f67bd5fcd6efd490e03c3679ec",
+      "bytes": 13024
+    },
+    {
+      "path": "src/pages/TipiQuestionnaire.tsx",
+      "sha256": "c26976667b9ae22523024d7a8769895b3706e773bedd9e2aae4f44216b9c83d0",
+      "bytes": 14100
+    },
+    {
+      "path": "supabase/functions/create-researcher-session/index.ts",
+      "sha256": "08ad0d3d85f6e96464c68d33ad4cf2c8b41c5ca62a98c976e5d51fca12864770",
+      "bytes": 5354
+    },
+    {
+      "path": "supabase/functions/submit-early-access/index.ts",
+      "sha256": "7dda562cdef481b22a5bfcf6e8bde9b9366b0fb22d088268d849eb8cac1ba98b",
+      "bytes": 3614
+    },
+    {
+      "path": "supabase/functions/submit-questionnaire/index.ts",
+      "sha256": "d86fcd7421e835a1cd5db7575464c6965420ef3c4c0372ccbe7ff5cf001803b1",
+      "bytes": 22879
+    },
+    {
+      "path": "supabase/functions/upsert-experiment-draft/index.ts",
+      "sha256": "409da88f7b4510973bab8a1aaba9d3266d39528daf5bb92af0b0b6d021d16258",
+      "bytes": 4548
+    }
+  ],
+  "diagram_source": "src/lib/study-map/masterDiagram.ts",
+  "git": {
+    "branch": "dev",
+    "head": "9b514a1",
+    "dirty": true
+  }
+}
