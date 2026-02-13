@@ -1,0 +1,27 @@
+[
+  {
+    "version": "1.1.8",
+    "release_date": "2026-02-13",
+    "description": "Make alternating balance status strictly follow submitted responses in selected batches and add in-page diagnostics.",
+    "active_batch_label": "",
+    "release_status": "released",
+    "auto_mark_release_on_push": true,
+    "changes": [
+      {
+        "type": "changed",
+        "description": "align alternating balance with submitted batch-scoped counts",
+        "scope": "researcher",
+        "commit_hash": "ba0293f",
+        "pushed_at": "2026-02-13T01:06:47Z",
+        "details": {
+          "summary_simple": "Alternating balance now uses submitted responses only, with explicit batch scope controls and a diagnostic for assignment vs submitted drift.",
+          "changed_locations": [
+            "src/components/researcher/ExperimentSettings.tsx"
+          ],
+          "affected_users": "Researcher only",
+          "risk_notes": "No participant flow changes. Counts can still differ from assignment counters when there is dropout, now shown explicitly in diagnostics."
+        }
+      }
+    ]
+  }
+]
