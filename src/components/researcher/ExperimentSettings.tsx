@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useResearcherAuth } from "@/contexts/ResearcherAuthContext";
-import { RefreshCw, RotateCcw, Users, Filter } from "lucide-react";
+import { RefreshCw, RotateCcw, Users, Check } from "lucide-react";
 import { BatchManager } from "./BatchManager";
 import { fetchArchivedFilters } from "@/lib/archived-responses";
 import type { SourceFilterValue } from "./GlobalSourceFilter";
@@ -143,6 +143,7 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
       const { data, error } = await supabase
         .from("experiment_responses")
         .select("batch_label")
+        .eq("submission_status", "submitted")
         .not("batch_label", "is", null);
 
       if (error) {
@@ -162,7 +163,8 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
     try {
       let query = supabase
         .from("experiment_responses")
-        .select("prolific_id, call_id, assistant_type, batch_label");
+        .select("prolific_id, call_id, assistant_type, batch_label")
+        .eq("submission_status", "submitted");
 
       if (selectedBatches.length > 0) {
         query = query.in("batch_label", selectedBatches);
@@ -450,6 +452,9 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
   }
 
   const nextCondition = getNextCondition();
+  const balanceFormal = batchCounts.formal;
+  const balanceInformal = batchCounts.informal;
+  const balanceTotal = balanceFormal + balanceInformal;
 
   return (
     <div className="space-y-6">
@@ -496,49 +501,136 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Assignment Counters */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="p-4 border rounded-lg bg-muted/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-base font-medium">Formal Assignments</Label>
-                    <Badge variant="outline" className="text-lg">{formalCount}</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Real participants assigned to formal
-                  </p>
-                </div>
-                <div className="p-4 border rounded-lg bg-muted/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-base font-medium">Informal Assignments</Label>
-                    <Badge variant="outline" className="text-lg">{informalCount}</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Real participants assigned to informal
-                  </p>
-                </div>
-              </div>
-
               {/* Balance indicator */}
               <div className="p-4 border rounded-lg">
                 <Label className="text-base font-medium mb-2 block">Balance Status</Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Based on completed responses {selectedBatches.length > 0 ? "in selected batch(es)" : "across all batches"}.
+                </p>
                 <div className="flex items-center gap-0">
                   <div 
                     className="bg-blue-500 h-4 rounded-l transition-all" 
                     style={{ 
-                      width: `${formalCount + informalCount > 0 ? (formalCount / (formalCount + informalCount)) * 100 : 50}%` 
+                      width: `${balanceTotal > 0 ? (balanceFormal / balanceTotal) * 100 : 50}%`
                     }} 
                   />
                   <div 
                     className="bg-orange-500 h-4 rounded-r transition-all" 
                     style={{ 
-                      width: `${formalCount + informalCount > 0 ? (informalCount / (formalCount + informalCount)) * 100 : 50}%` 
+                      width: `${balanceTotal > 0 ? (balanceInformal / balanceTotal) * 100 : 50}%`
                     }} 
                   />
                 </div>
                 <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-                  <span>Formal: {formalCount + informalCount > 0 ? Math.round((formalCount / (formalCount + informalCount)) * 100) : 50}%</span>
-                  <span>Informal: {formalCount + informalCount > 0 ? Math.round((informalCount / (formalCount + informalCount)) * 100) : 50}%</span>
+                  <span>Formal: {balanceTotal > 0 ? Math.round((balanceFormal / balanceTotal) * 100) : 50}%</span>
+                  <span>Informal: {balanceTotal > 0 ? Math.round((balanceInformal / balanceTotal) * 100) : 50}%</span>
                 </div>
+              </div>
+
+              {/* Batch scope for balance */}
+              <div className="p-4 border rounded-lg space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <Label>Batch Scope for Balance</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Click batch chips to toggle. Leave none selected to include all batches.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedBatches(availableBatches)}
+                      disabled={availableBatches.length === 0}
+                    >
+                      Select all
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedBatches([])}
+                      disabled={selectedBatches.length === 0}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {availableBatches.length === 0 ? (
+                    <span className="text-sm text-muted-foreground">No batches found</span>
+                  ) : (
+                    availableBatches.map((batch) => (
+                      <Badge
+                        key={batch}
+                        variant={selectedBatches.includes(batch) ? "default" : "outline"}
+                        className="cursor-pointer"
+                        onClick={() => toggleBatchSelection(batch)}
+                      >
+                        {selectedBatches.includes(batch) ? <Check className="h-3 w-3 mr-1" /> : null}
+                        {batch}
+                      </Badge>
+                    ))
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {selectedBatches.length > 0
+                    ? `${selectedBatches.length} batch(es) selected`
+                    : "All batches included"}
+                </p>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-base font-medium">Formal Completed</Label>
+                      {isLoadingBatchCounts ? (
+                        <Skeleton className="h-6 w-12" />
+                      ) : (
+                        <Badge variant="outline" className="text-lg">{batchCounts.formal}</Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedBatches.length > 0 ? `In selected batch(es)` : "All batches"}
+                    </p>
+                  </div>
+                  <div className="p-4 border rounded-lg bg-orange-50 dark:bg-orange-950/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-base font-medium">Informal Completed</Label>
+                      {isLoadingBatchCounts ? (
+                        <Skeleton className="h-6 w-12" />
+                      ) : (
+                        <Badge variant="outline" className="text-lg">{batchCounts.informal}</Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedBatches.length > 0 ? `In selected batch(es)` : "All batches"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Diagnostic: assignment vs submitted */}
+              <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
+                <div>
+                  <Label className="text-base font-medium">Assignment vs Submitted (Diagnostic)</Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Offsetting and alternating apply to assignments. Submitted counts can still drift because of incomplete sessions.
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded border bg-background p-3">
+                    <p className="text-sm font-medium mb-1">Assigned (global counters)</p>
+                    <p className="text-xs text-muted-foreground">Formal: {formalCount} · Informal: {informalCount}</p>
+                  </div>
+                  <div className="rounded border bg-background p-3">
+                    <p className="text-sm font-medium mb-1">Submitted (current batch scope)</p>
+                    <p className="text-xs text-muted-foreground">
+                      Formal: {batchCounts.formal} · Informal: {batchCounts.informal}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Gap (submitted - assigned): Formal {batchCounts.formal - formalCount >= 0 ? "+" : ""}{batchCounts.formal - formalCount}, Informal {batchCounts.informal - informalCount >= 0 ? "+" : ""}{batchCounts.informal - informalCount}
+                </p>
               </div>
 
               {/* Offset Input */}
@@ -619,77 +711,6 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
             </CardContent>
           </Card>
 
-          {/* Completed Responses by Batch */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Filter className="h-5 w-5" />
-                Completed Responses by Batch
-              </CardTitle>
-              <CardDescription>
-                View actual completed response counts filtered by batch. Counts respect the Data Source filter (Participants / Researchers / All) at the top of the page.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Filter by Batch(es)</Label>
-                <div className="flex flex-wrap gap-2">
-                  {availableBatches.length === 0 ? (
-                    <span className="text-sm text-muted-foreground">No batches found</span>
-                  ) : (
-                    availableBatches.map((batch) => (
-                      <Badge
-                        key={batch}
-                        variant={selectedBatches.includes(batch) ? "default" : "outline"}
-                        className="cursor-pointer"
-                        onClick={() => toggleBatchSelection(batch)}
-                      >
-                        {batch}
-                      </Badge>
-                    ))
-                  )}
-                </div>
-                {selectedBatches.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedBatches([])}
-                  >
-                    Clear filter
-                  </Button>
-                )}
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/30">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-base font-medium">Formal Completed</Label>
-                    {isLoadingBatchCounts ? (
-                      <Skeleton className="h-6 w-12" />
-                    ) : (
-                      <Badge variant="outline" className="text-lg">{batchCounts.formal}</Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedBatches.length > 0 ? `In selected batch(es)` : "All batches"}
-                  </p>
-                </div>
-                <div className="p-4 border rounded-lg bg-orange-50 dark:bg-orange-950/30">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-base font-medium">Informal Completed</Label>
-                    {isLoadingBatchCounts ? (
-                      <Skeleton className="h-6 w-12" />
-                    ) : (
-                      <Badge variant="outline" className="text-lg">{batchCounts.informal}</Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedBatches.length > 0 ? `In selected batch(es)` : "All batches"}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* Static Mode Content */}
