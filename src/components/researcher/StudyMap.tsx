@@ -16,8 +16,9 @@ import jsPDF from "jspdf";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Eye, ExternalLink, Navigation, Route } from "lucide-react";
+import { Download, Eye, ExternalLink, Navigation, RefreshCw, Route } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   MASTER_STUDY_MAP_MERMAID,
@@ -96,6 +97,17 @@ type DiffNodeStatusBuckets = {
   changed: Set<string>;
   removed: Set<string>;
   all: Set<string>;
+};
+
+type SideBySideDiffRow = {
+  kind: "hunk" | "line";
+  hunkHeader?: string;
+  leftType?: "context" | "removed" | "empty";
+  rightType?: "context" | "added" | "empty";
+  leftLineNumber?: number | null;
+  rightLineNumber?: number | null;
+  leftText?: string;
+  rightText?: string;
 };
 
 const GROUP_BASE_POSITIONS: Record<string, { x: number; y: number }> = {
@@ -476,11 +488,285 @@ const buildDiffFlowElements = (
   return { nodes, edges };
 };
 
+const buildMergedDiffFlowElements = (
+  base: { nodes: Node<FlowNodeData>[]; edges: Edge[] },
+  statuses: { before: DiffNodeStatusBuckets; after: DiffNodeStatusBuckets },
+  focusedNodeIds: Set<string>,
+  showOnlyChanged: boolean,
+): { nodes: Node<FlowNodeData>[]; edges: Edge[] } => {
+  const added = statuses.after.added;
+  const removed = statuses.before.removed;
+  const changed = new Set<string>([...statuses.before.changed, ...statuses.after.changed]);
+  const all = new Set<string>([...statuses.before.all, ...statuses.after.all]);
+  const visibleNodeIds = new Set<string>();
+
+  const nodes = base.nodes
+    .filter((node) => node.id === "MASTER" || !showOnlyChanged || all.has(node.id))
+    .map((node) => {
+      visibleNodeIds.add(node.id);
+
+      const isFocused = focusedNodeIds.has(node.id);
+      const isRemoved = removed.has(node.id);
+      const isAdded = added.has(node.id);
+      const isChanged = changed.has(node.id);
+
+      let borderColor = (node.style?.border as string) || "#94a3b8";
+      let background = (node.style?.background as string) || "#ffffff";
+      let boxShadow = "none";
+      let borderWidth = "1px";
+      let borderStyle: "solid" | "dashed" = "solid";
+
+      if (isRemoved) {
+        borderColor = "#dc2626";
+        background = "#fee2e2";
+        borderWidth = "2px";
+        borderStyle = "dashed";
+      } else if (isAdded) {
+        borderColor = "#16a34a";
+        background = "#dcfce7";
+        borderWidth = "2px";
+      } else if (isChanged) {
+        borderColor = "#d97706";
+        background = "#fef3c7";
+        borderWidth = "2px";
+      }
+
+      if (isFocused) {
+        borderColor = "#2563eb";
+        borderWidth = "2px";
+        boxShadow = "0 0 0 2px rgba(37, 99, 235, 0.35)";
+      }
+
+      return {
+        ...node,
+        style: {
+          ...node.style,
+          border: `${borderWidth} ${borderStyle} ${borderColor}`,
+          background,
+          boxShadow,
+          opacity: showOnlyChanged && node.id !== "MASTER" && !all.has(node.id) ? 0.35 : 1,
+        },
+      };
+    });
+
+  const edges = base.edges
+    .filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
+    .filter((edge) => {
+      if (!showOnlyChanged) return true;
+      return (
+        all.has(edge.source) ||
+        all.has(edge.target) ||
+        focusedNodeIds.has(edge.source) ||
+        focusedNodeIds.has(edge.target)
+      );
+    })
+    .map((edge) => {
+      const touchesRemoved = removed.has(edge.source) || removed.has(edge.target);
+      const touchesAdded = added.has(edge.source) || added.has(edge.target);
+      const touchesChanged = changed.has(edge.source) || changed.has(edge.target);
+      const touchesFocused = focusedNodeIds.has(edge.source) || focusedNodeIds.has(edge.target);
+
+      let stroke = "#64748b";
+      let strokeWidth = 1.4;
+      let opacity = showOnlyChanged ? 0.85 : 0.4;
+      if (touchesRemoved) {
+        stroke = "#dc2626";
+        strokeWidth = 2;
+        opacity = 0.95;
+      } else if (touchesAdded) {
+        stroke = "#16a34a";
+        strokeWidth = 2;
+        opacity = 0.95;
+      } else if (touchesChanged) {
+        stroke = "#d97706";
+        strokeWidth = 2;
+        opacity = 0.95;
+      }
+      if (touchesFocused) {
+        stroke = "#2563eb";
+        strokeWidth = 2.4;
+        opacity = 1;
+      }
+
+      return {
+        ...edge,
+        animated: edge.source === "MASTER" || touchesFocused,
+        style: {
+          ...(edge.style || {}),
+          stroke,
+          strokeWidth,
+          opacity,
+        },
+      };
+    });
+
+  return { nodes, edges };
+};
+
 const triggerDownload = (href: string, filename: string) => {
   const anchor = document.createElement("a");
   anchor.href = href;
   anchor.download = filename;
   anchor.click();
+};
+
+const parseUnifiedDiffToRows = (diffText: string): SideBySideDiffRow[] => {
+  if (!diffText.trim()) return [];
+
+  const rows: SideBySideDiffRow[] = [];
+  const lines = diffText.split("\n");
+  let i = 0;
+  while (i < lines.length && !lines[i].startsWith("@@")) i += 1;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.startsWith("@@")) {
+      i += 1;
+      continue;
+    }
+
+    rows.push({ kind: "hunk", hunkHeader: line });
+    const match = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    let leftLine = match ? Number(match[1]) : 0;
+    let rightLine = match ? Number(match[2]) : 0;
+    i += 1;
+
+    while (i < lines.length && !lines[i].startsWith("@@")) {
+      const current = lines[i];
+      if (!current || current.startsWith("\\ No newline")) {
+        i += 1;
+        continue;
+      }
+
+      if (current.startsWith(" ")) {
+        const text = current.slice(1);
+        rows.push({
+          kind: "line",
+          leftType: "context",
+          rightType: "context",
+          leftLineNumber: leftLine++,
+          rightLineNumber: rightLine++,
+          leftText: text,
+          rightText: text,
+        });
+        i += 1;
+        continue;
+      }
+
+      if (current.startsWith("-")) {
+        const removed: string[] = [];
+        while (i < lines.length && lines[i].startsWith("-")) {
+          removed.push(lines[i].slice(1));
+          i += 1;
+        }
+
+        const added: string[] = [];
+        while (i < lines.length && lines[i].startsWith("+")) {
+          added.push(lines[i].slice(1));
+          i += 1;
+        }
+
+        const pairCount = Math.max(removed.length, added.length);
+        for (let idx = 0; idx < pairCount; idx += 1) {
+          const leftText = removed[idx];
+          const rightText = added[idx];
+          rows.push({
+            kind: "line",
+            leftType: leftText != null ? "removed" : "empty",
+            rightType: rightText != null ? "added" : "empty",
+            leftLineNumber: leftText != null ? leftLine++ : null,
+            rightLineNumber: rightText != null ? rightLine++ : null,
+            leftText: leftText ?? "",
+            rightText: rightText ?? "",
+          });
+        }
+        continue;
+      }
+
+      if (current.startsWith("+")) {
+        const added: string[] = [];
+        while (i < lines.length && lines[i].startsWith("+")) {
+          added.push(lines[i].slice(1));
+          i += 1;
+        }
+        for (const text of added) {
+          rows.push({
+            kind: "line",
+            leftType: "empty",
+            rightType: "added",
+            leftLineNumber: null,
+            rightLineNumber: rightLine++,
+            leftText: "",
+            rightText: text,
+          });
+        }
+        continue;
+      }
+
+      i += 1;
+    }
+  }
+
+  return rows;
+};
+
+const DiffPane = ({
+  rows,
+  compact = false,
+}: {
+  rows: SideBySideDiffRow[];
+  compact?: boolean;
+}) => {
+  const lineClass = (type: "context" | "removed" | "added" | "empty" | undefined) => {
+    if (type === "removed") return "bg-red-50";
+    if (type === "added") return "bg-green-50";
+    if (type === "empty") return "bg-muted/30";
+    return "";
+  };
+
+  return (
+    <div className={`overflow-auto border rounded ${compact ? "max-h-[240px]" : "h-full"}`}>
+      <table className="w-full border-collapse text-[11px] font-mono">
+        <thead className="sticky top-0 bg-background z-10">
+          <tr>
+            <th className="w-14 px-2 py-1 border-b text-left text-muted-foreground">L#</th>
+            <th className="px-2 py-1 border-b text-left text-muted-foreground">Before</th>
+            <th className="w-14 px-2 py-1 border-b text-left text-muted-foreground">R#</th>
+            <th className="px-2 py-1 border-b text-left text-muted-foreground">After</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, idx) => {
+            if (row.kind === "hunk") {
+              return (
+                <tr key={`h-${idx}`}>
+                  <td colSpan={4} className="px-2 py-1 bg-blue-50 text-blue-800 border-y">
+                    {row.hunkHeader}
+                  </td>
+                </tr>
+              );
+            }
+            return (
+              <tr key={`l-${idx}`}>
+                <td className={`px-2 py-0.5 border-b align-top text-muted-foreground ${lineClass(row.leftType)}`}>
+                  {row.leftLineNumber ?? ""}
+                </td>
+                <td className={`px-2 py-0.5 border-b align-top whitespace-pre-wrap break-words ${lineClass(row.leftType)}`}>
+                  {row.leftText}
+                </td>
+                <td className={`px-2 py-0.5 border-b align-top text-muted-foreground ${lineClass(row.rightType)}`}>
+                  {row.rightLineNumber ?? ""}
+                </td>
+                <td className={`px-2 py-0.5 border-b align-top whitespace-pre-wrap break-words ${lineClass(row.rightType)}`}>
+                  {row.rightText}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 };
 
 const StudyMap = () => {
@@ -494,6 +780,7 @@ const StudyMap = () => {
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [selectedDiffNodeId, setSelectedDiffNodeId] = useState<string | null>(null);
   const [showOnlyChangedNodes, setShowOnlyChangedNodes] = useState(false);
+  const [diffLayout, setDiffLayout] = useState<"split" | "merged">("split");
   const [syncDiffViewport, setSyncDiffViewport] = useState(true);
   const [systemDesignManifest, setSystemDesignManifest] = useState<SystemDesignManifest | null>(null);
   const [selectedBeforeSnapshotPath, setSelectedBeforeSnapshotPath] = useState<string | null>(null);
@@ -504,6 +791,11 @@ const StudyMap = () => {
   const [afterSnapshot, setAfterSnapshot] = useState<SystemDesignSnapshot | null>(null);
   const [snapshotCache, setSnapshotCache] = useState<Record<string, SystemDesignSnapshot>>({});
   const [isManifestLoading, setIsManifestLoading] = useState(true);
+  const [isGeneratingSnapshot, setIsGeneratingSnapshot] = useState(false);
+  const [selectedFileDiff, setSelectedFileDiff] = useState<string>("");
+  const [isLoadingSelectedFileDiff, setIsLoadingSelectedFileDiff] = useState(false);
+  const [selectedFileDiffError, setSelectedFileDiffError] = useState<string | null>(null);
+  const [isDiffDialogOpen, setIsDiffDialogOpen] = useState(false);
   const mermaidHostRef = useRef<HTMLDivElement | null>(null);
   const mermaidViewRef = useRef<HTMLDivElement | null>(null);
   const flowViewRef = useRef<HTMLDivElement | null>(null);
@@ -577,7 +869,7 @@ const StudyMap = () => {
         return;
       }
       try {
-        const responses = await Promise.all(
+        const responses = await Promise.allSettled(
           snapshotOptions.map(async (path) => {
             const href = toSystemDesignAssetHref(path);
             if (!href) return null;
@@ -589,8 +881,9 @@ const StudyMap = () => {
         );
         const nextCache: Record<string, SystemDesignSnapshot> = {};
         for (const row of responses) {
-          if (!row) continue;
-          nextCache[row.path] = row.snapshot;
+          if (row.status !== "fulfilled") continue;
+          if (!row.value) continue;
+          nextCache[row.value.path] = row.value.snapshot;
         }
         setSnapshotCache(nextCache);
       } catch {
@@ -603,15 +896,16 @@ const StudyMap = () => {
 
   const snapshotRecords = useMemo(
     () =>
-      snapshotOptions.map((path) => {
-        const snapshot = snapshotCache[path] || null;
-        return {
+      snapshotOptions.flatMap((path) => {
+        const snapshot = snapshotCache[path];
+        if (!snapshot) return [];
+        return [{
           path,
-          snapshotId: snapshot?.snapshot_id || snapshotPathToLabel(path),
-          generatedAt: snapshot?.generated_at || null,
+          snapshotId: snapshot.snapshot_id || snapshotPathToLabel(path),
+          generatedAt: snapshot.generated_at || null,
           branch: getSnapshotBranch(snapshot),
-          version: snapshot?.version || null,
-        };
+          version: snapshot.version || null,
+        }];
       }),
     [snapshotCache, snapshotOptions],
   );
@@ -682,13 +976,55 @@ const StudyMap = () => {
   }, [beforeSnapshotOptions, selectedBeforeSnapshotPath]);
 
   useEffect(() => {
-    setAfterSnapshot(
-      selectedAfterSnapshotPath ? (snapshotCache[selectedAfterSnapshotPath] || null) : null,
-    );
-    setBeforeSnapshot(
-      selectedBeforeSnapshotPath ? (snapshotCache[selectedBeforeSnapshotPath] || null) : null,
-    );
-  }, [selectedAfterSnapshotPath, selectedBeforeSnapshotPath, snapshotCache]);
+    const loadSelectedSnapshots = async () => {
+      if (!selectedAfterSnapshotPath) {
+        setAfterSnapshot(null);
+        setBeforeSnapshot(null);
+        return;
+      }
+
+      const cachedAfter = snapshotCache[selectedAfterSnapshotPath];
+      if (cachedAfter) {
+        setAfterSnapshot(cachedAfter);
+      } else {
+        try {
+          const href = toSystemDesignAssetHref(selectedAfterSnapshotPath);
+          if (!href) {
+            setAfterSnapshot(null);
+          } else {
+            const response = await fetch(href);
+            setAfterSnapshot(response.ok ? ((await response.json()) as SystemDesignSnapshot) : null);
+          }
+        } catch {
+          setAfterSnapshot(null);
+        }
+      }
+
+      if (!selectedBeforeSnapshotPath) {
+        setBeforeSnapshot(null);
+        return;
+      }
+
+      const cachedBefore = snapshotCache[selectedBeforeSnapshotPath];
+      if (cachedBefore) {
+        setBeforeSnapshot(cachedBefore);
+      } else {
+        try {
+          const href = toSystemDesignAssetHref(selectedBeforeSnapshotPath);
+          if (!href) {
+            setBeforeSnapshot(null);
+          } else {
+            const response = await fetch(href);
+            setBeforeSnapshot(response.ok ? ((await response.json()) as SystemDesignSnapshot) : null);
+          }
+        } catch {
+          setBeforeSnapshot(null);
+        }
+      }
+    };
+
+    void loadSelectedSnapshots();
+  }, [selectedAfterSnapshotPath, selectedBeforeSnapshotPath, snapshotCache, toSystemDesignAssetHref]);
 
   const selectedNode = useMemo(
     () => flowElements.nodes.find((node) => node.id === selectedNodeId) || null,
@@ -814,6 +1150,17 @@ const StudyMap = () => {
     [diffBaseFlowElements, diffNodeStatuses.after, focusedDiffNodeIds, showOnlyChangedNodes],
   );
 
+  const mergedDiffFlowElements = useMemo(
+    () =>
+      buildMergedDiffFlowElements(
+        diffBaseFlowElements,
+        diffNodeStatuses,
+        focusedDiffNodeIds,
+        showOnlyChangedNodes,
+      ),
+    [diffBaseFlowElements, diffNodeStatuses, focusedDiffNodeIds, showOnlyChangedNodes],
+  );
+
   const selectedDiffNode = useMemo(() => {
     if (!selectedDiffNodeId) return null;
     return parsedDiagram.nodes.find((node) => node.id === selectedDiffNodeId) || null;
@@ -825,6 +1172,11 @@ const StudyMap = () => {
       (edge) => edge.source === selectedDiffNodeId || edge.target === selectedDiffNodeId,
     );
   }, [parsedDiagram.edges, selectedDiffNodeId]);
+
+  const selectedDiffRows = useMemo(
+    () => parseUnifiedDiffToRows(selectedFileDiff),
+    [selectedFileDiff],
+  );
 
   useEffect(() => {
     mermaid.initialize({
@@ -897,6 +1249,42 @@ const StudyMap = () => {
       setSelectedDiffNodeId((current) => current ?? selectedDiffEntry.nodeIds[0]);
     }
   }, [selectedDiffEntry]);
+
+  useEffect(() => {
+    const loadSelectedFileDiff = async () => {
+      setSelectedFileDiff("");
+      setSelectedFileDiffError(null);
+      if (!selectedDiffEntry) return;
+
+      const beforeHead = beforeSnapshot?.git?.head?.trim() || "";
+      const afterHead = afterSnapshot?.git?.head?.trim() || "";
+      if (!beforeHead || !afterHead) {
+        setSelectedFileDiffError("No git refs found for selected snapshots.");
+        return;
+      }
+
+      try {
+        setIsLoadingSelectedFileDiff(true);
+        const params = new URLSearchParams({
+          before: beforeHead,
+          after: afterHead,
+          path: selectedDiffEntry.path,
+        });
+        const response = await fetch(`/system-design/file-diff?${params.toString()}`);
+        const payload = (await response.json()) as { diff?: string; error?: string };
+        if (!response.ok) {
+          throw new Error(payload.error || "Could not load file diff.");
+        }
+        setSelectedFileDiff(payload.diff || "");
+      } catch (error) {
+        setSelectedFileDiffError(error instanceof Error ? error.message : "Could not load file diff.");
+      } finally {
+        setIsLoadingSelectedFileDiff(false);
+      }
+    };
+
+    void loadSelectedFileDiff();
+  }, [selectedDiffEntry, beforeSnapshot?.git?.head, afterSnapshot?.git?.head]);
 
   useEffect(() => {
     if (!beforeSnapshot || !afterSnapshot) return;
@@ -1038,6 +1426,41 @@ const StudyMap = () => {
     URL.revokeObjectURL(url);
   }, []);
 
+  const generateSnapshotFromUi = useCallback(async () => {
+    setIsGeneratingSnapshot(true);
+    try {
+      const params = new URLSearchParams({
+        release_status: "local_only",
+        reason: "manual UI trigger",
+        force: "true",
+      });
+      const response = await fetch(`/system-design/generate?${params.toString()}`, { method: "POST" });
+      const payload = (await response.json().catch(() => null)) as
+        | { updated?: boolean; summary?: { changed?: number; added?: number; removed?: number }; error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not generate System Design snapshot.");
+      }
+
+      await loadSystemDesignManifest();
+      toast({
+        title: payload?.updated ? "Snapshot generated" : "No snapshot update",
+        description: payload?.updated
+          ? `Changed: ${payload?.summary?.changed ?? 0}, added: ${payload?.summary?.added ?? 0}, removed: ${payload?.summary?.removed ?? 0}.`
+          : "No relevant changes were detected.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not generate System Design snapshot.";
+      toast({
+        title: "Generation failed",
+        description: `${message} If this is production, run: node scripts/generate-system-design-artifacts.mjs --release-status local_only --reason \"manual\" --force`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingSnapshot(false);
+    }
+  }, [loadSystemDesignManifest, toast]);
+
   const latestSnapshotHref = toSystemDesignAssetHref(systemDesignManifest?.latest_snapshot ?? null);
   const latestDiffHref = toSystemDesignAssetHref(systemDesignManifest?.latest_diff ?? null);
 
@@ -1142,15 +1565,29 @@ const StudyMap = () => {
                   </a>
                 </Button>
               ) : null}
+              <Button size="sm" variant="outline" onClick={() => void generateSnapshotFromUi()} disabled={isGeneratingSnapshot}>
+                {isGeneratingSnapshot ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  "Generate snapshot"
+                )}
+              </Button>
               <Button size="sm" variant="outline" onClick={() => void loadSystemDesignManifest()} disabled={isManifestLoading}>
                 {isManifestLoading ? "Refreshing..." : "Refresh"}
               </Button>
             </div>
+            
           ) : (
             <p className="text-xs text-muted-foreground">
               No published artifacts found at <code className="bg-background px-1 rounded">/system-design/manifest.json</code>.
             </p>
           )}
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Generate snapshot uses a local dev API route. In production, use the script command.
+          </p>
         </div>
 
         <div className="rounded-md border p-3 space-y-3">
@@ -1176,8 +1613,27 @@ const StudyMap = () => {
                 size="sm"
                 variant={syncDiffViewport ? "default" : "outline"}
                 onClick={() => setSyncDiffViewport((value) => !value)}
+                disabled={diffLayout === "merged"}
               >
-                {syncDiffViewport ? "Sync pan/zoom on" : "Sync pan/zoom off"}
+                {diffLayout === "merged"
+                  ? "Sync pan/zoom off"
+                  : syncDiffViewport
+                    ? "Sync pan/zoom on"
+                    : "Sync pan/zoom off"}
+              </Button>
+              <Button
+                size="sm"
+                variant={diffLayout === "split" ? "default" : "outline"}
+                onClick={() => setDiffLayout("split")}
+              >
+                Side by side
+              </Button>
+              <Button
+                size="sm"
+                variant={diffLayout === "merged" ? "default" : "outline"}
+                onClick={() => setDiffLayout("merged")}
+              >
+                Merged view
               </Button>
             </div>
           </div>
@@ -1275,28 +1731,63 @@ const StudyMap = () => {
 
           {afterSnapshot ? (
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_350px]">
-              <div className="grid gap-3 lg:grid-cols-2">
-                <div className="rounded-md border bg-white">
-                  <div className="border-b px-3 py-2">
-                    <p className="text-xs font-medium">Before</p>
+              {diffLayout === "split" ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-md border bg-white">
+                    <div className="border-b px-3 py-2">
+                      <p className="text-xs font-medium">Before</p>
+                      {beforeSnapshot ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          {beforeSnapshot.snapshot_id} · {getSnapshotBranch(beforeSnapshot)} · {formatSnapshotTime(beforeSnapshot.generated_at)}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground">No previous snapshot available in public artifacts.</p>
+                      )}
+                    </div>
                     {beforeSnapshot ? (
-                      <p className="text-[11px] text-muted-foreground">
-                        {beforeSnapshot.snapshot_id} · {getSnapshotBranch(beforeSnapshot)} · {formatSnapshotTime(beforeSnapshot.generated_at)}
-                      </p>
+                      <div className="h-[520px] w-full">
+                        <ReactFlow
+                          nodes={beforeDiffFlowElements.nodes}
+                          edges={beforeDiffFlowElements.edges}
+                          onNodeClick={handleDiffNodeClick}
+                          onInit={(instance) => {
+                            beforeDiffInstanceRef.current = instance;
+                          }}
+                          onMoveEnd={handleBeforeDiffMoveEnd}
+                          fitView
+                          fitViewOptions={{ padding: 0.25 }}
+                          nodesDraggable={false}
+                          nodesConnectable={false}
+                          proOptions={{ hideAttribution: true }}
+                        >
+                          <MiniMap zoomable pannable />
+                          <Controls />
+                          <Background color="#e2e8f0" gap={16} />
+                        </ReactFlow>
+                      </div>
                     ) : (
-                      <p className="text-[11px] text-muted-foreground">No previous snapshot available in public artifacts.</p>
+                      <div className="h-[520px] p-4 text-sm text-muted-foreground flex items-center justify-center">
+                        Generate at least two snapshots so before/after can be compared here.
+                      </div>
                     )}
                   </div>
-                  {beforeSnapshot ? (
+
+                  <div className="rounded-md border bg-white">
+                    <div className="border-b px-3 py-2">
+                      <p className="text-xs font-medium">After</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {afterSnapshot.snapshot_id} · {getSnapshotBranch(afterSnapshot)} · {formatSnapshotTime(afterSnapshot.generated_at)}
+                      </p>
+                    </div>
                     <div className="h-[520px] w-full">
                       <ReactFlow
-                        nodes={beforeDiffFlowElements.nodes}
-                        edges={beforeDiffFlowElements.edges}
+                        nodes={afterDiffFlowElements.nodes}
+                        edges={afterDiffFlowElements.edges}
                         onNodeClick={handleDiffNodeClick}
                         onInit={(instance) => {
-                          beforeDiffInstanceRef.current = instance;
+                          afterDiffInstanceRef.current = instance;
                         }}
-                        onMoveEnd={handleBeforeDiffMoveEnd}
+                        onMoveEnd={handleAfterDiffMoveEnd}
                         fitView
                         fitViewOptions={{ padding: 0.25 }}
                         nodesDraggable={false}
@@ -1308,29 +1799,21 @@ const StudyMap = () => {
                         <Background color="#e2e8f0" gap={16} />
                       </ReactFlow>
                     </div>
-                  ) : (
-                    <div className="h-[520px] p-4 text-sm text-muted-foreground flex items-center justify-center">
-                      Generate at least two snapshots so before/after can be compared here.
-                    </div>
-                  )}
+                  </div>
                 </div>
-
+              ) : (
                 <div className="rounded-md border bg-white">
                   <div className="border-b px-3 py-2">
-                    <p className="text-xs font-medium">After</p>
+                    <p className="text-xs font-medium">Merged Diff View</p>
                     <p className="text-[11px] text-muted-foreground">
-                      {afterSnapshot.snapshot_id} · {getSnapshotBranch(afterSnapshot)} · {formatSnapshotTime(afterSnapshot.generated_at)}
+                      Removed = red dashed, Added = green, Changed = amber
                     </p>
                   </div>
                   <div className="h-[520px] w-full">
                     <ReactFlow
-                      nodes={afterDiffFlowElements.nodes}
-                      edges={afterDiffFlowElements.edges}
+                      nodes={mergedDiffFlowElements.nodes}
+                      edges={mergedDiffFlowElements.edges}
                       onNodeClick={handleDiffNodeClick}
-                      onInit={(instance) => {
-                        afterDiffInstanceRef.current = instance;
-                      }}
-                      onMoveEnd={handleAfterDiffMoveEnd}
                       fitView
                       fitViewOptions={{ padding: 0.25 }}
                       nodesDraggable={false}
@@ -1343,7 +1826,7 @@ const StudyMap = () => {
                     </ReactFlow>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="rounded-md border p-3 space-y-3">
                 <div>
@@ -1366,6 +1849,32 @@ const StudyMap = () => {
                     <p className="text-xs text-muted-foreground">
                       Mapped nodes: {selectedDiffEntry.nodeIds.join(", ")}
                     </p>
+                    <div className="rounded border bg-background mt-2">
+                      <div className="px-2 py-1 border-b text-[11px] text-muted-foreground flex items-center justify-between">
+                        <span>Code diff</span>
+                        {selectedDiffRows.length > 0 ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px]"
+                            onClick={() => setIsDiffDialogOpen(true)}
+                          >
+                            Expand
+                          </Button>
+                        ) : null}
+                      </div>
+                      <div className="p-2">
+                        {isLoadingSelectedFileDiff ? (
+                          <p className="text-xs text-muted-foreground">Loading diff...</p>
+                        ) : selectedFileDiffError ? (
+                          <p className="text-xs text-destructive">{selectedFileDiffError}</p>
+                        ) : selectedDiffRows.length > 0 ? (
+                          <DiffPane rows={selectedDiffRows} compact />
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No textual diff available for this file and snapshot pair.</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ) : null}
 
@@ -1493,6 +2002,22 @@ const StudyMap = () => {
           </Card>
         </div>
       </CardContent>
+      <Dialog open={isDiffDialogOpen} onOpenChange={setIsDiffDialogOpen}>
+        <DialogContent className="max-w-[96vw] h-[92vh] p-0 gap-0">
+          <DialogHeader className="px-4 py-3 border-b">
+            <DialogTitle className="text-sm">
+              Code Diff {selectedDiffEntry ? `- ${selectedDiffEntry.path}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-4 py-3 h-[calc(92vh-56px)]">
+            {selectedDiffRows.length > 0 ? (
+              <DiffPane rows={selectedDiffRows} />
+            ) : (
+              <p className="text-sm text-muted-foreground">No code diff loaded.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };
