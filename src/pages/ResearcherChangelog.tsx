@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
@@ -149,6 +150,21 @@ import { toast } from 'sonner';
 
 type ChangeType = 'added' | 'changed' | 'fixed' | 'removed';
 type ChangeScope = 'participant' | 'researcher' | 'both';
+type ReleaseStatus = 'committed' | 'pushed' | 'released';
+
+const releaseStatusOrder: Record<ReleaseStatus, number> = {
+  committed: 0,
+  pushed: 1,
+  released: 2,
+};
+
+function normalizeReleaseStatus(value: unknown): ReleaseStatus {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (raw === 'committed' || raw === 'local_only') return 'committed';
+  if (raw === 'released' || raw === 'deployed') return 'released';
+  // Default to pushed for historical entries and unknown values.
+  return 'pushed';
+}
 
 interface ChangelogChange {
   id: string;
@@ -169,6 +185,7 @@ interface ChangelogEntry {
   release_date: string;
   description: string | null;
   active_batch_label: string | null;
+  release_status: ReleaseStatus;
   created_at: string;
   changes: ChangelogChange[];
   reviewed?: boolean;
@@ -185,6 +202,7 @@ type ChangelogVersionGroup = {
   active_batch_label: string | null;
   inferredBatchLabel: string | null;
   created_at: string;
+  release_status: ReleaseStatus;
   reviewedAll: boolean;
   flaggedAny: boolean;
   entryIds: string[];
@@ -217,6 +235,12 @@ const scopeColors: Record<ChangeScope, string> = {
   participant: 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200',
   researcher: 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200',
   both: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+};
+
+const releaseStatusMeta: Record<ReleaseStatus, { label: string; className: string }> = {
+  committed: { label: 'Committed', className: 'border-amber-600/40 text-amber-700' },
+  pushed: { label: 'Pushed', className: 'border-sky-600/40 text-sky-700' },
+  released: { label: 'Deployed', className: 'border-green-600/40 text-green-700' },
 };
 
 const ResearcherChangelog = () => {
@@ -276,6 +300,7 @@ const ResearcherChangelog = () => {
       
       return entriesData.map(entry => ({
         ...entry,
+        release_status: normalizeReleaseStatus((entry as any).release_status),
         changes: changesData.filter(c => c.entry_id === entry.id) as ChangelogChange[]
       })) as ChangelogEntry[];
     }
@@ -421,11 +446,12 @@ const ResearcherChangelog = () => {
 
   const validScopes = ['participant', 'researcher', 'both'] as const;
   type ImportChange = { type: string; description: string; scope?: string; commit_hash?: string; pushed_at?: string; details?: Json };
-  const normalizeChangelogEntry = (obj: { version?: string; release_date?: string; description?: string; active_batch_label?: string; changes?: ImportChange[] }) => {
+  const normalizeChangelogEntry = (obj: { version?: string; release_date?: string; description?: string; active_batch_label?: string; release_status?: string; changes?: ImportChange[] }) => {
     const version = typeof obj.version === 'string' ? obj.version.trim() : '';
     const release_date = typeof obj.release_date === 'string' ? obj.release_date.trim() : '';
     const description = typeof obj.description === 'string' ? obj.description.trim() : undefined;
     const active_batch_label = typeof obj.active_batch_label === 'string' ? obj.active_batch_label.trim() : undefined;
+    const release_status = normalizeReleaseStatus(obj.release_status);
     const rawChanges = Array.isArray(obj.changes) ? obj.changes : [];
     const changes = rawChanges
       .filter((c): c is ImportChange & { type: ChangeType } =>
@@ -440,7 +466,7 @@ const ResearcherChangelog = () => {
         details: c.details ?? null,
       }))
       .filter((c) => c.description.length > 0);
-    return { version, release_date, description, active_batch_label, changes };
+    return { version, release_date, description, active_batch_label, release_status, changes };
   };
 
   const upsertChangelogVersionEntry = async (data: {
@@ -448,22 +474,40 @@ const ResearcherChangelog = () => {
     release_date: string;
     description?: string;
     active_batch_label?: string;
+    release_status?: ReleaseStatus;
     changes: { type: ChangeType; description: string; scope?: ChangeScope; commit_hash?: string; pushed_at?: string; details?: Json | null }[];
   }) => {
     const version = data.version.trim();
     const releaseDate = data.release_date.trim();
     const description = data.description?.trim() || null;
     const activeBatchLabel = data.active_batch_label?.trim() || null;
+    const incomingReleaseStatus = data.release_status ? normalizeReleaseStatus(data.release_status) : null;
 
-    const { data: existingEntry, error: existingEntryError } = await supabase
-      .from('changelog_entries')
-      .select('id, release_date')
-      .eq('version', version)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existingEntryError) throw existingEntryError;
+    // Backwards compatible with older DBs where changelog_entries.release_status doesn't exist yet.
+    let existingEntry: { id: string; release_date: string; release_status?: string | null } | null = null;
+    {
+      const query = supabase
+        .from('changelog_entries')
+        .select('id, release_date, release_status')
+        .eq('version', version)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      const result = await query.maybeSingle();
+      if (result.error && /release_status/i.test(result.error.message || '')) {
+        const fallback = await supabase
+          .from('changelog_entries')
+          .select('id, release_date')
+          .eq('version', version)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (fallback.error) throw fallback.error;
+        existingEntry = fallback.data as any;
+      } else {
+        if (result.error) throw result.error;
+        existingEntry = result.data as any;
+      }
+    }
 
     let entryId = existingEntry?.id ?? null;
 
@@ -474,27 +518,50 @@ const ResearcherChangelog = () => {
       };
       if (description !== null) updatePayload.description = description;
       if (activeBatchLabel !== null) updatePayload.active_batch_label = activeBatchLabel;
+      if (incomingReleaseStatus) {
+        const current = normalizeReleaseStatus((existingEntry as any).release_status);
+        const next =
+          releaseStatusOrder[incomingReleaseStatus] > releaseStatusOrder[current]
+            ? incomingReleaseStatus
+            : current;
+        updatePayload.release_status = next;
+      }
 
-      const { error: updateEntryError } = await supabase
-        .from('changelog_entries')
-        .update(updatePayload)
-        .eq('id', entryId);
-      if (updateEntryError) throw updateEntryError;
+      {
+        const res = await supabase.from('changelog_entries').update(updatePayload).eq('id', entryId);
+        if (res.error) {
+          // If the DB doesn't have release_status yet, retry without it.
+          if (incomingReleaseStatus && /release_status/i.test(res.error.message || '')) {
+            const { release_status: _ignored, ...withoutStatus } = updatePayload;
+            const retry = await supabase.from('changelog_entries').update(withoutStatus).eq('id', entryId);
+            if (retry.error) throw retry.error;
+          } else {
+            throw res.error;
+          }
+        }
+      }
     } else {
-      const { data: insertedEntry, error: insertEntryError } = await supabase
-        .from('changelog_entries')
-        .insert({
-          version,
-          release_date: releaseDate,
-          description,
-          active_batch_label: activeBatchLabel,
-          created_by: user?.id ?? null,
-        })
-        .select('id')
-        .single();
-
-      if (insertEntryError) throw insertEntryError;
-      entryId = insertedEntry.id;
+      const insertPayload: Record<string, unknown> = {
+        version,
+        release_date: releaseDate,
+        description,
+        active_batch_label: activeBatchLabel,
+        release_status: incomingReleaseStatus ?? 'pushed',
+        created_by: user?.id ?? null,
+      };
+      const inserted = await supabase.from('changelog_entries').insert(insertPayload).select('id').single();
+      if (inserted.error) {
+        if (/release_status/i.test(inserted.error.message || '')) {
+          delete insertPayload.release_status;
+          const retry = await supabase.from('changelog_entries').insert(insertPayload).select('id').single();
+          if (retry.error) throw retry.error;
+          entryId = (retry.data as any).id;
+        } else {
+          throw inserted.error;
+        }
+      } else {
+        entryId = (inserted.data as any).id;
+      }
     }
 
     if (data.changes.length === 0) return entryId;
@@ -553,14 +620,22 @@ const ResearcherChangelog = () => {
     const parsedEntries = Array.isArray(data) ? data.map(normalizeChangelogEntry) : [normalizeChangelogEntry(data as Parameters<typeof normalizeChangelogEntry>[0])];
     const valid = parsedEntries.filter((e) => e.version && e.release_date);
     if (valid.length === 0) return { ok: false, errorMessage: 'No entries with version and release_date' };
-    for (const { version, release_date, description, active_batch_label, changes } of valid) {
+    for (const { version, release_date, description, active_batch_label, release_status, changes } of valid) {
+      const normalizedStatus = normalizeReleaseStatus(release_status);
+      const effectiveStatus =
+        normalizedStatus === 'pushed' && autoMarkReleaseOnPush ? ('released' as const) : normalizedStatus;
       try {
         await upsertChangelogVersionEntry({
           version,
           release_date,
           description,
           active_batch_label,
-          changes,
+          release_status: effectiveStatus,
+          changes: changes.map((change) => ({
+            ...change,
+            pushed_at: change.pushed_at ?? new Date().toISOString(),
+            details: change.details ?? { summary_simple: 'Imported from JSON file' },
+          })),
         });
       } catch (error) {
         return { ok: false, errorMessage: error instanceof Error ? error.message : 'Failed to upsert changelog entry' };
@@ -711,6 +786,7 @@ const ResearcherChangelog = () => {
       version: '0.0.0-test',
       release_date: new Date().toISOString().slice(0, 10),
       description: 'Diagnostic test entry (safe to delete)',
+      release_status: 'pushed',
       changes: [{ type: 'added' as const, description: 'Test change', scope: 'both' as const }]
     };
     const parsedEntries = [normalizeChangelogEntry(testPayload)];
@@ -720,12 +796,16 @@ const ResearcherChangelog = () => {
       return;
     }
     try {
-      for (const { version, release_date, description, active_batch_label, changes } of valid) {
+      for (const { version, release_date, description, active_batch_label, release_status, changes } of valid) {
+        const normalizedStatus = normalizeReleaseStatus(release_status);
+        const effectiveStatus =
+          normalizedStatus === 'pushed' && autoMarkReleaseOnPush ? ('released' as const) : normalizedStatus;
         await upsertChangelogVersionEntry({
           version,
           release_date,
           description,
           active_batch_label,
+          release_status: effectiveStatus,
           changes: changes.map((change) => ({
             ...change,
             pushed_at: change.pushed_at ?? new Date().toISOString(),
@@ -804,6 +884,7 @@ const ResearcherChangelog = () => {
 
       const existing = groups.get(versionKey);
       if (!existing) {
+        const groupStatus = normalizeReleaseStatus((entry as any).release_status);
         groups.set(versionKey, {
           id: versionKey,
           version: entry.version,
@@ -812,6 +893,7 @@ const ResearcherChangelog = () => {
           active_batch_label: entry.active_batch_label,
           inferredBatchLabel: entry.inferredBatchLabel,
           created_at: pushedAt,
+          release_status: groupStatus,
           reviewedAll: !!entry.reviewed,
           flaggedAny: !!entry.flagged,
           entryIds: [entry.id],
@@ -825,6 +907,12 @@ const ResearcherChangelog = () => {
       existing.reviewedAll = existing.reviewedAll && !!entry.reviewed;
       existing.flaggedAny = existing.flaggedAny || !!entry.flagged;
       existing.changes.push(...changesForEntry);
+      {
+        const incoming = normalizeReleaseStatus((entry as any).release_status);
+        if (releaseStatusOrder[incoming] > releaseStatusOrder[existing.release_status]) {
+          existing.release_status = incoming;
+        }
+      }
       if (entry.release_date > existing.release_date) existing.release_date = entry.release_date;
       if (pushedAt > existing.created_at) {
         existing.created_at = pushedAt;
@@ -1741,6 +1829,19 @@ const ResearcherChangelog = () => {
                         ) : (
                           <>
                             <span className="text-lg font-semibold">v{entry.version}</span>
+                            <Badge
+                              variant="outline"
+                              className={releaseStatusMeta[entry.release_status].className}
+                              title={
+                                entry.release_status === 'committed'
+                                  ? 'Local-only commit (not pushed)'
+                                  : entry.release_status === 'pushed'
+                                    ? 'Pushed to the repo (not marked deployed)'
+                                    : 'Marked as deployed/released'
+                              }
+                            >
+                              {releaseStatusMeta[entry.release_status].label}
+                            </Badge>
                             <span className="text-sm text-muted-foreground" title={entry.created_at ? new Date(entry.created_at).toLocaleString() : entry.release_date}>
                               {entry.release_date}
                               {entry.created_at ? ` · ${new Date(entry.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ''}
