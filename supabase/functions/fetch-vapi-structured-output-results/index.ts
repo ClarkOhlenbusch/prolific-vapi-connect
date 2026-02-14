@@ -10,6 +10,10 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  };
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -96,7 +100,9 @@ Deno.serve(async (req) => {
     }
 
     const now = new Date().toISOString();
-    let updated = 0;
+    let updatedAny = 0;
+    let updatedEvaluation = 0;
+    let updatedStructuredOutputs = 0;
 
     for (const callId of callIds) {
       const res = await fetch(`https://api.vapi.ai/call/${callId}`, {
@@ -104,23 +110,52 @@ Deno.serve(async (req) => {
       });
       if (!res.ok) continue;
       const call = await res.json();
-      const structuredData = call?.analysis?.structuredData;
-      if (!structuredData || structuredData.total_score === undefined) continue;
+
+      const structuredOutputsRawCandidate =
+        call?.artifact?.structuredOutputs ?? call?.analysis?.structuredOutputs ?? null;
+
+      const structuredOutputsRaw = isPlainObject(structuredOutputsRawCandidate)
+        ? structuredOutputsRawCandidate
+        : null;
+
+      let evaluationCandidate: Record<string, unknown> | null = null;
+      const structuredDataCandidate = call?.analysis?.structuredData ?? null;
+      if (isPlainObject(structuredDataCandidate)) {
+        evaluationCandidate = structuredDataCandidate;
+      } else if (structuredOutputsRaw) {
+        const first = Object.values(structuredOutputsRaw)[0] as unknown;
+        const firstObj = isPlainObject(first) ? first : null;
+        const firstResult = firstObj && isPlainObject(firstObj.result) ? (firstObj.result as Record<string, unknown>) : null;
+        if (firstResult) evaluationCandidate = firstResult;
+      }
+
+      const updatePayload: Record<string, unknown> = {};
+      if (evaluationCandidate) {
+        updatePayload.vapi_structured_output = evaluationCandidate;
+        updatePayload.vapi_structured_output_at = now;
+      }
+      if (structuredOutputsRaw) {
+        updatePayload.vapi_structured_outputs = structuredOutputsRaw;
+        updatePayload.vapi_structured_outputs_at = now;
+      }
+
+      if (Object.keys(updatePayload).length === 0) continue;
 
       const { error: updateErr } = await supabaseAdmin
         .from("experiment_responses")
-        .update({
-          vapi_structured_output: structuredData,
-          vapi_structured_output_at: now,
-        })
+        .update(updatePayload)
         .eq("call_id", callId);
 
-      if (!updateErr) updated += 1;
+      if (!updateErr) {
+        updatedAny += 1;
+        if (evaluationCandidate) updatedEvaluation += 1;
+        if (structuredOutputsRaw) updatedStructuredOutputs += 1;
+      }
     }
 
     const runId = body?.runId;
     if (runId && callIds.length > 0) {
-      const status = updated === callIds.length ? "completed" : updated > 0 ? "partial" : "pending";
+      const status = updatedAny === callIds.length ? "completed" : updatedAny > 0 ? "partial" : "pending";
       await supabaseAdmin
         .from("vapi_structured_output_runs")
         .update({ status, updated_at: now })
@@ -129,11 +164,13 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        updated,
+        updated: updatedAny,
+        updatedEvaluation,
+        updatedStructuredOutputs,
         total: callIds.length,
-        message: updated === callIds.length
+        message: updatedAny === callIds.length
           ? `All ${callIds.length} calls updated.`
-          : `Updated ${updated} of ${callIds.length} calls. Others may still be processing.`,
+          : `Updated ${updatedAny} of ${callIds.length} calls. Others may still be processing.`,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
