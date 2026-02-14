@@ -26,18 +26,30 @@ case "$MODE" in
     ;;
 esac
 
+play_system_sound() {
+  if command -v afplay >/dev/null 2>&1 && [[ -f /System/Library/Sounds/Ping.aiff ]]; then
+    afplay /System/Library/Sounds/Ping.aiff >/dev/null 2>&1 || true
+  fi
+  if command -v osascript >/dev/null 2>&1; then
+    # Best-effort system beep fallback.
+    osascript -e 'beep 1' >/dev/null 2>&1 || true
+  fi
+}
+
 if command -v say >/dev/null 2>&1 && command -v afplay >/dev/null 2>&1; then
   TMP_AUDIO="$(mktemp -t codex_notify.XXXXXX.aiff)"
   cleanup() { rm -f "$TMP_AUDIO"; }
   trap cleanup EXIT
 
   # `say` writes an audio file. We intentionally keep it short and simple.
-  say -o "$TMP_AUDIO" "$PHRASE" >/dev/null 2>&1 || true
-  afplay "$TMP_AUDIO" >/dev/null 2>&1 || true
+  if say -o "$TMP_AUDIO" "$PHRASE" >/dev/null 2>&1; then
+    afplay "$TMP_AUDIO" >/dev/null 2>&1 || play_system_sound
+  else
+    play_system_sound
+  fi
   exit 0
 fi
 
 # Fallbacks for environments without macOS audio tooling.
 printf '\a' || true
 echo "$PHRASE"
-
