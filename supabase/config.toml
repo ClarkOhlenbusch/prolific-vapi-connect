@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.mark-abandoned-drafts]
 verify_jwt = false
+
+[functions.worker-vapi-evaluations]
+verify_jwt = false
