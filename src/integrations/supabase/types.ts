@@ -524,6 +524,8 @@ export type Database = {
           u4_position: number | null
           vapi_structured_output: Json | null
           vapi_structured_output_at: string | null
+          vapi_structured_outputs: Json | null
+          vapi_structured_outputs_at: string | null
           voice_assistant_feedback: string | null
         }
         Insert: {
@@ -671,6 +673,8 @@ export type Database = {
           u4_position?: number | null
           vapi_structured_output?: Json | null
           vapi_structured_output_at?: string | null
+          vapi_structured_outputs?: Json | null
+          vapi_structured_outputs_at?: string | null
           voice_assistant_feedback?: string | null
         }
         Update: {
@@ -818,6 +822,8 @@ export type Database = {
           u4_position?: number | null
           vapi_structured_output?: Json | null
           vapi_structured_output_at?: string | null
+          vapi_structured_outputs?: Json | null
+          vapi_structured_outputs_at?: string | null
           voice_assistant_feedback?: string | null
         }
         Relationships: []
