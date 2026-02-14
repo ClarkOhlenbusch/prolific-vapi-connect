@@ -104,6 +104,20 @@ Deno.serve(async (req) => {
     let updatedEvaluation = 0;
     let updatedStructuredOutputs = 0;
 
+    // If invoked with runId, we can attribute persisted results to the metric version for staleness detection.
+    const runId = body?.runId;
+    let runMetricId: string | null = null;
+    if (runId) {
+      const { data: runRow } = await supabaseAdmin
+        .from("vapi_structured_output_runs")
+        .select("metric_id")
+        .eq("id", runId)
+        .maybeSingle();
+      runMetricId = (runRow && typeof (runRow as Record<string, unknown>).metric_id === "string")
+        ? String((runRow as Record<string, unknown>).metric_id)
+        : null;
+    }
+
     for (const callId of callIds) {
       const res = await fetch(`https://api.vapi.ai/call/${callId}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -133,6 +147,14 @@ Deno.serve(async (req) => {
       if (evaluationCandidate) {
         updatePayload.vapi_structured_output = evaluationCandidate;
         updatePayload.vapi_structured_output_at = now;
+
+        // Store a lightweight score for fast dashboard rendering.
+        const totalScoreCandidate = (evaluationCandidate as Record<string, unknown>).total_score;
+        if (typeof totalScoreCandidate === "number" && Number.isFinite(totalScoreCandidate)) {
+          updatePayload.vapi_total_score = Math.trunc(totalScoreCandidate);
+        }
+        // Attribute to metric version when available (run-scoped fetch).
+        if (runMetricId) updatePayload.vapi_evaluation_metric_id = runMetricId;
       }
       if (structuredOutputsRaw) {
         updatePayload.vapi_structured_outputs = structuredOutputsRaw;
@@ -153,7 +175,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    const runId = body?.runId;
     if (runId && callIds.length > 0) {
       const status = updatedAny === callIds.length ? "completed" : updatedAny > 0 ? "partial" : "pending";
       await supabaseAdmin
