@@ -1,0 +1,32 @@
+[{
+  "version": "1.1.10",
+  "release_date": "2026-02-14",
+  "description": "Add an Abandoned status for stale (inactive) drafts and show pending/abandoned draft data in researcher views; add a repo rule to plan-first for big changes.",
+  "active_batch_label": "",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "added",
+      "description": "mark stale experiment response drafts as abandoned after 1.5 hours of inactivity (and revive on activity)",
+      "scope": "both",
+      "commit_hash": "ad64180",
+      "pushed_at": "2026-02-13T21:14:40-08:00"
+    },
+    {
+      "type": "changed",
+      "description": "resolve upstream merge for mark-abandoned-drafts edge function",
+      "scope": "researcher",
+      "commit_hash": "3680805",
+      "pushed_at": "2026-02-13T21:14:40-08:00"
+    },
+    {
+      "type": "changed",
+      "description": "require plan-first for big changes in AGENTS.md",
+      "scope": "researcher",
+      "commit_hash": "a9e8311",
+      "pushed_at": "2026-02-13T21:14:40-08:00"
+    }
+  ]
+}]
+
