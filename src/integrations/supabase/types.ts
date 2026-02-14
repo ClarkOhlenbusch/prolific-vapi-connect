@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_backfill_log: {
+        Row: {
+          created_at: string
+          note: string | null
+          run_id: string
+        }
+        Insert: {
+          created_at?: string
+          note?: string | null
+          run_id?: string
+        }
+        Update: {
+          created_at?: string
+          note?: string | null
+          run_id?: string
+        }
+        Relationships: []
+      }
+      admin_backfill_log_rows: {
+        Row: {
+          batch_label: string | null
+          call_id: string | null
+          created_at: string | null
+          new_submission_status: string | null
+          new_submitted_at: string | null
+          prev_submission_status: string | null
+          prev_submitted_at: string | null
+          prolific_id: string | null
+          response_id: string
+          run_id: string
+        }
+        Insert: {
+          batch_label?: string | null
+          call_id?: string | null
+          created_at?: string | null
+          new_submission_status?: string | null
+          new_submitted_at?: string | null
+          prev_submission_status?: string | null
+          prev_submitted_at?: string | null
+          prolific_id?: string | null
+          response_id: string
+          run_id: string
+        }
+        Update: {
+          batch_label?: string | null
+          call_id?: string | null
+          created_at?: string | null
+          new_submission_status?: string | null
+          new_submitted_at?: string | null
+          prev_submission_status?: string | null
+          prev_submitted_at?: string | null
+          prolific_id?: string | null
+          response_id?: string
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_backfill_log_rows_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "admin_backfill_log"
+            referencedColumns: ["run_id"]
+          },
+        ]
+      }
       archived_responses: {
         Row: {
           archive_reason: string | null
@@ -100,6 +165,7 @@ export type Database = {
           flagged: boolean
           id: string
           release_date: string
+          release_status: string
           reviewed: boolean
           updated_at: string
           version: string
@@ -112,6 +178,7 @@ export type Database = {
           flagged?: boolean
           id?: string
           release_date: string
+          release_status?: string
           reviewed?: boolean
           updated_at?: string
           version: string
@@ -124,6 +191,7 @@ export type Database = {
           flagged?: boolean
           id?: string
           release_date?: string
+          release_status?: string
           reviewed?: boolean
           updated_at?: string
           version?: string
@@ -1319,6 +1387,10 @@ export type Database = {
       }
       is_researcher: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      mark_abandoned_experiment_responses: {
+        Args: { cutoff_minutes?: number }
+        Returns: number
+      }
       next_researcher_prolific_id: { Args: never; Returns: string }
       remove_duplicate_changelog_entries: { Args: never; Returns: number }
     }

@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.upsert-experiment-draft]
 verify_jwt = false
+
+[functions.mark-abandoned-drafts]
+verify_jwt = false
