@@ -5,6 +5,22 @@ This file records manual verification outcomes for changes made during developme
 Current Working Version: v1.1.9
 Current Working Patch: 8
 
+## 2026-02-13 21:16:00 PST
+
+- Date: 2026-02-13 21:16:00 PST
+- Change summary: Add `abandoned` as a real DB status for stale drafts (pending + inactive > 1.5h), surface it in researcher tables/details, and add a repo rule to plan-first for big changes.
+- Key files: `supabase/migrations/20260214220000_experiment_responses_mark_abandoned_rpc.sql`, `supabase/functions/mark-abandoned-drafts/index.ts`, `supabase/functions/upsert-experiment-draft/index.ts`, `src/components/researcher/UnifiedParticipantsTable.tsx`, `src/pages/ResponseDetails.tsx`, `src/components/researcher/StatusDefinitionsContent.tsx`, `AGENTS.md`
+- Related changelog:
+  - Version: 1.1.10
+  - Import JSON: `docs/changelog-import-2026-02-14-1.1.10-2.json`
+  - Commit(s): `ad64180`, `3680805`, `a9e8311`, `769ac66`
+- Test on your end:
+  - Hard refresh Researcher dashboard; confirm it loads (no blank page).
+  - Run `select public.mark_abandoned_experiment_responses(90) as updated;` in prod SQL editor.
+  - Confirm `Abandoned` shows in researcher status filters/badges; confirm a revived participant flips from `Abandoned` back to `Pending` on activity.
+- Result: PASS
+- Notes: —
+
 ## Entry Template
 
 - Date:
