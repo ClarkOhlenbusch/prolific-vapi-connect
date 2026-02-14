@@ -1,5 +1,16 @@
 # Future Features / Plans
 
+allow downloading audio files and send to cerine.
+
+Now that we're going to push the updated change for the status in which "Completed" is shown when status is submitted, how should we change previous ones in which, because of the migration, the accidental not redeployed super base functions? How should we go about those previous ones? Maybe just manually with an SQL query, mark all those from batch main_2 as completed, or should I give you the prolific ids for those just in case to keep it safe? actually i just checked and there are no main_2 participants labelled as pending on UI on prod, which means its fine to just go back and autosubmit for them, probably best to use a relevant date/timestamp for them so the order still appears correctly right? come up with a plan first
+
+button on feedback should be continue not submit
+
+add adjusted p value to progression bar
+
+i uploaded transcripts and it said 140 or so matched, but the f-score on stat dashboard and responses doesnt seem to have been updated
+
+session replay is black (but shows moving mouse) on localhost, but it works on prod
 
 I want to be able to choose the batch scope for balance for different batches and then click Rebalance from then on so that it automatically sets the condition offset for the next ones. 
 And I want the condition counter to be kind of based off of that, instead of being based on the global counter, if that makes sense. Does that make sense? Help come up with a plan for this first and ask me before you continue. i just want an easy way to make sure that its balanced.

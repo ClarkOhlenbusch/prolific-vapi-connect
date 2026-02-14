@@ -1,0 +1,47 @@
+[{
+  "version": "1.1.9",
+  "release_date": "2026-02-14",
+  "description": "Add an in-app local version badge for Researcher Mode and improve dictation mic permission denied UX (toast first, modal second).",
+  "active_batch_label": "",
+  "release_status": "committed",
+  "changes": [
+    {
+      "type": "added",
+      "description": "show local version badge in researcher mode",
+      "scope": "researcher",
+      "commit_hash": "38eb680",
+      "pushed_at": "2026-02-13T19:16:23-08:00",
+      "details": {
+        "summary_simple": "When Researcher Mode is enabled (including participant flow), show a small top-right badge with the current working version + local uncommitted patch counter sourced from `docs/verification-log.md`.",
+        "verification": {
+          "tested_at": "2026-02-13T19:16:57-08:00",
+          "result": "PASS",
+          "steps": [
+            "Enable Researcher Mode and refresh any page.",
+            "Confirm the top-right badge shows v1.1.9-uncommitted6."
+          ]
+        }
+      }
+    },
+    {
+      "type": "fixed",
+      "description": "toast first, modal second when mic permission denied for dictation",
+      "scope": "both",
+      "commit_hash": "f7de6ac",
+      "pushed_at": "2026-02-13T19:16:38-08:00",
+      "details": {
+        "summary_simple": "On the Feedback page, if the browser blocks microphone access, the first dictation attempt shows a destructive toast; repeated attempts open the existing mic-issue modal with permission guidance and a text fallback, then highlight/focus the relevant textarea on close.",
+        "verification": {
+          "tested_at": "2026-02-13T19:16:57-08:00",
+          "result": "PASS",
+          "steps": [
+            "Block microphone permission for the site and go to /questionnaire/feedback.",
+            "Click Click to record once (toast only), then click again (modal opens).",
+            "Close the modal and confirm the relevant textarea is highlighted/focused."
+          ]
+        }
+      }
+    }
+  ]
+}]
+

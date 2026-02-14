@@ -7,6 +7,8 @@ Whenever you make *any* change to this repository (code, migrations, config, doc
 - End your response with a **`Test on your end:`** section.
 - Provide **1–3 concrete, minimal steps** the user should run to verify the change worked (UI clicks and/or CLI commands).
 - Tailor the steps to the specific change (do not reuse generic “run tests” phrasing).
+- Do **not** run `npm run build` (or other slow global checks) by default. Prefer the targeted manual steps above; only run additional checks if the user asks or if it’s needed to debug a failure.
+- If the build/version badge is relevant (Researcher Mode or researcher pages), include the **expected badge label** the user should see (e.g. `v1.1.9-uncommitted3`) so they can confirm they’re on the latest local code.
 - If no meaningful manual test exists, say so explicitly and explain why.
 - Avoid “open/read this file” as a verification step. Prefer runtime checks: UI flows, CLI commands, SQL queries, or observable behavior changes.
 - Do not ask the user to verify changes to agent instruction files (like `AGENTS.md`, `docs/verification-log.md`, `docs/future-features.md`) by opening/reading/grepping them. For instruction-file-only changes, state that there is no meaningful manual runtime test and that the effect will be observed in subsequent interactions.
@@ -24,14 +26,33 @@ If the user replies FAIL, do not proceed with additional unrelated work until th
 We keep a running log of what was tested and whether it worked at `docs/verification-log.md`.
 
 Rules:
+- Keep a single header line near the top: `Current Working Version: vX.Y.Z` (this is the local source-of-truth for the in-app version badge during development).
+- Keep a single header line near the top: `Current Working Patch: N` (Codex increments this when making changes so the in-app badge becomes `vX.Y.Z-uncommittedN` and survives hard refreshes).
 - After the user replies PASS/FAIL, append a new entry to the log with:
   - Date/time (local)
   - Short change summary
   - Key files touched
+  - Related changelog reference(s):
+    - Changelog version (if known)
+    - Related changelog import JSON filename (preferred when available)
+    - Related commit hash(es) (short OK)
   - The exact `Test on your end:` steps you gave
   - Result: PASS/FAIL
   - Notes (optional)
 - If the user never confirms, do not write a log entry (avoid guessing).
+
+## Changelog + Verification Linking (Required)
+
+This does **not** conflict with using `docs/verification-log.md` for local, uncommitted work:
+- If the change is **not committed yet**, you may log the PASS/FAIL in `docs/verification-log.md` with `Commit(s): (uncommitted)` and omit the changelog import JSON link for now.
+- Once the change **has a commit hash**, the linking below becomes required (either by updating the original verification entry, or by adding a short follow-up entry that references the commit + changelog import).
+
+When you append (or backfill) a PASS/FAIL entry to `docs/verification-log.md` for a change that has a known commit hash, you must also do one of:
+
+- Create a new `docs/changelog-import-*.json` entry that includes `details.verification` for that change, or
+- Update the existing changelog import JSON that contains that change to add `details.verification`.
+
+And the verification-log entry must include a "Related changelog import" field pointing at that JSON filename so we can click from verification to changelog quickly.
 
 ## Future Features / Plans Log
 

@@ -1,0 +1,29 @@
+[{
+  "version": "1.1.9",
+  "release_date": "2026-02-13",
+  "description": "Surface per-change test status in the Researcher Changelog and show verification details on click.",
+  "active_batch_label": "",
+  "release_status": "committed",
+  "changes": [
+    {
+      "type": "changed",
+      "description": "show Tested badge + verification details in changelog",
+      "scope": "researcher",
+      "commit_hash": "fbd7c95",
+      "pushed_at": "2026-02-13T17:16:09-08:00",
+      "details": {
+        "summary_simple": "Changelog entries now surface whether a change was tested (PASS/FAIL/Not tested) and show the recorded test steps in the expanded details view.",
+        "verification": {
+          "tested_at": "2026-02-13T17:16:09-08:00",
+          "result": "PASS",
+          "steps": [
+            "Open Researcher Dashboard -> Changelog.",
+            "Confirm each change shows Tested: PASS / Tested: FAIL / Not tested as expected.",
+            "Expand a change and confirm the Verification section shows result + steps."
+          ]
+        }
+      }
+    }
+  ]
+}]
+
