@@ -25,14 +25,15 @@
       <h1>Voice Planner (Local)</h1>
       <p class="small">Chrome recommended (uses Web Speech APIs). Voice capture is local; Codex is called only to generate questions/spec files.</p>
 
-      <div class="card">
-        <div class="row">
-          <span class="pill" id="sttStatus">stt: unknown</span>
-          <span class="pill" id="micStatus">mic: locked</span>
-          <span class="pill" id="ttsStatus">tts: locked</span>
-          <span class="pill" id="codexStatus">codex: checking</span>
-        </div>
-      </div>
+	      <div class="card">
+	        <div class="row">
+	          <span class="pill" id="sttStatus">stt: unknown</span>
+	          <span class="pill" id="micStatus">mic: locked</span>
+	          <span class="pill" id="ttsStatus">tts: locked</span>
+	          <span class="pill" id="buildBadge">v?:?</span>
+	          <span class="pill" id="codexStatus">codex: checking</span>
+	        </div>
+	      </div>
 
       <div class="card">
         <h2>1) Feature seed</h2>
@@ -90,23 +91,26 @@
       const sttOk = "webkitSpeechRecognition" in window;
       $("sttStatus").textContent = sttOk ? "stt: ok" : "stt: missing";
 
-      const hasTts = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-      let audioCtx = null;
-      let ttsUnlocked = false;
-      let voicesLoaded = false;
+	      const hasTts = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+	      let audioCtx = null;
+	      let ttsUnlocked = false;
+	      let voicesLoaded = false;
+	      const log = (...args) => console.log("[voice-planner]", ...args);
 
-      const unlockAudio = async () => {
-        // Chrome sometimes won't play TTS until some audio has been "unlocked" by a user gesture.
-        // We do both: resume AudioContext and prime SpeechSynthesis.
-        try {
-          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-          await audioCtx.resume();
-          ttsUnlocked = true;
-          $("ttsStatus").textContent = "tts: ready";
-        } catch {
-          $("ttsStatus").textContent = "tts: failed";
-        }
-      };
+	      const unlockAudio = async () => {
+	        // Chrome sometimes won't play TTS until some audio has been "unlocked" by a user gesture.
+	        // We do both: resume AudioContext and prime SpeechSynthesis.
+	        try {
+	          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+	          await audioCtx.resume();
+	          ttsUnlocked = true;
+	          $("ttsStatus").textContent = "tts: ready";
+	          log("audio unlocked");
+	        } catch {
+	          $("ttsStatus").textContent = "tts: failed";
+	          log("audio unlock failed");
+	        }
+	      };
 
       const beep = (durationMs) => {
         if (!audioCtx) return;
@@ -127,14 +131,16 @@
         } catch {}
       };
 
-      const pickVoice = () => {
-        if (!hasTts) return null;
-        const voices = window.speechSynthesis.getVoices() || [];
-        if (voices.length > 0) voicesLoaded = true;
-        return (
-          voices.find((v) => /en[-_]?/i.test(v.lang) && /samantha|ava|serena|alex/i.test(v.name)) ||
-          voices.find((v) => /en[-_]?/i.test(v.lang)) ||
-          voices[0] ||
+	      const pickVoice = () => {
+	        if (!hasTts) return null;
+	        const voices = window.speechSynthesis.getVoices() || [];
+	        if (voices.length > 0) voicesLoaded = true;
+	        // Keep this light: log count only (full list can be large/noisy).
+	        log("voices loaded", { count: voices.length });
+	        return (
+	          voices.find((v) => /en[-_]?/i.test(v.lang) && /samantha|ava|serena|alex/i.test(v.name)) ||
+	          voices.find((v) => /en[-_]?/i.test(v.lang)) ||
+	          voices[0] ||
           null
         );
       };
@@ -150,47 +156,56 @@
         $("ttsStatus").textContent = "tts: missing";
       }
 
-      const speak = async (text) => {
-        const msg = String(text || "").trim();
-        if (!msg) return;
+	      const speak = async (text) => {
+	        const msg = String(text || "").trim();
+	        if (!msg) return;
 
-        // Always try to unlock audio on user-triggered speaks.
-        if (!ttsUnlocked) await unlockAudio();
+	        // Always try to unlock audio on user-triggered speaks.
+	        if (!ttsUnlocked) await unlockAudio();
 
-        if (!hasTts) {
-          beep(180);
-          return;
-        }
+	        if (!hasTts) {
+	          beep(180);
+	          return;
+	        }
 
-        try {
-          const u = new SpeechSynthesisUtterance(msg);
-          const voice = pickVoice();
-          if (voice) u.voice = voice;
-          u.rate = 1.0;
-          u.pitch = 1.0;
-          u.volume = 1.0;
-          u.onstart = () => { $("ttsStatus").textContent = voicesLoaded ? "tts: speaking" : "tts: speaking (no voices)"; };
-          u.onend = () => { $("ttsStatus").textContent = "tts: ready"; };
-          u.onerror = () => {
-            $("ttsStatus").textContent = "tts: error (beep)";
-            beep(240);
-          };
+	        try {
+	          // Some Chrome builds get stuck paused.
+	          try { window.speechSynthesis.resume(); } catch {}
 
-          window.speechSynthesis.cancel();
-          window.speechSynthesis.speak(u);
+	          const u = new SpeechSynthesisUtterance(msg);
+	          // Avoid forcing a specific voice: some systems throw errors for certain voices.
+	          // Let the browser pick the default voice; set a language hint.
+	          u.lang = "en-US";
+	          u.rate = 1.0;
+	          u.pitch = 1.0;
+	          u.volume = 1.0;
+	          u.onstart = () => { $("ttsStatus").textContent = voicesLoaded ? "tts: speaking" : "tts: speaking (no voices)"; };
+	          u.onend = () => { $("ttsStatus").textContent = "tts: ready"; };
+	          u.onerror = (ev) => {
+	            const err = ev && ev.error ? ev.error : "unknown";
+	            const m = ev && ev.message ? ev.message : "";
+	            $("ttsStatus").textContent = `tts: error (${err})`;
+	            log("tts error", { err, message: m });
+	            beep(240);
+	          };
+
+	          window.speechSynthesis.cancel();
+	          window.speechSynthesis.speak(u);
 
           // If the queue is blocked (common when voices aren't loaded), beep as a fallback.
-          setTimeout(() => {
-            if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
-              $("ttsStatus").textContent = "tts: blocked (beep)";
-              beep(240);
-            }
-          }, 600);
-        } catch {
-          $("ttsStatus").textContent = "tts: failed (beep)";
-          beep(240);
-        }
-      };
+	          setTimeout(() => {
+	            if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+	              $("ttsStatus").textContent = "tts: blocked (beep)";
+	              log("tts blocked");
+	              beep(240);
+	            }
+	          }, 600);
+	        } catch {
+	          $("ttsStatus").textContent = "tts: failed (beep)";
+	          log("tts failed (exception)");
+	          beep(240);
+	        }
+	      };
 
       const api = async (path, body) => {
         const res = await fetch(path, {
@@ -203,16 +218,30 @@
         return json;
       };
 
-      const refreshHealth = async () => {
-        try {
-          const res = await fetch("/health");
-          const j = await res.json();
-          $("codexStatus").textContent = j.codexEnabled ? "codex: enabled" : "codex: disabled";
-        } catch {
-          $("codexStatus").textContent = "codex: error";
-        }
-      };
-      refreshHealth();
+	      const refreshHealth = async () => {
+	        try {
+	          const res = await fetch("/health");
+	          const j = await res.json();
+	          $("codexStatus").textContent = j.codexEnabled ? "codex: enabled" : "codex: disabled";
+	        } catch {
+	          $("codexStatus").textContent = "codex: error";
+	        }
+	      };
+	      refreshHealth();
+
+	      const refreshBuildBadge = async () => {
+	        try {
+	          const res = await fetch("/version");
+	          const j = await res.json();
+	          const v = typeof j.version === "string" && j.version.trim() ? j.version.trim() : "v?";
+	          const sha = typeof j.gitSha === "string" && j.gitSha.trim() ? j.gitSha.trim() : "?";
+	          const dirty = j.gitDirty === true ? "*" : "";
+	          $("buildBadge").textContent = `${v}${dirty} (${sha})`;
+	        } catch {
+	          $("buildBadge").textContent = "v?:?";
+	        }
+	      };
+	      refreshBuildBadge();
 
       let questions = [];
       let answers = [];
@@ -252,32 +281,33 @@
         $("genSpec").disabled = !sessionId;
       };
 
-      const ensureMic = async () => {
-        try {
-          await navigator.mediaDevices.getUserMedia({ audio: true });
-          $("micStatus").textContent = "mic: ready";
-          await unlockAudio();
-          return true;
-        } catch {
-          $("micStatus").textContent = "mic: denied";
-          return false;
-        }
-      };
+	      const ensureMic = async () => {
+	        try {
+	          await navigator.mediaDevices.getUserMedia({ audio: true });
+	          $("micStatus").textContent = "mic: ready";
+	          await unlockAudio();
+	          return true;
+	        } catch {
+	          $("micStatus").textContent = "mic: denied";
+	          return false;
+	        }
+	      };
 
       $("enableMic").addEventListener("click", async () => {
         const ok = await ensureMic();
         if (ok) speak("Microphone enabled.");
       });
 
-      $("genQuestions").addEventListener("click", async () => {
-        $("result").textContent = "(working...)";
-        try {
-          const seed = $("seed").value.trim();
-          const j = await api("/api/questions", { seed });
-          questions = j.questions || [];
-          answers = new Array(questions.length).fill("");
-          idx = 0;
-          sessionId = null;
+	      $("genQuestions").addEventListener("click", async () => {
+	        $("result").textContent = "(working...)";
+	        try {
+	          const seed = $("seed").value.trim();
+	          log("generate questions", { seedLen: seed.length });
+	          const j = await api("/api/questions", { seed });
+	          questions = j.questions || [];
+	          answers = new Array(questions.length).fill("");
+	          idx = 0;
+	          sessionId = null;
           renderQuestions();
           $("result").textContent = "Questions generated.";
           speak("Questions generated.");
@@ -352,30 +382,32 @@
         speak("Session ended.");
       });
 
-      $("saveSession").addEventListener("click", async () => {
-        $("result").textContent = "(saving session...)";
-        try {
-          const seed = $("seed").value.trim();
-          const rawTranscript = questions.map((q, i) => `Q: ${q}\nA: ${answers[i] || ""}`).join("\n\n");
-          const j = await api("/api/session", { seed, questions, answers, rawTranscript });
-          sessionId = j.id;
-          $("result").textContent = `Saved session: ${sessionId}`;
-          speak("Session saved.");
-        } catch (e) {
+	      $("saveSession").addEventListener("click", async () => {
+	        $("result").textContent = "(saving session...)";
+	        try {
+	          const seed = $("seed").value.trim();
+	          const rawTranscript = questions.map((q, i) => `Q: ${q}\nA: ${answers[i] || ""}`).join("\n\n");
+	          log("save session", { q: questions.length, a: answers.filter(Boolean).length, rawLen: rawTranscript.length });
+	          const j = await api("/api/session", { seed, questions, answers, rawTranscript });
+	          sessionId = j.id;
+	          $("result").textContent = `Saved session: ${sessionId}`;
+	          speak("Session saved.");
+	        } catch (e) {
           $("result").textContent = `Error: ${e.message}`;
         } finally {
           updateSessionUi();
         }
       });
 
-      $("genSpec").addEventListener("click", async () => {
-        $("result").textContent = "(generating spec...)";
-        try {
-          const j = await api("/api/generate-spec", { sessionId });
-          $("result").textContent = JSON.stringify(j, null, 2);
-          speak("Spec files generated.");
-        } catch (e) {
-          $("result").textContent = `Error: ${e.message}`;
+	      $("genSpec").addEventListener("click", async () => {
+	        $("result").textContent = "(generating spec...)";
+	        try {
+	          log("generate spec", { sessionId });
+	          const j = await api("/api/generate-spec", { sessionId });
+	          $("result").textContent = JSON.stringify(j, null, 2);
+	          speak("Spec files generated.");
+	        } catch (e) {
+	          $("result").textContent = `Error: ${e.message}`;
         }
       });
 

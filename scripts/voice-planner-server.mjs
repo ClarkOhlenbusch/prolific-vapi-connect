@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 
 const PORT = Number(process.env.VOICE_PLANNER_PORT || 8090);
 const HOST = process.env.VOICE_PLANNER_HOST || "127.0.0.1";
@@ -18,6 +19,28 @@ const CODEX_ENABLED = process.env.VOICE_PLANNER_ENABLE_CODEX === "1";
 const isLoopback = (req) => {
   const addr = req.socket.remoteAddress || "";
   return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
+};
+
+const getBuildBadgeInfo = () => {
+  // Best-effort; local-only UI convenience.
+  let version = null;
+  try {
+    const raw = execFileSync("cat", [path.join(PROJECT_DIR, "docs/working-version.json")], { encoding: "utf8" });
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.version === "string" && parsed.version.trim()) version = parsed.version.trim();
+  } catch {}
+
+  let gitSha = null;
+  let gitDirty = null;
+  try {
+    gitSha = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8", cwd: PROJECT_DIR }).trim();
+  } catch {}
+  try {
+    const porcelain = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8", cwd: PROJECT_DIR });
+    gitDirty = porcelain.trim().length > 0;
+  } catch {}
+
+  return { version, gitSha, gitDirty };
 };
 
 const json = (res, status, body) => {
@@ -138,6 +161,10 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && u.pathname === "/health") {
       return json(res, 200, { ok: true, codexEnabled: CODEX_ENABLED });
+    }
+
+    if (req.method === "GET" && u.pathname === "/version") {
+      return json(res, 200, { ok: true, ...getBuildBadgeInfo() });
     }
 
     if (req.method === "POST" && u.pathname === "/api/questions") {
@@ -286,4 +313,3 @@ server.listen(PORT, HOST, () => {
   console.log(`voice planner listening on http://${HOST}:${PORT}`);
   console.log(`codex enabled: ${CODEX_ENABLED ? "yes" : "no"} (set VOICE_PLANNER_ENABLE_CODEX=1)`);
 });
-
