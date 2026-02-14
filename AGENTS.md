@@ -40,6 +40,10 @@ Note: we cannot literally switch the system "mode" from here, but we can enforce
 
 We keep **local-only** verification notes in `docs/verification-log.local.md` (ignored by git). Use it as a scratchpad while iterating.
 
+## Supabase / Lovable
+
+Supabase schema/migrations and Edge Functions are managed/deployed via **Lovable** in this project. Prefer Lovable's Supabase tooling (e.g. SQL editor / function deploy flows) over ad-hoc local Supabase management when the change is intended for the hosted environment.
+
 Official verification for shipped changes lives on the **Changelog**:
 - When a change is pushed/deployed, the PASS/FAIL and steps should be recorded on the relevant changelog change (via `details.verification` in the changelog import JSON and/or editing the entry in the Researcher Changelog UI).
 

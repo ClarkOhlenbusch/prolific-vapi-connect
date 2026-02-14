@@ -2628,7 +2628,7 @@ const ResponseDetails = () => {
       if (error) throw error;
       const { data: updated, error: fetchErr } = await supabase
         .from('experiment_responses')
-        .select('vapi_structured_output, vapi_structured_output_at')
+        .select('vapi_structured_output, vapi_structured_output_at, vapi_structured_outputs, vapi_structured_outputs_at')
         .eq('id', data.id)
         .single();
       if (!fetchErr && updated) {
@@ -3244,9 +3244,37 @@ const ResponseDetails = () => {
                   </Button>
                 </div>
               )}
-              {data.vapi_structured_output && typeof data.vapi_structured_output === 'object' ? (
-                (() => {
-                  const vo = data.vapi_structured_output as Record<string, unknown>;
+              {(() => {
+                const structuredOutputsMap = (
+                  data.vapi_structured_outputs && typeof data.vapi_structured_outputs === 'object'
+                    ? (data.vapi_structured_outputs as Record<string, unknown>)
+                    : null
+                );
+                const derivedFromStructuredOutputs = (() => {
+                  if (!structuredOutputsMap) return null;
+                  const first = Object.values(structuredOutputsMap)[0] as any;
+                  if (!first || typeof first !== 'object') return null;
+                  const result = (first as any).result;
+                  if (!result || typeof result !== 'object') return null;
+                  return result as Record<string, unknown>;
+                })();
+
+                const evaluationFromDb = (
+                  data.vapi_structured_output && typeof data.vapi_structured_output === 'object'
+                    ? (data.vapi_structured_output as Record<string, unknown>)
+                    : null
+                );
+                const vo = evaluationFromDb ?? derivedFromStructuredOutputs;
+                const hasEvaluation = Boolean(vo);
+
+                if (!hasEvaluation && !structuredOutputsMap) {
+                  return (
+                    <p className="text-sm text-muted-foreground">
+                      No evaluation yet. Click “Run evaluation” above, wait 1–2 minutes, then “Check for results.”
+                    </p>
+                  );
+                }
+
                   const categories: { key: string; label: string }[] = [
                     { key: 'greeting_and_setup', label: 'Greeting & Setup' },
                     { key: 'turn_discipline', label: 'Turn discipline' },
@@ -3257,66 +3285,143 @@ const ResponseDetails = () => {
                     { key: 'closing', label: 'Closing' },
                     { key: 'boundaries', label: 'Boundaries' },
                   ];
-                  const totalScore = typeof vo.total_score === 'number' ? vo.total_score : null;
+                  const totalScore = vo && typeof vo.total_score === 'number' ? vo.total_score : null;
                   const maxScore = 24;
                   return (
                     <div className="space-y-4">
-                      <div className="rounded-md border overflow-hidden">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b bg-muted/50">
-                              <th className="text-left p-3 font-medium">Category</th>
-                              <th className="text-center p-3 font-medium w-20">Score</th>
-                              <th className="text-left p-3 font-medium">Reason</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {categories.map(({ key, label }) => {
-                              const score = vo[key];
-                              const reason = vo[`${key}_reason`];
-                              return (
-                                <tr key={key} className="border-b last:border-0">
-                                  <td className="p-3 font-medium">{label}</td>
-                                  <td className="p-3 text-center">
-                                    {typeof score === 'number' ? (
-                                      <span className={cn(
-                                        score === 3 && 'text-green-600 dark:text-green-500',
-                                        score === 2 && 'text-amber-600 dark:text-amber-500',
-                                        score === 1 && 'text-red-600 dark:text-red-500'
-                                      )}>
-                                        {score}/3
-                                      </span>
-                                    ) : '—'}
-                                  </td>
-                                  <td className="p-3 text-muted-foreground">{typeof reason === 'string' ? reason : '—'}</td>
+                      {hasEvaluation ? (
+                        <>
+                          <div className="rounded-md border overflow-hidden">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-muted/50">
+                                  <th className="text-left p-3 font-medium">Category</th>
+                                  <th className="text-center p-3 font-medium w-20">Score</th>
+                                  <th className="text-left p-3 font-medium">Reason</th>
                                 </tr>
-                              );
-                            })}
-                            <tr className="border-t-2 bg-muted/30">
-                              <td className="p-3 font-semibold">Total</td>
-                              <td className="p-3 text-center font-mono">
-                                {totalScore != null ? `${totalScore}/${maxScore}` : '—'}
-                              </td>
-                              <td className="p-3 text-muted-foreground">
-                                {typeof vo.overall_justification === 'string' ? vo.overall_justification : '—'}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                      {data.vapi_structured_output_at && (
-                        <p className="text-xs text-muted-foreground">
-                          Evaluation fetched: {new Date(data.vapi_structured_output_at).toLocaleString()}
+                              </thead>
+                              <tbody>
+                                {categories.map(({ key, label }) => {
+                                  const score = vo ? vo[key] : null;
+                                  const reason = vo ? vo[`${key}_reason`] : null;
+                                  return (
+                                    <tr key={key} className="border-b last:border-0">
+                                      <td className="p-3 font-medium">{label}</td>
+                                      <td className="p-3 text-center">
+                                        {typeof score === 'number' ? (
+                                          <span className={cn(
+                                            score === 3 && 'text-green-600 dark:text-green-500',
+                                            score === 2 && 'text-amber-600 dark:text-amber-500',
+                                            score === 1 && 'text-red-600 dark:text-red-500'
+                                          )}>
+                                            {score}/3
+                                          </span>
+                                        ) : '—'}
+                                      </td>
+                                      <td className="p-3 text-muted-foreground">{typeof reason === 'string' ? reason : '—'}</td>
+                                    </tr>
+                                  );
+                                })}
+                                <tr className="border-t-2 bg-muted/30">
+                                  <td className="p-3 font-semibold">Total</td>
+                                  <td className="p-3 text-center font-mono">
+                                    {totalScore != null ? `${totalScore}/${maxScore}` : '—'}
+                                  </td>
+                                  <td className="p-3 text-muted-foreground">
+                                    {vo && typeof vo.overall_justification === 'string' ? vo.overall_justification : '—'}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                          {data.vapi_structured_output_at && (
+                            <p className="text-xs text-muted-foreground">
+                              Evaluation fetched: {new Date(data.vapi_structured_output_at).toLocaleString()}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          No flattened evaluation saved yet, but raw structured outputs are available below.
                         </p>
                       )}
+
+                      <div className="rounded-md border bg-muted/10 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium">Raw structured outputs (Vapi)</p>
+                            <p className="text-xs text-muted-foreground">
+                              Useful for debugging shape issues (e.g., long calls, missing fields, truncation upstream).
+                            </p>
+                          </div>
+                          {data.vapi_structured_outputs_at && (
+                            <p className="text-xs text-muted-foreground shrink-0">
+                              Fetched: {new Date(data.vapi_structured_outputs_at).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                        {structuredOutputsMap ? (
+                          <div className="mt-3 space-y-2">
+                            {Object.entries(structuredOutputsMap).map(([key, entry]) => {
+                              const entryObj = entry && typeof entry === 'object' ? (entry as any) : null;
+                              const name = typeof entryObj?.name === 'string' ? entryObj.name : null;
+                              const payload = entryObj?.result ?? entryObj ?? entry;
+                              const text = (() => {
+                                try {
+                                  return JSON.stringify(payload, null, 2);
+                                } catch {
+                                  return String(payload);
+                                }
+                              })();
+                              return (
+                                <Collapsible key={key} defaultOpen={false}>
+                                  <div className="flex items-center justify-between gap-2 rounded border bg-background px-3 py-2">
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium truncate">
+                                        {name ? `${name} (${key})` : key}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={async () => {
+                                          try {
+                                            await navigator.clipboard.writeText(text);
+                                            toast.success('Copied JSON');
+                                          } catch (e) {
+                                            console.error(e);
+                                            toast.error('Failed to copy JSON');
+                                          }
+                                        }}
+                                      >
+                                        Copy JSON
+                                      </Button>
+                                      <CollapsibleTrigger asChild>
+                                        <Button size="sm" variant="outline">
+                                          <ChevronDown className="h-4 w-4" />
+                                        </Button>
+                                      </CollapsibleTrigger>
+                                    </div>
+                                  </div>
+                                  <CollapsibleContent className="mt-2">
+                                    <pre className="max-h-96 overflow-auto rounded border bg-background p-3 text-xs leading-relaxed">
+                                      {text}
+                                    </pre>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="mt-3 text-xs italic text-muted-foreground">
+                            No raw structured outputs saved yet. Click “Check for results” above to fetch from Vapi.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   );
-                })()
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No evaluation yet. Click “Run evaluation” above, wait 1–2 minutes, then “Check for results.”
-                </p>
-              )}
+              })()}
             </CardContent>
           </Card>
         </section>
