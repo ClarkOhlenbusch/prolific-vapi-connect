@@ -46,6 +46,8 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
   const [isSaving, setIsSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
+  const BALANCE_SCOPE_KEY = "balance_scope_batches";
+
   // Mode toggle: "alternating" or "static"
   const [activeMode, setActiveMode] = useState<"alternating" | "static">("alternating");
 
@@ -64,6 +66,7 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
   const [batchCounts, setBatchCounts] = useState<{ formal: number; informal: number }>({ formal: 0, informal: 0 });
   const [isLoadingBatchCounts, setIsLoadingBatchCounts] = useState(false);
+  const [activeBatchName, setActiveBatchName] = useState<string | null>(null);
 
   useEffect(() => {
     // Use dummy data for guest mode
@@ -84,6 +87,7 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
     }
     fetchSettings();
     fetchAvailableBatches();
+    fetchActiveBatch();
   }, [isGuestMode]);
 
   useEffect(() => {
@@ -91,6 +95,12 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
       fetchBatchCounts();
     }
   }, [selectedBatches, sourceFilter, isGuestMode]);
+
+  useEffect(() => {
+    // If persisted selection contains deleted/unknown batches, filter them out once we have the authoritative list.
+    if (availableBatches.length === 0) return;
+    setSelectedBatches((prev) => prev.filter((b) => availableBatches.includes(b)));
+  }, [availableBatches]);
 
   const fetchSettings = async () => {
     try {
@@ -103,7 +113,8 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
           "formal_participant_count",
           "informal_participant_count",
           "condition_offset_count",
-          "condition_offset_type"
+          "condition_offset_type",
+          BALANCE_SCOPE_KEY,
         ]);
 
       if (error) {
@@ -130,6 +141,23 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
         setOffsetCount(parseInt(getValue("condition_offset_count") || "0", 10));
         setOffsetType((getValue("condition_offset_type") || "informal") as "formal" | "informal");
         setOffsetInput(getValue("condition_offset_count") || "0");
+
+        const rawScope = (getValue(BALANCE_SCOPE_KEY) || "").trim();
+        if (rawScope) {
+          try {
+            const parsed = JSON.parse(rawScope) as unknown;
+            if (Array.isArray(parsed)) {
+              const next = parsed
+                .filter((b): b is string => typeof b === "string")
+                .map((b) => b.trim())
+                .filter(Boolean);
+              setSelectedBatches(next);
+            }
+          } catch {
+            // Ignore invalid JSON; fallback to "all batches"
+            setSelectedBatches([]);
+          }
+        }
       }
     } catch (error) {
       console.error("Error:", error);
@@ -155,6 +183,23 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
       setAvailableBatches([...new Set(names)].sort());
     } catch (error) {
       console.error("Error:", error);
+    }
+  };
+
+  const fetchActiveBatch = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("experiment_batches")
+        .select("name")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (error) throw error;
+      const name = (data?.name ?? "").trim();
+      setActiveBatchName(name || null);
+    } catch (error) {
+      console.error("Error:", error);
+      setActiveBatchName(null);
     }
   };
 
@@ -197,6 +242,203 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
       console.error("Error:", error);
     } finally {
       setIsLoadingBatchCounts(false);
+    }
+  };
+
+  const persistBalanceScope = async (scope: string[], nowIso: string) => {
+    const scopeValue = JSON.stringify(scope);
+    const payload = [{
+      setting_key: BALANCE_SCOPE_KEY,
+      setting_value: scopeValue,
+      updated_at: nowIso,
+      updated_by: user?.id,
+    }];
+    return supabase.from("experiment_settings").upsert(payload, { onConflict: "setting_key" });
+  };
+
+  const handleRebalance = async () => {
+    if (selectedBatches.length > 0 && activeBatchName && !selectedBatches.includes(activeBatchName)) {
+      toast.error(`Active batch '${activeBatchName}' isn't included in the balance scope. Add it to scope to rebalance.`);
+      return;
+    }
+
+    const scopedFormal = batchCounts.formal;
+    const scopedInformal = batchCounts.informal;
+    const diff = scopedFormal - scopedInformal;
+    const nextOffsetCount = Math.abs(diff);
+    const nextOffsetType: "formal" | "informal" =
+      diff > 0 ? "informal" : diff < 0 ? "formal" : offsetType;
+
+    // Undo snapshot
+    const undoSnapshot = {
+      formalCount,
+      informalCount,
+      offsetCount,
+      offsetType,
+      selectedBatches,
+    };
+
+    // Guest mode: update local state only
+    if (isGuestMode) {
+      setFormalCount(scopedFormal);
+      setInformalCount(scopedInformal);
+      setOffsetCount(nextOffsetCount);
+      setOffsetType(nextOffsetType);
+      setOffsetInput(String(nextOffsetCount));
+
+      toast.success("Rebalanced (demo mode - changes not saved)", {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            setFormalCount(undoSnapshot.formalCount);
+            setInformalCount(undoSnapshot.informalCount);
+            setOffsetCount(undoSnapshot.offsetCount);
+            setOffsetType(undoSnapshot.offsetType);
+            setSelectedBatches(undoSnapshot.selectedBatches);
+            setOffsetInput(String(undoSnapshot.offsetCount));
+            toast.success("Undo complete (demo mode)");
+          },
+        },
+      });
+      return;
+    }
+
+    if (!isSuperAdmin) {
+      toast.error("Only super admins can rebalance assignment settings");
+      return;
+    }
+
+    setIsSavingAlternating(true);
+    const nowIso = new Date().toISOString();
+
+    try {
+      // Read current values for undo (prefer DB truth over local state)
+      const { data: existing, error: existingError } = await supabase
+        .from("experiment_settings")
+        .select("setting_key, setting_value")
+        .in("setting_key", [
+          "formal_participant_count",
+          "informal_participant_count",
+          "condition_offset_count",
+          "condition_offset_type",
+          BALANCE_SCOPE_KEY,
+        ]);
+
+      if (existingError) throw existingError;
+
+      const byKey = new Map<string, string>();
+      (existing ?? []).forEach((row) => {
+        if (row.setting_key) byKey.set(row.setting_key, String(row.setting_value ?? ""));
+      });
+
+      const prevScopeRaw = (byKey.get(BALANCE_SCOPE_KEY) ?? "").trim();
+      let prevScope: string[] = undoSnapshot.selectedBatches;
+      if (prevScopeRaw) {
+        try {
+          const parsed = JSON.parse(prevScopeRaw) as unknown;
+          if (Array.isArray(parsed)) {
+            prevScope = parsed
+              .filter((b): b is string => typeof b === "string")
+              .map((b) => b.trim())
+              .filter(Boolean);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      const undoDbSnapshot = {
+        formalCount: parseInt(byKey.get("formal_participant_count") ?? String(undoSnapshot.formalCount), 10) || 0,
+        informalCount: parseInt(byKey.get("informal_participant_count") ?? String(undoSnapshot.informalCount), 10) || 0,
+        offsetCount: parseInt(byKey.get("condition_offset_count") ?? String(undoSnapshot.offsetCount), 10) || 0,
+        offsetType: ((byKey.get("condition_offset_type") ?? undoSnapshot.offsetType) as "formal" | "informal") || "informal",
+        selectedBatches: prevScope,
+      };
+
+      const upsertPayload = [
+        {
+          setting_key: "formal_participant_count",
+          setting_value: String(scopedFormal),
+          updated_at: nowIso,
+          updated_by: user?.id,
+        },
+        {
+          setting_key: "informal_participant_count",
+          setting_value: String(scopedInformal),
+          updated_at: nowIso,
+          updated_by: user?.id,
+        },
+        {
+          setting_key: "condition_offset_count",
+          setting_value: String(nextOffsetCount),
+          updated_at: nowIso,
+          updated_by: user?.id,
+        },
+        {
+          setting_key: "condition_offset_type",
+          setting_value: nextOffsetType,
+          updated_at: nowIso,
+          updated_by: user?.id,
+        },
+      ];
+
+      const [{ error: upsertError }, { error: scopeError }] = await Promise.all([
+        supabase.from("experiment_settings").upsert(upsertPayload, { onConflict: "setting_key" }),
+        persistBalanceScope(selectedBatches, nowIso),
+      ]);
+
+      if (upsertError || scopeError) {
+        console.error("Rebalance update errors:", { upsertError, scopeError });
+        throw upsertError || scopeError;
+      }
+
+      setFormalCount(scopedFormal);
+      setInformalCount(scopedInformal);
+      setOffsetCount(nextOffsetCount);
+      setOffsetType(nextOffsetType);
+      setOffsetInput(String(nextOffsetCount));
+
+      toast.success("Rebalanced assignment settings", {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            const undoIso = new Date().toISOString();
+            const undoPayload = [
+              { setting_key: "formal_participant_count", setting_value: String(undoDbSnapshot.formalCount), updated_at: undoIso, updated_by: user?.id },
+              { setting_key: "informal_participant_count", setting_value: String(undoDbSnapshot.informalCount), updated_at: undoIso, updated_by: user?.id },
+              { setting_key: "condition_offset_count", setting_value: String(undoDbSnapshot.offsetCount), updated_at: undoIso, updated_by: user?.id },
+              { setting_key: "condition_offset_type", setting_value: undoDbSnapshot.offsetType, updated_at: undoIso, updated_by: user?.id },
+              { setting_key: BALANCE_SCOPE_KEY, setting_value: JSON.stringify(undoDbSnapshot.selectedBatches), updated_at: undoIso, updated_by: user?.id },
+            ];
+
+            const { error: undoError } = await supabase
+              .from("experiment_settings")
+              .upsert(undoPayload, { onConflict: "setting_key" });
+
+            if (undoError) {
+              console.error("Failed to undo rebalance:", undoError);
+              toast.error("Failed to undo rebalance");
+              return;
+            }
+
+            setFormalCount(undoDbSnapshot.formalCount);
+            setInformalCount(undoDbSnapshot.informalCount);
+            setOffsetCount(undoDbSnapshot.offsetCount);
+            setOffsetType(undoDbSnapshot.offsetType);
+            setSelectedBatches(undoDbSnapshot.selectedBatches);
+            setOffsetInput(String(undoDbSnapshot.offsetCount));
+            toast.success("Rebalance undone");
+          },
+        },
+      });
+
+      // Pull fresh state to keep UI consistent with DB truth.
+      await Promise.all([fetchSettings(), fetchBatchCounts()]);
+    } catch (error) {
+      console.error("Error rebalancing:", error);
+      toast.error("Failed to rebalance");
+    } finally {
+      setIsSavingAlternating(false);
     }
   };
 
@@ -539,6 +781,24 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleRebalance}
+                      disabled={
+                        !isSuperAdmin ||
+                        isSavingAlternating ||
+                        isLoadingBatchCounts ||
+                        (selectedBatches.length > 0 && !!activeBatchName && !selectedBatches.includes(activeBatchName))
+                      }
+                      title={
+                        selectedBatches.length > 0 && !!activeBatchName && !selectedBatches.includes(activeBatchName)
+                          ? `Active batch '${activeBatchName}' must be included to rebalance`
+                          : "Rebalance"
+                      }
+                    >
+                      Rebalance
+                    </Button>
+                    <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setSelectedBatches(availableBatches)}
@@ -556,6 +816,14 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
                     </Button>
                   </div>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Rebalance will rebase counters to submitted counts in the selected scope and set an offset to correct the current gap.
+                </p>
+                {selectedBatches.length > 0 && activeBatchName && !selectedBatches.includes(activeBatchName) ? (
+                  <p className="text-xs text-destructive">
+                    Active batch <span className="font-medium">{activeBatchName}</span> is not included in the selected scope.
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {availableBatches.length === 0 ? (
                     <span className="text-sm text-muted-foreground">No batches found</span>
