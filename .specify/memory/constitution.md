@@ -17,8 +17,14 @@ This repo is worked on in two modes:
 - YOLO Mode: DISABLED
 - Git push: manual only (do not auto-push from loops).
 
+## Notifications (Local Dev)
+
+If the user has the browser notify tab open (see `npm run notify:server`), use:
+
+- `./scripts/notify-browser.sh done`
+- `./scripts/notify-browser.sh question`
+
 ## Project Rules (Must Follow)
 
 - Follow `AGENTS.md` verification + PASS/FAIL gating for repo changes.
 - Supabase schema/migrations and Edge Functions are managed/deployed via Lovable for the hosted environment.
-
