@@ -298,21 +298,30 @@ const PracticeConversation = () => {
       if (message.type === 'end-of-call-report') {
         const endedReason = message.endedReason;
         const reasonCode = mapCallEndReasonToFailureCode(endedReason);
-        const isError = reasonCode !== 'none';
-        logAttemptEvent('call_end_report', { endedReason, isError, reasonCode });
+        const isExpected = endedReason === 'exceeded-max-duration';
+        const isError = reasonCode !== 'none' && !isExpected;
+        logAttemptEvent('call_end_report', { endedReason, isError, isExpected, reasonCode });
       }
     });
     vapi.on('error', error => {
       console.error('[Vapi Debug] Event: error', error);
       const reasonCode = mapVapiErrorToReasonCode(error?.name, error?.message);
       const guidance = getCallErrorGuidance(reasonCode);
+      const errorMessage = error?.message?.toLowerCase() || '';
+      const isExpected = (
+        errorMessage.includes('exceeded') ||
+        errorMessage.includes('max-duration') ||
+        errorMessage.includes('meeting ended') ||
+        errorMessage.includes('meeting has ended') ||
+        errorMessage.includes('ejection')
+      );
       logAttemptEvent('call_error', {
         errorName: error?.name,
         errorMessage: error?.message,
         reasonCode,
+        isExpected,
       });
       // Check if it's a timeout-related error (meeting ended due to time limit)
-      const errorMessage = error?.message?.toLowerCase() || '';
       if (
         errorMessage.includes('exceeded') || 
         errorMessage.includes('max-duration') || 

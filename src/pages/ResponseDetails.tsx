@@ -52,6 +52,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ParticipantJourneyModal } from '@/components/researcher/ParticipantJourneyModal';
 import { EventType, Replayer, ReplayerEvents } from 'rrweb';
 import type { eventWithTime } from '@rrweb/types';
@@ -87,6 +95,13 @@ type DictationDiagnosticsByField = Record<FeedbackFieldKey, DictationFieldDiagno
 type DictationTranscriptSegmentsByField = Record<FeedbackFieldKey, DictationTranscriptSegment[]>;
 type MergedDictationByField = Record<FeedbackFieldKey, MergedDictationAudioState>;
 type FeedbackDraftUsage = Record<FeedbackFieldKey, boolean>;
+
+type FutureFeaturesDraft = {
+  title: string;
+  goal: string;
+  proposed: string;
+  impact: string;
+};
 
 interface DictationRecording {
   id: string;
@@ -1017,6 +1032,14 @@ const ResponseDetails = () => {
   const [pendingMarkerEvents, setPendingMarkerEvents] = useState<Pick<NavigationEvent, 'call_id' | 'page_name' | 'event_type' | 'metadata' | 'created_at'>[]>([]);
   const [researcherNotesDraft, setResearcherNotesDraft] = useState('');
   const [researcherNotesSaving, setResearcherNotesSaving] = useState(false);
+  const [futureFeaturesDialogOpen, setFutureFeaturesDialogOpen] = useState(false);
+  const [futureFeaturesSaving, setFutureFeaturesSaving] = useState(false);
+  const [futureFeaturesDraft, setFutureFeaturesDraft] = useState<FutureFeaturesDraft>({
+    title: '',
+    goal: '',
+    proposed: '',
+    impact: '',
+  });
   const [runEvaluationLoading, setRunEvaluationLoading] = useState(false);
   const [checkResultsLoading, setCheckResultsLoading] = useState(false);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
@@ -2010,8 +2033,27 @@ const ResponseDetails = () => {
         label = `${labelPrefix}: Audio quality warning`;
         tone = 'warning';
       } else if (event.event_type === 'call_error') {
-        label = `${labelPrefix}: Call error`;
-        tone = 'error';
+        const errorText = typeof metadata.errorMessage === 'string'
+          ? metadata.errorMessage
+          : typeof metadata.error === 'string'
+            ? metadata.error
+            : '';
+        const normalizedError = errorText.toLowerCase();
+        const isExpected = metadata.isExpected === true
+          || normalizedError.includes('meeting ended')
+          || normalizedError.includes('meeting has ended')
+          || normalizedError.includes('max-duration')
+          || normalizedError.includes('max duration')
+          || normalizedError.includes('exceeded-max-duration')
+          || normalizedError.includes('ejection');
+
+        if (isExpected) {
+          label = `${labelPrefix}: Call ended (expected)`;
+          tone = 'info';
+        } else {
+          label = `${labelPrefix}: Call error`;
+          tone = 'error';
+        }
       } else if (event.event_type === 'assistant_audio_timeout') {
         label = `${labelPrefix}: Assistant audio timeout`;
         tone = 'warning';
@@ -2274,10 +2316,85 @@ const ResponseDetails = () => {
             }
           : null
       );
+      toast.success('Notes saved');
     } catch (err) {
       console.error(err);
+      toast.error('Failed to save notes');
     } finally {
       setResearcherNotesSaving(false);
+    }
+  };
+
+  const openFutureFeaturesDialog = () => {
+    if (!data) return;
+    const callLabel = data.call_id ? `Call ${data.call_id}` : `Response ${data.id}`;
+    setFutureFeaturesDraft((prev) => ({
+      title: prev.title || `${callLabel}: `,
+      goal: prev.goal || researcherNotesDraft.trim(),
+      proposed: prev.proposed,
+      impact: prev.impact || 'src/pages/ResponseDetails.tsx, src/pages/VoiceConversation.tsx, src/components/researcher/ParticipantJourneyModal.tsx',
+    }));
+    setFutureFeaturesDialogOpen(true);
+  };
+
+  const handleSaveToFutureFeatures = async () => {
+    if (!import.meta.env.DEV) {
+      toast.error('Future features saving is only available in dev mode.');
+      return;
+    }
+    if (isGuestMode) {
+      toast.error('Not available in Guest Mode.');
+      return;
+    }
+    if (!data) return;
+
+    const title = futureFeaturesDraft.title.trim();
+    const goal = futureFeaturesDraft.goal.trim();
+    const proposed = futureFeaturesDraft.proposed.trim();
+    const impact = futureFeaturesDraft.impact.trim();
+
+    if (!title || !goal) {
+      toast.error('Title and Goal are required.');
+      return;
+    }
+
+    setFutureFeaturesSaving(true);
+    try {
+      const entryMarkdown = [
+        `## ${title}`,
+        '',
+        `- Goal: ${goal}`,
+        proposed ? `- Proposed UI/behavior: ${proposed}` : `- Proposed UI/behavior: (fill in)`,
+        impact ? `- Likely impact: ${impact}` : `- Likely impact: (fill in)`,
+        '',
+      ].join('\n');
+
+      const res = await fetch('/__dev__/future-features', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          entryMarkdown,
+          context: {
+            responseId: data.id,
+            callId: data.call_id,
+            prolificId: data.prolific_id,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        throw new Error(msg || `Request failed (${res.status})`);
+      }
+
+      toast.success('Saved to future features', { description: 'Appended to docs/future-features.md' });
+      setFutureFeaturesDialogOpen(false);
+      setFutureFeaturesDraft({ title: '', goal: '', proposed: '', impact: '' });
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to save to future features');
+    } finally {
+      setFutureFeaturesSaving(false);
     }
   };
 
@@ -2688,16 +2805,89 @@ const ResponseDetails = () => {
                 onChange={(e) => setResearcherNotesDraft(e.target.value)}
                 disabled={isPendingRecord || isGuestMode}
               />
-              <Button
-                size="sm"
-                onClick={handleSaveResearcherNotes}
-                disabled={isPendingRecord || isGuestMode || researcherNotesSaving}
-              >
-                {researcherNotesSaving ? 'Saving…' : 'Save notes'}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleSaveResearcherNotes}
+                  disabled={isPendingRecord || isGuestMode || researcherNotesSaving}
+                >
+                  {researcherNotesSaving ? 'Saving…' : 'Save notes'}
+                </Button>
+                {import.meta.env.DEV && !isGuestMode && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={openFutureFeaturesDialog}
+                    disabled={isPendingRecord}
+                  >
+                    Save to future features
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         </section>
+
+        <Dialog open={futureFeaturesDialogOpen} onOpenChange={setFutureFeaturesDialogOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Save to Future Features</DialogTitle>
+              <DialogDescription>
+                Appends a new entry to <span className="font-mono">docs/future-features.md</span> (dev mode only).
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Title</label>
+                <Textarea
+                  className="min-h-[60px] resize-y"
+                  placeholder="Short, specific title…"
+                  value={futureFeaturesDraft.title}
+                  onChange={(e) => setFutureFeaturesDraft((p) => ({ ...p, title: e.target.value }))}
+                  disabled={futureFeaturesSaving}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Goal</label>
+                <Textarea
+                  className="min-h-[80px] resize-y"
+                  placeholder="Problem / user-facing goal…"
+                  value={futureFeaturesDraft.goal}
+                  onChange={(e) => setFutureFeaturesDraft((p) => ({ ...p, goal: e.target.value }))}
+                  disabled={futureFeaturesSaving}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Proposed UI/behavior</label>
+                <Textarea
+                  className="min-h-[80px] resize-y"
+                  placeholder="How it should work…"
+                  value={futureFeaturesDraft.proposed}
+                  onChange={(e) => setFutureFeaturesDraft((p) => ({ ...p, proposed: e.target.value }))}
+                  disabled={futureFeaturesSaving}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Likely impact</label>
+                <Textarea
+                  className="min-h-[70px] resize-y"
+                  placeholder="Key files/areas likely impacted…"
+                  value={futureFeaturesDraft.impact}
+                  onChange={(e) => setFutureFeaturesDraft((p) => ({ ...p, impact: e.target.value }))}
+                  disabled={futureFeaturesSaving}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setFutureFeaturesDialogOpen(false)} disabled={futureFeaturesSaving}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveToFutureFeatures} disabled={futureFeaturesSaving}>
+                {futureFeaturesSaving ? 'Saving…' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* VAPI structured output evaluation - right under Researcher notes */}
         <section ref={el => sectionRefs.current['evaluation'] = el} id="evaluation" className="scroll-mt-32">

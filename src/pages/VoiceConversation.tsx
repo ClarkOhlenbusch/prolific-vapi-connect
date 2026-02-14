@@ -283,12 +283,18 @@ const VoiceConversation = () => {
       if (message.type === "end-of-call-report") {
         const endedReason = message.endedReason;
         const reasonCode = mapCallEndReasonToFailureCode(endedReason);
-        const isError = reasonCode !== "none";
-        logAttemptEvent("call_end_report", { endedReason, isError, reasonCode });
+        const isExpected = endedReason === "exceeded-max-duration";
+        const isError = reasonCode !== "none" && !isExpected;
+        logAttemptEvent("call_end_report", { endedReason, isError, isExpected, reasonCode });
         if (endedReason === "assistant-ended-call") {
           toast({
             title: "Call Completed Successfully",
             description: "All questions have been answered. Please proceed to the questionnaire.",
+          });
+        } else if (endedReason === "exceeded-max-duration") {
+          toast({
+            title: "Call time limit reached",
+            description: "Proceed to the questionnaire.",
           });
         } else if (reasonCode === "assistant_pipeline_error" || reasonCode === "assistant_error" || reasonCode === "call_timeout") {
           const guidance = getCallErrorGuidance(reasonCode);
@@ -327,13 +333,24 @@ const VoiceConversation = () => {
     vapi.on("error", (error) => {
       // Log errors but don't show toast - end-of-call-report handles messaging
       console.error("Vapi error:", error);
+      const errorMessage = (error as { message?: string })?.message || "";
+      const normalized = errorMessage.toLowerCase();
+      const isExpected = (
+        normalized.includes("meeting ended")
+        || normalized.includes("meeting has ended")
+        || normalized.includes("max-duration")
+        || normalized.includes("max duration")
+        || normalized.includes("exceeded-max-duration")
+        || normalized.includes("ejection")
+      );
       logAttemptEvent("call_error", {
         errorName: (error as { name?: string })?.name,
-        errorMessage: (error as { message?: string })?.message,
+        errorMessage,
         reasonCode: mapVapiErrorToReasonCode(
           (error as { name?: string })?.name,
           (error as { message?: string })?.message
         ),
+        isExpected,
       });
     });
     return () => {
