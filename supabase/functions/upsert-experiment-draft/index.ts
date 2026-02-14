@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
 
     const { data: existingRows, error: existingError } = await supabase
       .from("experiment_responses")
-      .select("id")
+      .select("id, submission_status")
       .eq("session_token", sessionToken)
       .limit(1);
 
@@ -85,6 +85,11 @@ Deno.serve(async (req) => {
       }
       if (prolificId && prolificId.trim()) {
         updatePayload.prolific_id = prolificId.trim();
+      }
+      // "Abandoned" is derived from inactivity; if the participant becomes active again,
+      // bring the row back to pending so the researcher UI reflects current state.
+      if (existingRow.submission_status === "abandoned") {
+        updatePayload.submission_status = "pending";
       }
 
       const { error: updateError } = await supabase
