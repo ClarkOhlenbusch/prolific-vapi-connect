@@ -2355,6 +2355,44 @@ const ResponseDetails = () => {
     URL.revokeObjectURL(href);
   };
 
+  const decodeAudioBlob = async (blob: Blob): Promise<AudioBuffer> => {
+    if (typeof window === 'undefined' || typeof window.AudioContext === 'undefined') {
+      throw new Error('Audio decoding is not supported in this browser.');
+    }
+    const ctx = new window.AudioContext();
+    try {
+      const bytes = await blob.arrayBuffer();
+      return await ctx.decodeAudioData(bytes.slice(0));
+    } finally {
+      await ctx.close();
+    }
+  };
+
+  const ensureFfmpeg = async () => {
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+    const ffmpeg = new FFmpeg();
+    await ffmpeg.load({
+      // Use package export subpaths so Vite can resolve assets under "exports".
+      coreURL: new URL('@ffmpeg/core', import.meta.url).toString(),
+      wasmURL: new URL('@ffmpeg/core/wasm', import.meta.url).toString(),
+      classWorkerURL: new URL('@ffmpeg/ffmpeg/worker', import.meta.url).toString(),
+    });
+    return ffmpeg;
+  };
+
+  const transcodeWavToMp3 = async (wavBlob: Blob): Promise<Blob> => {
+    const ffmpeg = await ensureFfmpeg();
+    const inputBytes = new Uint8Array(await wavBlob.arrayBuffer());
+    await ffmpeg.writeFile('input.wav', inputBytes);
+    // VBR around ~165kbps; adjust with -q:a (0 best, 9 worst).
+    const code = await ffmpeg.exec(['-i', 'input.wav', '-codec:a', 'libmp3lame', '-q:a', '4', 'output.mp3']);
+    if (code !== 0) throw new Error(`FFmpeg failed (exit ${code})`);
+    const out = await ffmpeg.readFile('output.mp3');
+    await ffmpeg.deleteFile('input.wav').catch(() => {});
+    await ffmpeg.deleteFile('output.mp3').catch(() => {});
+    return new Blob([out], { type: 'audio/mpeg' });
+  };
+
   const handleDownloadDictationRecording = async (recording: DictationRecording, clipIndex: number) => {
     if (!recording.storageBucket || !recording.storagePath) {
       toast.error('No storage path available for this clip.');
@@ -2381,6 +2419,66 @@ const ResponseDetails = () => {
     }
   };
 
+  const handleDownloadDictationRecordingAsWav = async (recording: DictationRecording, clipIndex: number) => {
+    if (!recording.storageBucket || !recording.storagePath) {
+      toast.error('No storage path available for this clip.');
+      return;
+    }
+    if (!data) return;
+    setDictationDownloadId(recording.id);
+    try {
+      const { data: file, error } = await supabase.storage
+        .from(recording.storageBucket)
+        .download(recording.storagePath);
+      if (error) throw error;
+
+      const audioBuffer = await decodeAudioBlob(file);
+      const wavBlob = encodeAudioBufferToWav(audioBuffer);
+
+      const safeField = recording.field.replace(/[^a-z0-9_]+/gi, '_');
+      const ts = new Date(recording.createdAt).toISOString().replace(/[:.]/g, '-');
+      const filename = `${data.prolific_id}_${data.call_id || 'no-call'}_${safeField}_clip${clipIndex + 1}_start${recording.attemptCount}_${ts}.wav`;
+      downloadBlob(wavBlob, filename);
+      toast.success('WAV download started');
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to download WAV');
+    } finally {
+      setDictationDownloadId(null);
+    }
+  };
+
+  const handleDownloadDictationRecordingAsMp3 = async (recording: DictationRecording, clipIndex: number) => {
+    if (!recording.storageBucket || !recording.storagePath) {
+      toast.error('No storage path available for this clip.');
+      return;
+    }
+    if (!data) return;
+    setDictationDownloadId(recording.id);
+    try {
+      const { data: file, error } = await supabase.storage
+        .from(recording.storageBucket)
+        .download(recording.storagePath);
+      if (error) throw error;
+
+      // Decode via WebAudio, then encode to wav, then mp3 via ffmpeg.wasm.
+      const audioBuffer = await decodeAudioBlob(file);
+      const wavBlob = encodeAudioBufferToWav(audioBuffer);
+      const mp3Blob = await transcodeWavToMp3(wavBlob);
+
+      const safeField = recording.field.replace(/[^a-z0-9_]+/gi, '_');
+      const ts = new Date(recording.createdAt).toISOString().replace(/[:.]/g, '-');
+      const filename = `${data.prolific_id}_${data.call_id || 'no-call'}_${safeField}_clip${clipIndex + 1}_start${recording.attemptCount}_${ts}.mp3`;
+      downloadBlob(mp3Blob, filename);
+      toast.success('MP3 download started');
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to download MP3');
+    } finally {
+      setDictationDownloadId(null);
+    }
+  };
+
   const handleDownloadMergedDictation = (field: FeedbackFieldKey) => {
     if (!data) return;
     const merged = mergedDictationByField[field];
@@ -2394,6 +2492,29 @@ const ResponseDetails = () => {
       .then((r) => r.blob())
       .then((blob) => downloadBlob(blob, filename))
       .catch(() => toast.error('Failed to download merged audio'));
+  };
+
+  const handleDownloadMergedDictationAsMp3 = async (field: FeedbackFieldKey) => {
+    if (!data) return;
+    const merged = mergedDictationByField[field];
+    if (merged.status !== 'ready' || !merged.playbackUrl) {
+      toast.error('Merged audio is not available.');
+      return;
+    }
+    setDictationDownloadId(`merged-${field}`);
+    try {
+      const wavBlob = await fetch(merged.playbackUrl).then((r) => r.blob());
+      const mp3Blob = await transcodeWavToMp3(wavBlob);
+      const safeField = field.replace(/[^a-z0-9_]+/gi, '_');
+      const filename = `${data.prolific_id}_${data.call_id || 'no-call'}_${safeField}_merged.mp3`;
+      downloadBlob(mp3Blob, filename);
+      toast.success('MP3 download started');
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to download merged MP3');
+    } finally {
+      setDictationDownloadId(null);
+    }
   };
 
   const openFutureFeaturesDialog = () => {
@@ -2622,6 +2743,16 @@ const ResponseDetails = () => {
                   <Download className="h-4 w-4 mr-2" />
                   Download merged audio (.wav)
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleDownloadMergedDictationAsMp3(field)}
+                  className="w-full justify-center"
+                  disabled={dictationDownloadId === `merged-${field}`}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {dictationDownloadId === `merged-${field}` ? 'Encoding MP3...' : 'Download merged audio (.mp3)'}
+                </Button>
               </div>
             )}
           </div>
@@ -2667,32 +2798,78 @@ const ResponseDetails = () => {
                   {recording.playbackUrl ? (
                     <div className="space-y-2">
                       <audio controls preload="metadata" src={recording.playbackUrl} className="w-full" />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full justify-center"
-                        disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
-                        onClick={() => handleDownloadDictationRecording(recording, idx)}
-                        title={!recording.storageBucket || !recording.storagePath ? 'No storage path available' : 'Download original clip'}
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        {dictationDownloadId === recording.id ? 'Downloading...' : 'Download clip'}
-                      </Button>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center"
+                          disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
+                          onClick={() => handleDownloadDictationRecording(recording, idx)}
+                          title={!recording.storageBucket || !recording.storagePath ? 'No storage path available' : 'Download original clip'}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          {dictationDownloadId === recording.id ? 'Working...' : 'Original'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center"
+                          disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
+                          onClick={() => void handleDownloadDictationRecordingAsWav(recording, idx)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          {dictationDownloadId === recording.id ? 'Working...' : 'WAV'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center"
+                          disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
+                          onClick={() => void handleDownloadDictationRecordingAsMp3(recording, idx)}
+                          title="MP3 encoding runs in the browser (ffmpeg.wasm) and may take a few seconds."
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          {dictationDownloadId === recording.id ? 'Working...' : 'MP3'}
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       <p className="text-xs italic text-muted-foreground">Audio reference exists, but signed URL could not be resolved.</p>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full justify-center"
-                        disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
-                        onClick={() => handleDownloadDictationRecording(recording, idx)}
-                        title={!recording.storageBucket || !recording.storagePath ? 'No storage path available' : 'Download original clip'}
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        {dictationDownloadId === recording.id ? 'Downloading...' : 'Download clip'}
-                      </Button>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center"
+                          disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
+                          onClick={() => handleDownloadDictationRecording(recording, idx)}
+                          title={!recording.storageBucket || !recording.storagePath ? 'No storage path available' : 'Download original clip'}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          {dictationDownloadId === recording.id ? 'Working...' : 'Original'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center"
+                          disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
+                          onClick={() => void handleDownloadDictationRecordingAsWav(recording, idx)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          {dictationDownloadId === recording.id ? 'Working...' : 'WAV'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full justify-center"
+                          disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
+                          onClick={() => void handleDownloadDictationRecordingAsMp3(recording, idx)}
+                          title="MP3 encoding runs in the browser (ffmpeg.wasm) and may take a few seconds."
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          {dictationDownloadId === recording.id ? 'Working...' : 'MP3'}
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
