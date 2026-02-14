@@ -349,6 +349,25 @@ const ResearcherChangelog = () => {
     },
   });
 
+  const updateReleaseStatusMutation = useMutation({
+    mutationFn: async (payload: { entryIds: string[]; release_status: ReleaseStatus }) => {
+      if (isGuestMode) return;
+      if (!isSuperAdmin) throw new Error('Only super admins can change release status.');
+      const { error } = await supabase
+        .from('changelog_entries')
+        .update({ release_status: payload.release_status })
+        .in('id', payload.entryIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['changelog-entries'] });
+      toast.success('Release status updated');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update release status');
+    },
+  });
+
   const {
     data: systemDesignManifest = null,
     isLoading: isSystemDesignManifestLoading,
@@ -1842,6 +1861,27 @@ const ResearcherChangelog = () => {
                             >
                               {releaseStatusMeta[entry.release_status].label}
                             </Badge>
+                            {isSuperAdmin && !isGuestMode ? (
+                              <Select
+                                value={entry.release_status}
+                                onValueChange={(v) =>
+                                  updateReleaseStatusMutation.mutate({
+                                    entryIds: entry.entryIds,
+                                    release_status: normalizeReleaseStatus(v),
+                                  })
+                                }
+                                disabled={updateReleaseStatusMutation.isPending}
+                              >
+                                <SelectTrigger className="h-8 w-[150px]">
+                                  <SelectValue placeholder="Release status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="committed">Committed</SelectItem>
+                                  <SelectItem value="pushed">Pushed</SelectItem>
+                                  <SelectItem value="released">Deployed</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : null}
                             <span className="text-sm text-muted-foreground" title={entry.created_at ? new Date(entry.created_at).toLocaleString() : entry.release_date}>
                               {entry.release_date}
                               {entry.created_at ? ` · ${new Date(entry.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}` : ''}
