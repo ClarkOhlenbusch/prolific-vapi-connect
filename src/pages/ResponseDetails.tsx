@@ -109,7 +109,9 @@ interface DictationRecording {
   createdAt: string;
   attemptCount: number;
   durationMs: number | null;
+  storageBucket: string | null;
   storagePath: string | null;
+  mimeType: string | null;
   source: 'table' | 'event_snapshot';
   playbackUrl: string | null;
 }
@@ -1032,6 +1034,7 @@ const ResponseDetails = () => {
   const [pendingMarkerEvents, setPendingMarkerEvents] = useState<Pick<NavigationEvent, 'call_id' | 'page_name' | 'event_type' | 'metadata' | 'created_at'>[]>([]);
   const [researcherNotesDraft, setResearcherNotesDraft] = useState('');
   const [researcherNotesSaving, setResearcherNotesSaving] = useState(false);
+  const [dictationDownloadId, setDictationDownloadId] = useState<string | null>(null);
   const [futureFeaturesDialogOpen, setFutureFeaturesDialogOpen] = useState(false);
   const [futureFeaturesSaving, setFutureFeaturesSaving] = useState(false);
   const [futureFeaturesDraft, setFutureFeaturesDraft] = useState<FutureFeaturesDraft>({
@@ -1868,7 +1871,9 @@ const ResponseDetails = () => {
                 createdAt: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
                 attemptCount: typeof row.attempt_count === 'number' ? row.attempt_count : 1,
                 durationMs: typeof row.duration_ms === 'number' ? row.duration_ms : null,
+                storageBucket,
                 storagePath: storagePath || null,
+                mimeType: typeof row.mime_type === 'string' ? row.mime_type : null,
                 source: 'table',
                 playbackUrl,
               } as DictationRecording;
@@ -1916,7 +1921,9 @@ const ResponseDetails = () => {
                 createdAt: snapshot.createdAt,
                 attemptCount: snapshot.attemptCount,
                 durationMs: snapshot.durationMs,
+                storageBucket: snapshot.storageBucket,
                 storagePath: snapshot.storagePath,
+                mimeType: null,
                 source: 'event_snapshot',
                 playbackUrl: signedError ? null : (signedData?.signedUrl || null),
               });
@@ -2325,6 +2332,70 @@ const ResponseDetails = () => {
     }
   };
 
+  const guessAudioExtension = (storagePath: string | null, mimeType: string | null): string => {
+    if (storagePath && storagePath.includes('.')) {
+      const ext = storagePath.split('.').pop() || '';
+      const clean = ext.trim().toLowerCase();
+      if (clean && clean.length <= 6) return clean;
+    }
+    const mt = (mimeType || '').toLowerCase();
+    if (mt.includes('wav')) return 'wav';
+    if (mt.includes('mp4') || mt.includes('m4a')) return 'm4a';
+    if (mt.includes('ogg')) return 'ogg';
+    if (mt.includes('mpeg') || mt.includes('mp3')) return 'mp3';
+    return 'webm';
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(href);
+  };
+
+  const handleDownloadDictationRecording = async (recording: DictationRecording, clipIndex: number) => {
+    if (!recording.storageBucket || !recording.storagePath) {
+      toast.error('No storage path available for this clip.');
+      return;
+    }
+    if (!data) return;
+    setDictationDownloadId(recording.id);
+    try {
+      const { data: file, error } = await supabase.storage
+        .from(recording.storageBucket)
+        .download(recording.storagePath);
+      if (error) throw error;
+      const ext = guessAudioExtension(recording.storagePath, recording.mimeType);
+      const safeField = recording.field.replace(/[^a-z0-9_]+/gi, '_');
+      const ts = new Date(recording.createdAt).toISOString().replace(/[:.]/g, '-');
+      const filename = `${data.prolific_id}_${data.call_id || 'no-call'}_${safeField}_clip${clipIndex + 1}_start${recording.attemptCount}_${ts}.${ext}`;
+      downloadBlob(file, filename);
+      toast.success('Download started');
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to download audio');
+    } finally {
+      setDictationDownloadId(null);
+    }
+  };
+
+  const handleDownloadMergedDictation = (field: FeedbackFieldKey) => {
+    if (!data) return;
+    const merged = mergedDictationByField[field];
+    if (merged.status !== 'ready' || !merged.playbackUrl) {
+      toast.error('Merged audio is not available.');
+      return;
+    }
+    const safeField = field.replace(/[^a-z0-9_]+/gi, '_');
+    const filename = `${data.prolific_id}_${data.call_id || 'no-call'}_${safeField}_merged.wav`;
+    fetch(merged.playbackUrl)
+      .then((r) => r.blob())
+      .then((blob) => downloadBlob(blob, filename))
+      .catch(() => toast.error('Failed to download merged audio'));
+  };
+
   const openFutureFeaturesDialog = () => {
     if (!data) return;
     const callLabel = data.call_id ? `Call ${data.call_id}` : `Response ${data.id}`;
@@ -2540,7 +2611,18 @@ const ResponseDetails = () => {
               </p>
             )}
             {merged.status === 'ready' && merged.playbackUrl && (
-              <audio controls preload="metadata" src={merged.playbackUrl} className="w-full" />
+              <div className="space-y-2">
+                <audio controls preload="metadata" src={merged.playbackUrl} className="w-full" />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleDownloadMergedDictation(field)}
+                  className="w-full justify-center"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download merged audio (.wav)
+                </Button>
+              </div>
             )}
           </div>
         )}
@@ -2583,9 +2665,35 @@ const ResponseDetails = () => {
                     );
                   })()}
                   {recording.playbackUrl ? (
-                    <audio controls preload="metadata" src={recording.playbackUrl} className="w-full" />
+                    <div className="space-y-2">
+                      <audio controls preload="metadata" src={recording.playbackUrl} className="w-full" />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full justify-center"
+                        disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
+                        onClick={() => handleDownloadDictationRecording(recording, idx)}
+                        title={!recording.storageBucket || !recording.storagePath ? 'No storage path available' : 'Download original clip'}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        {dictationDownloadId === recording.id ? 'Downloading...' : 'Download clip'}
+                      </Button>
+                    </div>
                   ) : (
-                    <p className="text-xs italic text-muted-foreground">Audio reference exists, but signed URL could not be resolved.</p>
+                    <div className="space-y-2">
+                      <p className="text-xs italic text-muted-foreground">Audio reference exists, but signed URL could not be resolved.</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full justify-center"
+                        disabled={dictationDownloadId === recording.id || !recording.storageBucket || !recording.storagePath}
+                        onClick={() => handleDownloadDictationRecording(recording, idx)}
+                        title={!recording.storageBucket || !recording.storagePath ? 'No storage path available' : 'Download original clip'}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        {dictationDownloadId === recording.id ? 'Downloading...' : 'Download clip'}
+                      </Button>
+                    </div>
                   )}
                 </div>
               ))}
