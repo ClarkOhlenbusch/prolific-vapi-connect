@@ -139,6 +139,39 @@ function getDetailStringArray(details: Json | null, key: string): string[] {
     .map((item) => item.trim());
 }
 
+type ChangeVerification = {
+  tested_at?: string;
+  result?: 'PASS' | 'FAIL' | string;
+  steps?: string[];
+  notes?: string;
+};
+
+function getChangeVerification(details: Json | null): ChangeVerification | null {
+  if (!isObject(details)) return null;
+  const v = details.verification;
+  if (!isObject(v)) return null;
+  const testedAt = typeof v.tested_at === 'string' ? v.tested_at.trim() : undefined;
+  const result = typeof v.result === 'string' ? v.result.trim() : undefined;
+  const notes = typeof v.notes === 'string' ? v.notes.trim() : undefined;
+  const steps = Array.isArray(v.steps)
+    ? v.steps.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).map((s) => s.trim())
+    : undefined;
+  if (!testedAt && !result && (!steps || steps.length === 0) && !notes) return null;
+  return { tested_at: testedAt, result, steps, notes };
+}
+
+function formatVerificationTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function parseBooleanSetting(value: string | null | undefined, fallback: boolean): boolean {
   if (typeof value !== 'string') return fallback;
   const normalized = value.trim().toLowerCase();
@@ -2076,6 +2109,33 @@ const ResearcherChangelog = () => {
                                     {visitedCommitIds.has(change.id) && <span className="text-[10px] text-muted-foreground">Viewed</span>}
                                   </a>
                                 ) : null}
+                                {(() => {
+                                  const v = getChangeVerification(change.details);
+                                  if (!v) {
+                                    return (
+                                      <Badge variant="outline" className="text-[10px] opacity-60" title="No verification details recorded yet.">
+                                        Not tested
+                                      </Badge>
+                                    );
+                                  }
+                                  const normalized = (v.result || '').toString().trim().toUpperCase();
+                                  const isPass = normalized === 'PASS';
+                                  const isFail = normalized === 'FAIL';
+                                  const label = isPass ? 'Tested: PASS' : isFail ? 'Tested: FAIL' : 'Tested';
+                                  const className = isPass
+                                    ? 'border-green-600/40 text-green-700'
+                                    : isFail
+                                      ? 'border-red-600/40 text-red-700'
+                                      : 'border-sky-600/40 text-sky-700';
+                                  const title = v.tested_at
+                                    ? `Tested at ${formatVerificationTime(v.tested_at)}`
+                                    : 'Tested (time not recorded)';
+                                  return (
+                                    <Badge variant="outline" className={`text-[10px] ${className}`} title={title}>
+                                      {label}
+                                    </Badge>
+                                  );
+                                })()}
                                 <Button size="sm" variant="ghost" onClick={() => setEditingChange({ id: change.id, type: change.change_type as ChangeType, description: change.description, scope: (change.scope as ChangeScope) || 'both', commit_hash: change.commit_hash ?? undefined, details_text: formatDetailsForEditor(change.details ?? null) })}>
                                   <Pencil className="h-3 w-3" />
                                 </Button>
@@ -2098,13 +2158,15 @@ const ResearcherChangelog = () => {
                                           const knownFlow = getDetailString(change.details, 'flow_impact');
                                           const knownOutcome = getDetailString(change.details, 'user_visible_outcome');
                                           const knownRisk = getDetailString(change.details, 'risk_notes');
+                                          const verification = getChangeVerification(change.details);
                                           const hasKnownFields =
                                             !!knownSummary ||
                                             knownLocations.length > 0 ||
                                             !!knownAffected ||
                                             !!knownFlow ||
                                             !!knownOutcome ||
-                                            !!knownRisk;
+                                            !!knownRisk ||
+                                            !!verification;
                                           return (
                                             <>
                                               {knownSummary ? (
@@ -2124,6 +2186,30 @@ const ResearcherChangelog = () => {
                                               ) : null}
                                               {knownRisk ? (
                                                 <p><span className="font-medium">Risk/notes:</span> {knownRisk}</p>
+                                              ) : null}
+                                              {verification ? (
+                                                <div className="space-y-1">
+                                                  <p className="font-medium">Verification</p>
+                                                  {verification.result ? (
+                                                    <p><span className="font-medium">Result:</span> {verification.result}</p>
+                                                  ) : null}
+                                                  {verification.tested_at ? (
+                                                    <p><span className="font-medium">Tested at:</span> {formatVerificationTime(verification.tested_at)}</p>
+                                                  ) : null}
+                                                  {verification.steps && verification.steps.length > 0 ? (
+                                                    <div>
+                                                      <p className="font-medium">Steps</p>
+                                                      <ul className="list-disc pl-5 space-y-0.5">
+                                                        {verification.steps.map((step, idx) => (
+                                                          <li key={`${change.id}-verify-step-${idx}`}>{step}</li>
+                                                        ))}
+                                                      </ul>
+                                                    </div>
+                                                  ) : null}
+                                                  {verification.notes ? (
+                                                    <p><span className="font-medium">Notes:</span> {verification.notes}</p>
+                                                  ) : null}
+                                                </div>
                                               ) : null}
                                               {!change.details ? (
                                                 <p className="text-muted-foreground">No detailed notes yet.</p>
