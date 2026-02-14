@@ -1,10 +1,13 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type RefObject } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Mic } from "lucide-react";
 import { useResearcherMode } from "@/contexts/ResearcherModeContext";
@@ -13,7 +16,7 @@ import { FeedbackProgressBar } from "@/components/FeedbackProgressBar";
 import { RecordingProgressBar } from "@/components/RecordingProgressBar";
 import { ExperimentProgress } from "@/components/ExperimentProgress";
 import { VoiceDictation, VoiceDictationRef } from "@/components/VoiceDictation";
-import { logNavigationEvent, runMicDiagnostics } from "@/lib/participant-telemetry";
+import { getMicIssueGuidance, logNavigationEvent, runMicDiagnostics } from "@/lib/participant-telemetry";
 
 type FeedbackField = "voice_assistant_feedback" | "communication_style_feedback" | "experiment_feedback";
 type FeedbackInputMode = "typed" | "dictated";
@@ -190,6 +193,7 @@ const FeedbackQuestionnaire = () => {
   const autosaveQueuedRef = useRef(false);
   const dictationRecordersRef = useRef<Record<FeedbackField, DictationRecorderState>>(createDictationRecorderStateMap());
   const submitInFlightRef = useRef(false);
+  const micPermissionDeniedCountRef = useRef(0);
   
   // Refs to stop dictation when clicking on another field
   const experienceDictationRef = useRef<VoiceDictationRef>(null);
@@ -200,11 +204,33 @@ const FeedbackQuestionnaire = () => {
   const experienceQuestionRef = useRef<HTMLDivElement>(null);
   const styleQuestionRef = useRef<HTMLDivElement>(null);
   const experimentQuestionRef = useRef<HTMLDivElement>(null);
+
+  // Refs for highlighting/focusing text inputs when dictation fails
+  const experienceTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const styleTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const experimentTextareaRef = useRef<HTMLTextAreaElement>(null);
   
   const MAX_CHARS = 2500;
   const MIN_WORDS = 35;
   const MIN_RECORDING_DURATION_MS = 20_000;
   const MIN_RECORDING_SECONDS = Math.floor(MIN_RECORDING_DURATION_MS / 1000);
+  // If a clip is extremely short, we assume a mic capture issue and nudge the user to the text box.
+  const DICTATION_MIC_ISSUE_DURATION_MS = 3_000;
+
+  const [highlightedTextField, setHighlightedTextField] = useState<FeedbackField | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [showDictationMicIssueModal, setShowDictationMicIssueModal] = useState(false);
+  const [dictationMicIssueField, setDictationMicIssueField] = useState<FeedbackField | null>(null);
+  const [dictationMicIssueDurationMs, setDictationMicIssueDurationMs] = useState<number | null>(null);
+  const [dictationMicGuidance, setDictationMicGuidance] = useState<{ title: string; description: string; steps: string[] } | null>(null);
+  const [dictationMicIssueType, setDictationMicIssueType] = useState("");
+  const [dictationMicIssueNotes, setDictationMicIssueNotes] = useState("");
+  const [dictationFallbackSuggestedByField, setDictationFallbackSuggestedByField] = useState<Record<FeedbackField, boolean>>({
+    voice_assistant_feedback: false,
+    communication_style_feedback: false,
+    experiment_feedback: false,
+  });
 
   /** Ticks every second while any field is recording so timer UI updates */
   const [recordingTick, setRecordingTick] = useState(0);
@@ -259,6 +285,145 @@ const FeedbackQuestionnaire = () => {
       metadata: metadata as Json,
     });
   }, [prolificId, callId]);
+
+  const focusTextField = useCallback((field: FeedbackField) => {
+    const refs: Record<FeedbackField, { question: RefObject<HTMLDivElement>; textarea: RefObject<HTMLTextAreaElement> }> = {
+      voice_assistant_feedback: { question: experienceQuestionRef, textarea: experienceTextareaRef },
+      communication_style_feedback: { question: styleQuestionRef, textarea: styleTextareaRef },
+      experiment_feedback: { question: experimentQuestionRef, textarea: experimentTextareaRef },
+    };
+    refs[field]?.question.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Focus after the scroll starts so the user sees where to type.
+    setTimeout(() => refs[field]?.textarea.current?.focus(), 250);
+  }, []);
+
+  const highlightTextField = useCallback((field: FeedbackField) => {
+    setHighlightedTextField(field);
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => setHighlightedTextField(null), 8000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    };
+  }, []);
+
+  const closeDictationMicIssueModal = useCallback((options: { submitReport?: boolean } = {}) => {
+    const field = dictationMicIssueField;
+    const shouldSubmit = Boolean(options.submitReport);
+
+    if (shouldSubmit && field && dictationMicIssueType) {
+      logFeedbackEvent("dictation_mic_issue_report_submitted", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        durationMs: dictationMicIssueDurationMs,
+        issueType: dictationMicIssueType,
+        notes: dictationMicIssueNotes.trim() || null,
+      });
+    }
+
+    setShowDictationMicIssueModal(false);
+    setDictationMicIssueField(null);
+    setDictationMicIssueDurationMs(null);
+    setDictationMicGuidance(null);
+    setDictationMicIssueType("");
+    setDictationMicIssueNotes("");
+
+    if (field) {
+      highlightTextField(field);
+      focusTextField(field);
+    }
+  }, [
+    dictationMicIssueDurationMs,
+    dictationMicIssueField,
+    dictationMicIssueNotes,
+    dictationMicIssueType,
+    focusTextField,
+    highlightTextField,
+    logFeedbackEvent,
+  ]);
+
+  const shouldLogDictationMicIssue = import.meta.env.DEV;
+
+  const openDictationMicIssueModal = useCallback(async (field: FeedbackField, durationMs: number, reason: string) => {
+    setDictationMicIssueField(field);
+    setDictationMicIssueDurationMs(durationMs);
+    setDictationMicGuidance(getMicIssueGuidance("no_mic_audio_detected"));
+    setShowDictationMicIssueModal(true);
+    setDictationFallbackSuggestedByField((prev) => ({ ...prev, [field]: true }));
+
+    if (shouldLogDictationMicIssue) {
+      console.info("[DictationMicIssue] modal_open", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        durationMs,
+        reason,
+        isResearcherMode,
+      });
+    }
+
+    logFeedbackEvent("dictation_mic_issue_suspected", {
+      field,
+      fieldLabel: FEEDBACK_FIELD_LABELS[field],
+      durationMs,
+      reason,
+    });
+
+    // Run a lightweight diagnostics pass so we can tailor the guidance (permission denied vs no audio, etc.).
+    try {
+      const diagnostics = await runMicDiagnostics({ sampleMs: 900 });
+      logFeedbackEvent("dictation_mic_issue_diagnostics", {
+        context: "dictation",
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        state: diagnostics.permissionState,
+        source: diagnostics.permissionSource,
+        reasonCode: diagnostics.reasonCode || "none",
+        audioDetected: diagnostics.audioDetected,
+        peakRms: diagnostics.peakRms,
+        sampleMs: diagnostics.sampleMs,
+        errorName: diagnostics.errorName,
+        errorMessage: diagnostics.errorMessage,
+      });
+      setDictationMicGuidance(getMicIssueGuidance(diagnostics.reasonCode));
+    } catch (error) {
+      console.warn("[DictationAudio] Mic diagnostics failed during short-clip handling", {
+        field,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [isResearcherMode, logFeedbackEvent, shouldLogDictationMicIssue]);
+
+  const handleMicPermissionDenied = useCallback((
+    field: FeedbackField,
+    source: "precheck" | "getUserMedia",
+    extras: { permissionState?: string | null; errorName?: string | null } = {}
+  ) => {
+    micPermissionDeniedCountRef.current += 1;
+    const attemptNumber = micPermissionDeniedCountRef.current;
+
+    logFeedbackEvent("dictation_permission_denied_attempt", {
+      field,
+      fieldLabel: FEEDBACK_FIELD_LABELS[field],
+      attemptNumber,
+      source,
+      permissionState: extras.permissionState ?? null,
+      errorName: extras.errorName ?? null,
+    });
+
+    // 1st denial: keep toast; 2nd+: show modal with permission-focused guidance + text fallback.
+    if (attemptNumber >= 2) {
+      void openDictationMicIssueModal(field, 0, "mic_permission_denied_repeat");
+      return;
+    }
+
+    toast({
+      title: "Microphone Access Needed",
+      description: "Please allow microphone access in your browser to use dictation.",
+      variant: "destructive",
+    });
+  }, [logFeedbackEvent, openDictationMicIssueModal, toast]);
 
   const updateDictationDebug = useCallback((field: FeedbackField, patch: Partial<DictationDebugInfo>) => {
     setDictationDebug((prev) => ({
@@ -375,6 +540,8 @@ const FeedbackQuestionnaire = () => {
         callId,
       });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Permission/access worked; reset the denied attempt counter.
+      micPermissionDeniedCountRef.current = 0;
       const supportedMimeType = getSupportedAudioMimeType();
       const recorder = supportedMimeType
         ? new MediaRecorder(stream, { mimeType: supportedMimeType })
@@ -486,6 +653,15 @@ const FeedbackQuestionnaire = () => {
 
       return recorderState;
     } catch (error) {
+      const errName = error instanceof Error ? error.name : "";
+      if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+        handleMicPermissionDenied(field, "getUserMedia", { errorName: errName });
+        updateDictationDebug(field, {
+          lastUploadStatus: "error",
+          lastError: "Microphone permission denied.",
+        });
+        return null;
+      }
       console.error("[DictationAudio] Failed to create recorder", {
         field,
         message: error instanceof Error ? error.message : String(error),
@@ -502,7 +678,7 @@ const FeedbackQuestionnaire = () => {
       });
       return null;
     }
-  }, [callId, logFeedbackEvent, prolificId, updateDictationDebug]);
+  }, [callId, handleMicPermissionDenied, logFeedbackEvent, prolificId, updateDictationDebug]);
 
   const startOrResumeDictationRecording = useCallback(async (field: FeedbackField) => {
     console.info("[DictationAudio] Start/resume requested", { field, isResearcherMode });
@@ -716,6 +892,34 @@ const FeedbackQuestionnaire = () => {
     const recorderState = dictationRecordersRef.current[field];
     const mimeType = recorderState.mimeType || "audio/webm";
     const chunkCount = recorderState.chunks.length;
+    const durationMs = Math.max(0, Math.round(recorderState.activeDurationMs));
+    const segmentText = (dictationSegmentTextRef.current[field] || "").trim();
+    const shouldTreatAsMicIssue =
+      !segmentText
+      && (
+        // Most common: we got a tiny clip but no transcript.
+        (durationMs > 0 && durationMs <= DICTATION_MIC_ISSUE_DURATION_MS)
+        // Edge case: very fast stop/error paths can produce duration=0 and no chunks.
+        || (durationMs === 0 && chunkCount === 0 && recorderState.attemptCount > 0)
+      );
+
+    if (shouldLogDictationMicIssue) {
+      console.info("[DictationMicIssue] segment_persist_check", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        durationMs,
+        chunkCount,
+        segmentTextLength: segmentText.length,
+        shouldTreatAsMicIssue,
+        thresholdMs: DICTATION_MIC_ISSUE_DURATION_MS,
+        recorderMimeType: mimeType,
+        recorderState: dictationDebug[field]?.recorderState,
+        lastUploadStatus: dictationDebug[field]?.lastUploadStatus,
+        attemptCount: recorderState.attemptCount,
+        isResearcherMode,
+      });
+    }
+
     if (!chunkCount) {
       updateDictationDebug(field, {
         recorderState: "idle",
@@ -723,6 +927,16 @@ const FeedbackQuestionnaire = () => {
         chunkCount: 0,
         bytesCaptured: 0,
       });
+      if (shouldTreatAsMicIssue) {
+        if (shouldLogDictationMicIssue) {
+          console.info("[DictationMicIssue] no_chunks_trigger", {
+            field,
+            durationMs,
+            segmentTextLength: segmentText.length,
+          });
+        }
+        void openDictationMicIssueModal(field, durationMs, "no_audio_chunks_captured");
+      }
       return;
     }
     if (!recorderState.storagePath) {
@@ -733,9 +947,18 @@ const FeedbackQuestionnaire = () => {
       blob: new Blob(recorderState.chunks, { type: mimeType }),
       storagePath: recorderState.storagePath,
       attemptCount: recorderState.attemptCount,
-      durationMs: Math.max(0, Math.round(recorderState.activeDurationMs)),
+      durationMs,
       chunkCount,
     };
+    if (shouldLogDictationMicIssue) {
+      console.info("[DictationMicIssue] upload_payload", {
+        field,
+        durationMs,
+        chunkCount,
+        blobSizeBytes: payload.blob.size,
+        mimeType: payload.mimeType,
+      });
+    }
     const uploadSucceeded = await uploadDictationSnapshot(field, payload, { finalizeRow: true });
     if (!uploadSucceeded) return;
 
@@ -748,13 +971,23 @@ const FeedbackQuestionnaire = () => {
       return { ...prev, [field]: next };
     });
 
-    const segmentText = dictationSegmentTextRef.current[field] || "";
     const totalDurationMsAfter =
       (savedRecordingsByFieldRef.current[field] || []).reduce((acc, r) => acc + r.durationMs, 0) + payload.durationMs;
     const totalMeetsMinimum = totalDurationMsAfter >= MIN_RECORDING_DURATION_MS;
     const currentClipShort = payload.durationMs < MIN_RECORDING_DURATION_MS;
 
-    if (currentClipShort && !totalMeetsMinimum && !isResearcherMode) {
+    if (shouldTreatAsMicIssue) {
+      if (shouldLogDictationMicIssue) {
+        console.info("[DictationMicIssue] short_clip_trigger", {
+          field,
+          durationMs,
+          segmentTextLength: segmentText.length,
+          totalDurationMsAfter,
+          totalMeetsMinimum,
+        });
+      }
+      void openDictationMicIssueModal(field, durationMs, "clip_under_threshold_no_transcript");
+    } else if (currentClipShort && !totalMeetsMinimum && !isResearcherMode) {
       if (shortRecordingToastTimeoutRef.current) {
         clearTimeout(shortRecordingToastTimeoutRef.current);
         shortRecordingToastTimeoutRef.current = null;
@@ -794,7 +1027,17 @@ const FeedbackQuestionnaire = () => {
       persisted: false,
       ...(totalMeetsMinimum && { lastRecordedDurationSeconds: Math.round(totalDurationMsAfter / 1000) }),
     });
-  }, [buildRecordingStoragePath, dismissToast, isResearcherMode, stopDictationRecording, toast, updateDictationDebug, uploadDictationSnapshot]);
+  }, [
+    buildRecordingStoragePath,
+    dismissToast,
+    isResearcherMode,
+    openDictationMicIssueModal,
+    stopDictationRecording,
+    shouldLogDictationMicIssue,
+    toast,
+    updateDictationDebug,
+    uploadDictationSnapshot,
+  ]);
 
   const persistDictationRecordings = useCallback(async () => {
     if (!prolificId) return;
@@ -818,8 +1061,6 @@ const FeedbackQuestionnaire = () => {
   }, [logFeedbackEvent]);
 
   const runDictationMicPrecheck = useCallback(async (field: FeedbackField) => {
-    if (isResearcherMode) return true;
-
     const micDiagnostics = await runMicDiagnostics({ sampleMs: 900 });
     logFeedbackEvent("mic_permission", {
       context: "dictation",
@@ -849,9 +1090,28 @@ const FeedbackQuestionnaire = () => {
       });
     }
 
+    // Reset the denied attempt counter once we see permission granted.
+    if (micDiagnostics.permissionState === "granted") {
+      micPermissionDeniedCountRef.current = 0;
+    }
+
     const isPermissionBlocked = micDiagnostics.permissionState === "denied";
     const isMicAccessError = micDiagnostics.permissionState === "error" || micDiagnostics.permissionState === "unsupported";
-    if (isPermissionBlocked || isMicAccessError) {
+    if (isPermissionBlocked) {
+      updateDictationDebug(field, {
+        lastUploadStatus: "error",
+        lastError: `Mic precheck blocked: ${micDiagnostics.permissionState}`,
+      });
+      logFeedbackEvent("dictation_start_blocked", {
+        field,
+        fieldLabel: FEEDBACK_FIELD_LABELS[field],
+        reasonCode: micDiagnostics.reasonCode || "mic_access_error",
+        permissionState: micDiagnostics.permissionState,
+      });
+      handleMicPermissionDenied(field, "precheck", { permissionState: micDiagnostics.permissionState });
+      return false;
+    }
+    if (isMicAccessError) {
       updateDictationDebug(field, {
         lastUploadStatus: "error",
         lastError: `Mic precheck blocked: ${micDiagnostics.permissionState}`,
@@ -874,7 +1134,7 @@ const FeedbackQuestionnaire = () => {
       lastError: null,
     });
     return true;
-  }, [isResearcherMode, logFeedbackEvent, toast, updateDictationDebug]);
+  }, [handleMicPermissionDenied, logFeedbackEvent, toast, updateDictationDebug]);
 
   // Before starting dictation for a field: stop any other active dictation, dismiss short-recording toast if open, then run mic precheck
   const getDictationBeforeStart = useCallback((field: FeedbackField) => async () => {
@@ -1264,7 +1524,7 @@ const FeedbackQuestionnaire = () => {
         
         toast({
           title: "Minimum Word Count Required",
-          description: `Please write at least ${MIN_WORDS} words for each question before submitting.`,
+          description: `Please write at least ${MIN_WORDS} words for each question before submitting (record ${MIN_RECORDING_SECONDS} seconds minimum, or use the text field below).`,
           variant: "destructive",
           duration: 3000,
         });
@@ -1602,6 +1862,81 @@ const FeedbackQuestionnaire = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
+      <Dialog
+        open={showDictationMicIssueModal}
+        onOpenChange={(open) => {
+          if (!open) closeDictationMicIssueModal();
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Trouble recording audio?</DialogTitle>
+            <DialogDescription>
+              {dictationMicIssueDurationMs != null
+                ? `We didn’t detect enough microphone audio in that recording (${Math.max(0.1, dictationMicIssueDurationMs / 1000).toFixed(1)}s). You can continue by typing your answer below.`
+                : "We didn’t detect enough microphone audio in that recording. You can continue by typing your answer below."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="rounded-md border border-border bg-muted/30 p-3">
+              <p className="text-sm font-medium text-foreground">Quick checks</p>
+              <ul className="mt-2 text-sm text-muted-foreground list-disc list-inside space-y-1">
+                {(dictationMicGuidance?.steps || [
+                  "Check browser microphone permission for this site.",
+                  "Check your system microphone input settings.",
+                  "Try again, or type your answer below.",
+                ]).map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Optional: tell us what went wrong</p>
+              <p className="text-sm text-muted-foreground">If you select an issue, we’ll send it to the researchers when you continue.</p>
+              <Label className="text-sm font-medium">What happened?</Label>
+              <RadioGroup value={dictationMicIssueType} onValueChange={setDictationMicIssueType}>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="mic_permission_blocked" id="dictation-issue-mic-permission-blocked" />
+                  <Label htmlFor="dictation-issue-mic-permission-blocked">Browser blocked microphone permission</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="mic_muted_or_wrong_device" id="dictation-issue-mic-muted" />
+                  <Label htmlFor="dictation-issue-mic-muted">Microphone muted or wrong input selected</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="no_audio_detected" id="dictation-issue-no-audio" />
+                  <Label htmlFor="dictation-issue-no-audio">No audio was detected even though I spoke</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="other" id="dictation-issue-other" />
+                  <Label htmlFor="dictation-issue-other">Other</Label>
+                </div>
+              </RadioGroup>
+
+              <Label htmlFor="dictation-issue-notes" className="text-sm font-medium">
+                Extra details (optional)
+              </Label>
+              <Textarea
+                id="dictation-issue-notes"
+                value={dictationMicIssueNotes}
+                onChange={(event) => setDictationMicIssueNotes(event.target.value.slice(0, 300))}
+                placeholder="What happened? (e.g., I clicked Record, spoke, but it saved a very short clip)"
+                className="min-h-[90px] resize-none bg-background"
+              />
+              <p className="text-xs text-muted-foreground text-right">{dictationMicIssueNotes.length}/300</p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button onClick={() => closeDictationMicIssueModal({ submitReport: true })}>
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Card className="w-full max-w-3xl shadow-xl border-border">
         <CardHeader className="space-y-3">
           <ExperimentProgress />
@@ -1750,8 +2085,13 @@ const FeedbackQuestionnaire = () => {
             )}
             {/* Optional text */}
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Or add text below (optional)</p>
+              <p className="text-sm text-muted-foreground">
+                {dictationFallbackSuggestedByField.voice_assistant_feedback
+                  ? "If recording audio doesn't work for you, you can type your answer below instead."
+                  : "Or add text below (optional)"}
+              </p>
               <Textarea
+                ref={experienceTextareaRef}
                 value={voiceAssistantExperience}
                 onChange={(e) => {
                   if (!interimExperience && e.target.value.length <= MAX_CHARS) {
@@ -1766,7 +2106,11 @@ const FeedbackQuestionnaire = () => {
                 onKeyDown={(e) => {
                   if (e.key === " ") e.stopPropagation();
                 }}
-                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !experienceStatus.isValid ? "border-destructive" : ""}`}
+                className={`min-h-[120px] resize-none bg-background ${
+                  highlightedTextField === "voice_assistant_feedback"
+                    ? "ring-4 ring-amber-400 ring-offset-4 ring-offset-background border-amber-400 bg-amber-50/50 motion-safe:animate-pulse"
+                    : ""
+                } ${showValidationErrors && !experienceStatus.isValid ? "border-destructive" : ""}`}
                 placeholder="Type additional feedback if you like..."
               />
               <FeedbackProgressBar
@@ -1868,8 +2212,13 @@ const FeedbackQuestionnaire = () => {
               </p>
             )}
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Or add text below (optional)</p>
+              <p className="text-sm text-muted-foreground">
+                {dictationFallbackSuggestedByField.communication_style_feedback
+                  ? "If recording audio doesn't work for you, you can type your answer below instead."
+                  : "Or add text below (optional)"}
+              </p>
               <Textarea
+                ref={styleTextareaRef}
                 value={communicationStyleFeedback}
                 onChange={(e) => {
                   if (!interimStyle && e.target.value.length <= MAX_CHARS) {
@@ -1882,7 +2231,11 @@ const FeedbackQuestionnaire = () => {
                   experimentDictationRef.current?.stopListening();
                 }}
                 onKeyDown={(e) => { if (e.key === " ") e.stopPropagation(); }}
-                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !styleStatus.isValid ? "border-destructive" : ""}`}
+                className={`min-h-[120px] resize-none bg-background ${
+                  highlightedTextField === "communication_style_feedback"
+                    ? "ring-4 ring-amber-400 ring-offset-4 ring-offset-background border-amber-400 bg-amber-50/50 motion-safe:animate-pulse"
+                    : ""
+                } ${showValidationErrors && !styleStatus.isValid ? "border-destructive" : ""}`}
                 placeholder="Type additional feedback if you like..."
               />
               <FeedbackProgressBar
@@ -1985,8 +2338,13 @@ const FeedbackQuestionnaire = () => {
               </p>
             )}
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Or add text below (optional)</p>
+              <p className="text-sm text-muted-foreground">
+                {dictationFallbackSuggestedByField.experiment_feedback
+                  ? "If recording audio doesn't work for you, you can type your answer below instead."
+                  : "Or add text below (optional)"}
+              </p>
               <Textarea
+                ref={experimentTextareaRef}
                 value={experimentFeedback}
                 onChange={(e) => {
                   if (!interimExperiment && e.target.value.length <= MAX_CHARS) {
@@ -2000,7 +2358,11 @@ const FeedbackQuestionnaire = () => {
                 }}
                 onKeyDown={(e) => { if (e.key === " ") e.stopPropagation(); }}
                 placeholder="Type additional feedback if you like..."
-                className={`min-h-[120px] resize-none bg-background ${showValidationErrors && !experimentStatus.isValid ? "border-destructive" : ""}`}
+                className={`min-h-[120px] resize-none bg-background ${
+                  highlightedTextField === "experiment_feedback"
+                    ? "ring-4 ring-amber-400 ring-offset-4 ring-offset-background border-amber-400 bg-amber-50/50 motion-safe:animate-pulse"
+                    : ""
+                } ${showValidationErrors && !experimentStatus.isValid ? "border-destructive" : ""}`}
               />
               <FeedbackProgressBar
                 wordCount={experimentStatus.count}

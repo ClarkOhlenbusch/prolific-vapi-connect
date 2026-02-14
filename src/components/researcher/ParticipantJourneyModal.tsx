@@ -127,6 +127,21 @@ const formatRestartIssueType = (value?: string | null): string | null => {
   }
 };
 
+const formatDictationIssueType = (value?: string | null): string | null => {
+  switch (value) {
+    case "mic_permission_blocked":
+      return "Mic permission blocked";
+    case "mic_muted_or_wrong_device":
+      return "Mic muted / wrong device";
+    case "no_audio_detected":
+      return "No audio detected";
+    case "other":
+      return "Other";
+    default:
+      return null;
+  }
+};
+
 const isCallIssueEvent = (event: NavigationEvent): boolean => {
   if (event.event_type === "call_start_failed") return true;
   if (event.event_type === "call_error") {
@@ -252,12 +267,14 @@ export const ParticipantJourneyModal = ({
       lastCallEndReason?: string | null;
       restartFeedbackCount?: number;
       lastRestartFeedback?: string | null;
+      dictationIssueCount?: number;
+      lastDictationIssue?: string | null;
     }> = {};
 
     events.forEach((event) => {
       const pageKey = event.page_name;
       if (!diagnostics[pageKey]) {
-        diagnostics[pageKey] = { callIssueCount: 0 };
+        diagnostics[pageKey] = { callIssueCount: 0, dictationIssueCount: 0 };
       }
       const pageDiag = diagnostics[pageKey];
 
@@ -296,6 +313,27 @@ export const ParticipantJourneyModal = ({
           .join(" | ");
       }
 
+      if (event.event_type === "dictation_mic_issue_suspected") {
+        pageDiag.dictationIssueCount = (pageDiag.dictationIssueCount || 0) + 1;
+      }
+
+      if (event.event_type === "dictation_mic_issue_report_submitted") {
+        pageDiag.dictationIssueCount = (pageDiag.dictationIssueCount || 0) + 1;
+        const formattedIssue = formatDictationIssueType(event.metadata?.issueType as string | null);
+        const notes = (event.metadata?.notes as string | null) || null;
+        const fieldLabel = (event.metadata?.fieldLabel as string | null) || null;
+        const durationMs = typeof event.metadata?.durationMs === "number" ? (event.metadata.durationMs as number) : null;
+        const clip = durationMs != null ? `Clip: ${(durationMs / 1000).toFixed(1)}s` : null;
+        pageDiag.lastDictationIssue = [
+          formattedIssue ? `Issue: ${formattedIssue}` : null,
+          fieldLabel ? `Field: ${fieldLabel}` : null,
+          clip,
+          notes ? `Notes: ${notes}` : null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+      }
+
       if (isCallIssueEvent(event)) {
         pageDiag.callIssueCount += 1;
         pageDiag.lastCallIssue = getCallIssueMessage(event);
@@ -322,6 +360,8 @@ export const ParticipantJourneyModal = ({
       lastCallEndReason?: string | null;
       restartFeedbackCount?: number;
       lastRestartFeedback?: string | null;
+      dictationIssueCount?: number;
+      lastDictationIssue?: string | null;
     }[] = [];
 
     // Process events to create timeline entries
@@ -346,6 +386,8 @@ export const ParticipantJourneyModal = ({
           lastCallEndReason: pageDiagnostics.lastCallEndReason,
           restartFeedbackCount: pageDiagnostics.restartFeedbackCount,
           lastRestartFeedback: pageDiagnostics.lastRestartFeedback,
+          dictationIssueCount: pageDiagnostics.dictationIssueCount,
+          lastDictationIssue: pageDiagnostics.lastDictationIssue,
         });
       } else if (event.event_type === 'back_button_click') {
         // Find the last timeline entry for this page and mark it
@@ -485,7 +527,7 @@ export const ParticipantJourneyModal = ({
                         <div>
                           Time spent: {formatTime(event.timeSpent)}
                         </div>
-                        {(event.micPermission || event.micAudio || (event.callIssueCount && event.callIssueCount > 0) || (event.restartFeedbackCount && event.restartFeedbackCount > 0)) && (
+                        {(event.micPermission || event.micAudio || (event.callIssueCount && event.callIssueCount > 0) || (event.restartFeedbackCount && event.restartFeedbackCount > 0) || (event.dictationIssueCount && event.dictationIssueCount > 0)) && (
                           <div className="flex flex-wrap gap-2 pt-1">
                             {event.micPermission && (
                               <Badge variant="outline">Mic: {event.micPermission}</Badge>
@@ -498,6 +540,9 @@ export const ParticipantJourneyModal = ({
                             )}
                             {event.restartFeedbackCount && event.restartFeedbackCount > 0 && (
                               <Badge variant="secondary">Feedback reports: {event.restartFeedbackCount}</Badge>
+                            )}
+                            {event.dictationIssueCount && event.dictationIssueCount > 0 && (
+                              <Badge variant="secondary">Dictation reports: {event.dictationIssueCount}</Badge>
                             )}
                           </div>
                         )}
@@ -514,6 +559,11 @@ export const ParticipantJourneyModal = ({
                         {event.lastRestartFeedback && (
                           <div className="text-xs text-muted-foreground">
                             Participant feedback: {event.lastRestartFeedback}
+                          </div>
+                        )}
+                        {event.lastDictationIssue && (
+                          <div className="text-xs text-muted-foreground">
+                            Dictation report: {event.lastDictationIssue}
                           </div>
                         )}
                       </div>

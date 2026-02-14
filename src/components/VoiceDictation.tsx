@@ -68,10 +68,14 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
   }, ref) => {
     const [isListening, setIsListening] = useState(false);
     const [isSupported, setIsSupported] = useState(true);
+    const [isClickBuffered, setIsClickBuffered] = useState(false);
     const recognitionRef = useRef<SpeechRecognition | null>(null);
     const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const shouldRestartRef = useRef(false);
     const isListeningRef = useRef(false);
+    const isStartingRef = useRef(false);
+    const clickBufferTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const CLICK_BUFFER_MS = 500;
     
     // Store callbacks in refs to avoid recreating recognition
     const onTranscriptRef = useRef(onTranscript);
@@ -105,6 +109,10 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
       if (isListeningRef.current === next) return;
       isListeningRef.current = next;
       setIsListening(next);
+      if (next) {
+        // Clear "starting" once recognition is actually listening.
+        isStartingRef.current = false;
+      }
       onListeningChangeRef.current?.(next, reason);
     }, []);
 
@@ -112,6 +120,7 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
     useImperativeHandle(ref, () => ({
       stopListening: () => {
         shouldRestartRef.current = false;
+        isStartingRef.current = false;
         if (silenceTimeoutRef.current) {
           clearTimeout(silenceTimeoutRef.current);
           silenceTimeoutRef.current = null;
@@ -227,9 +236,13 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
 
       return () => {
         shouldRestartRef.current = false;
+        isStartingRef.current = false;
         setListeningState(false, "cleanup");
         if (silenceTimeoutRef.current) {
           clearTimeout(silenceTimeoutRef.current);
+        }
+        if (clickBufferTimeoutRef.current) {
+          clearTimeout(clickBufferTimeoutRef.current);
         }
         if (recognitionRef.current) {
           recognitionRef.current.abort();
@@ -240,8 +253,15 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
     const toggleListening = useCallback(async () => {
       if (!recognitionRef.current) return;
 
+      // Prevent accidental rapid double-taps.
+      if (isClickBuffered) return;
+      setIsClickBuffered(true);
+      if (clickBufferTimeoutRef.current) clearTimeout(clickBufferTimeoutRef.current);
+      clickBufferTimeoutRef.current = setTimeout(() => setIsClickBuffered(false), CLICK_BUFFER_MS);
+
       if (isListening) {
         shouldRestartRef.current = false;
+        isStartingRef.current = false;
         setListeningState(false, "manual_stop");
         if (silenceTimeoutRef.current) {
           clearTimeout(silenceTimeoutRef.current);
@@ -250,20 +270,24 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
         recognitionRef.current.stop();
         onInterimTranscriptRef.current?.("");
       } else {
+        // If a start is already in flight, ignore.
+        if (isStartingRef.current) return;
         try {
           const allowStart = await onBeforeStartRef.current?.();
           if (allowStart === false) {
             return;
           }
           shouldRestartRef.current = true;
+          isStartingRef.current = true;
           recognitionRef.current.start();
         } catch (error) {
           console.error("Failed to start speech recognition:", error);
           onDictationErrorRef.current?.("start_failed", error instanceof Error ? error.message : undefined);
+          isStartingRef.current = false;
           setListeningState(false, "start_failed");
         }
       }
-    }, [isListening, setListeningState]);
+    }, [isClickBuffered, isListening, setListeningState]);
 
     if (!isSupported) {
       return null;
@@ -275,7 +299,7 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
         variant={isListening ? "destructive" : prominentWhenIdle ? "default" : "outline"}
         size="sm"
         onClick={toggleListening}
-        disabled={disabled}
+        disabled={disabled || isClickBuffered}
         className={cn(
           "shrink-0 gap-2 transition-all",
           isListening && "animate-pulse",
