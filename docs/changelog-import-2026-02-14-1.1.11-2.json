@@ -1,0 +1,18 @@
+[{
+  "version": "1.1.11",
+  "release_date": "2026-02-14",
+  "description": "Persist Vapi structured outputs alongside evaluation and render a raw JSON viewer in Response Details.",
+  "active_batch_label": "",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "changed",
+      "description": "unify Vapi structured output fetching: persist evaluation + raw structured outputs (partial updates) and display raw viewer in Response Details",
+      "scope": "researcher",
+      "commit_hash": "0b47626",
+      "pushed_at": "2026-02-14T13:02:03-08:00"
+    }
+  ]
+}]
+
