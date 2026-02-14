@@ -18,7 +18,8 @@ import {
   Users,
   History,
   Map,
-  Cloud
+  Cloud,
+  BookOpen
 } from 'lucide-react';
 import { UnifiedParticipantsTable } from '@/components/researcher/UnifiedParticipantsTable';
 import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponsesTable';
@@ -138,6 +139,13 @@ const ResearcherDashboard = () => {
             >
               <BarChart3 className="h-4 w-4 mr-2" />
               Statistical Analysis
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate('/researcher/definitions')}
+            >
+              <BookOpen className="h-4 w-4 mr-2" />
+              Status Definitions
             </Button>
             {!isGuestMode && isSuperAdmin && (
               <Button
