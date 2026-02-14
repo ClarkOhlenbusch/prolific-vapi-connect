@@ -560,15 +560,16 @@ export const ExperimentResponsesTable = () => {
   // Fetch available batches for filter dropdown
   const fetchBatches = async () => {
     try {
-      const { data: batches, error } = await supabase
-        .from('experiment_responses')
-        .select('batch_label')
-        .not('batch_label', 'is', null);
+      // Use the authoritative batch list rather than deriving from response rows.
+      const { data, error } = await supabase
+        .from('experiment_batches')
+        .select('name')
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      const uniqueBatches = [...new Set(batches?.map(b => b.batch_label).filter(Boolean) as string[])];
-      setAvailableBatches(uniqueBatches.sort());
+      const names = (data ?? []).map((r) => (r.name ?? '').trim()).filter(Boolean);
+      setAvailableBatches([...new Set(names)].sort());
     } catch (error) {
       console.error('Error fetching batches:', error);
     }

@@ -128,7 +128,18 @@ const formatRestartIssueType = (value?: string | null): string | null => {
 };
 
 const isCallIssueEvent = (event: NavigationEvent): boolean => {
-  if (event.event_type === "call_start_failed" || event.event_type === "call_error") return true;
+  if (event.event_type === "call_start_failed") return true;
+  if (event.event_type === "call_error") {
+    const errorText = String(event.metadata?.errorMessage || event.metadata?.error || "").toLowerCase();
+    const isExpected = Boolean(event.metadata?.isExpected)
+      || errorText.includes("meeting ended")
+      || errorText.includes("meeting has ended")
+      || errorText.includes("max-duration")
+      || errorText.includes("max duration")
+      || errorText.includes("exceeded-max-duration")
+      || errorText.includes("ejection");
+    return !isExpected;
+  }
   // call_end: only treat as issue when explicitly an error; normal disconnect has reason "call-end" and no isError
   if (event.event_type === "call_end") {
     if (event.metadata?.reason === "call-end") return false; // normal end from frontend
@@ -136,6 +147,7 @@ const isCallIssueEvent = (event: NavigationEvent): boolean => {
   }
   // call_end_report: authoritative end reason from VAPI; isError is set when reasonCode !== "none"
   if (event.event_type === "call_end_report") {
+    if (event.metadata?.endedReason === "exceeded-max-duration") return false;
     return Boolean(event.metadata?.isError);
   }
   return false;
@@ -146,12 +158,22 @@ const getCallIssueMessage = (event: NavigationEvent): string | null => {
     return event.metadata?.reason || "Call start failed";
   }
   if (event.event_type === "call_error") {
+    const errorText = String(event.metadata?.errorMessage || event.metadata?.error || "").toLowerCase();
+    const isExpected = Boolean(event.metadata?.isExpected)
+      || errorText.includes("meeting ended")
+      || errorText.includes("meeting has ended")
+      || errorText.includes("max-duration")
+      || errorText.includes("max duration")
+      || errorText.includes("exceeded-max-duration")
+      || errorText.includes("ejection");
+    if (isExpected) return null;
     return event.metadata?.errorMessage || event.metadata?.error || "Call error";
   }
   if (event.event_type === "call_end" && event.metadata?.isError) {
     return event.metadata?.endedReason || "Call ended with error";
   }
   if (event.event_type === "call_end_report" && event.metadata?.isError) {
+    if (event.metadata?.endedReason === "exceeded-max-duration") return null;
     return event.metadata?.endedReason || event.metadata?.reasonCode || "Call ended with error";
   }
   return null;

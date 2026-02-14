@@ -109,6 +109,8 @@ const EXPORT_COLUMNS: { id: string; label: string; getValue: (row: UnifiedPartic
   { id: 'call_id', label: 'Call ID', getValue: (r) => r.call_id },
   { id: 'response_id', label: 'Response ID (experiment_responses)', getValue: (r) => r.response_id ?? '' },
   { id: 'status', label: 'Status', getValue: (r) => r.status },
+  { id: 'response_submission_status', label: 'Questionnaire Status', getValue: (r) => r.response_submission_status ?? '' },
+  { id: 'call_ended', label: 'Call Ended', getValue: (r) => (r.is_completed ? 'Yes' : 'No') },
   { id: 'created_at', label: 'Created At', getValue: (r) => r.created_at },
   { id: 'assistant_type', label: 'Condition', getValue: (r) => r.assistant_type ?? '' },
   { id: 'batch_label', label: 'Batch', getValue: (r) => r.batch_label ?? '' },
@@ -161,6 +163,26 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const { logActivity } = useActivityLog();
 
+  // Fetch from experiment_batches so newly created batches appear in filter UI
+  // even if they don't show up in the currently loaded response rows.
+  useEffect(() => {
+    if (isGuestMode) return;
+    const fetchBatchOptions = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('experiment_batches')
+          .select('name')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        const names = (data ?? []).map((r) => (r.name ?? '').trim()).filter(Boolean);
+        setAvailableBatches((prev) => [...new Set([...prev, ...names])].sort());
+      } catch (error) {
+        console.error('Error fetching batches:', error);
+      }
+    };
+    fetchBatchOptions();
+  }, [isGuestMode]);
+
   const fetchData = async () => {
     setIsLoading(true);
     
@@ -192,7 +214,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       // Fetch experiment_responses
       let responsesQuery = supabase
         .from('experiment_responses' as any)
-        .select('id, call_id, prolific_id, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged');
+        .select('id, call_id, prolific_id, session_token, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged');
 
       const { data: responses, error: responsesError } = await responsesQuery;
 
@@ -212,9 +234,29 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
       if (prolificDemoError) throw prolificDemoError;
 
-      // Create lookup maps
-      const responseMap = new Map<string, (typeof responses)[0]>();
-      responses?.forEach(r => responseMap.set(r.call_id, r));
+      // Create lookup maps: prefer joining by session_token, then call_id.
+      const responseBySession = new Map<string, (typeof responses)[0]>();
+      const responseByCallId = new Map<string, (typeof responses)[0]>();
+      const preferSubmitted = (a: (typeof responses)[0] | undefined, b: (typeof responses)[0]) => {
+        if (!a) return b;
+        const aSubmitted = a.submission_status === 'submitted';
+        const bSubmitted = b.submission_status === 'submitted';
+        if (aSubmitted && !bSubmitted) return a;
+        if (!aSubmitted && bSubmitted) return b;
+        // Otherwise keep the existing one (stable), since we don't have a reliable "latest" signal.
+        return a;
+      };
+
+      responses?.forEach((r) => {
+        if (r.session_token) {
+          const k = String(r.session_token);
+          responseBySession.set(k, preferSubmitted(responseBySession.get(k), r));
+        }
+        if (r.call_id) {
+          const k = String(r.call_id);
+          responseByCallId.set(k, preferSubmitted(responseByCallId.get(k), r));
+        }
+      });
 
       const demographicsMap = new Map<string, (typeof demographics)[0]>();
       demographics?.forEach(d => demographicsMap.set(d.prolific_id, d));
@@ -226,7 +268,10 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       // In-app stores birth year in demographics.age; Prolific export stores age.
       const norm = (s: string | null | undefined) => (s ?? '').toString().trim().toLowerCase();
       const unified: UnifiedParticipant[] = callsFiltered.map(call => {
-        const response = responseMap.get(call.call_id);
+        const sessionToken = (call as any).session_token ? String((call as any).session_token) : null;
+        const response =
+          (sessionToken ? responseBySession.get(sessionToken) : undefined) ??
+          (call.call_id ? responseByCallId.get(call.call_id) : undefined);
         const demo = demographicsMap.get(call.prolific_id);
         const pDemo = prolificDemoMap.get(call.prolific_id);
         const birthYearRaw = (demo?.age ?? '').toString().trim();
@@ -278,7 +323,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           ethnicity_simplified: pDemo?.ethnicity_simplified ?? null,
           demographics_mismatch,
           demographics_mismatch_reasons: demographics_mismatch_reasons.length > 0 ? demographics_mismatch_reasons : undefined,
-          status: call.is_completed ? 'Completed' : 'Pending',
+          // "Completed" across the researcher UI means questionnaire submitted.
+          status: response?.submission_status === 'submitted' ? 'Completed' : 'Pending',
         };
       });
 
@@ -287,7 +333,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       unified.forEach(p => {
         if (p.batch_label) batches.add(p.batch_label);
       });
-      setAvailableBatches(Array.from(batches).sort());
+      setAvailableBatches((prev) => [...new Set([...prev, ...Array.from(batches)])].sort());
 
       setData(unified);
       setSelectedIds(new Set());
@@ -565,7 +611,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
   const selectedCompletedCallIds = useMemo(() => {
     return paginatedData
-      .filter((r) => selectedIds.has(r.id) && r.status === 'Completed' && r.call_id)
+      // Evaluation runs on calls, so gate on call completion (not questionnaire submission).
+      .filter((r) => selectedIds.has(r.id) && r.is_completed && r.call_id)
       .map((r) => r.call_id);
   }, [paginatedData, selectedIds]);
 
@@ -741,6 +788,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
               )}
               <TableHead>Prolific ID</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Call</TableHead>
               <TableHead>Created At</TableHead>
               <TableHead>Condition</TableHead>
               <TableHead>Batch</TableHead>
@@ -758,7 +806,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           <TableBody>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isSuperAdmin ? 15 : 14} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isSuperAdmin ? 16 : 15} className="text-center py-8 text-muted-foreground">
                   No participants found
                 </TableCell>
               </TableRow>
@@ -782,6 +830,11 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                   <TableCell>
                     <Badge variant={row.status === 'Completed' ? 'default' : 'secondary'}>
                       {row.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={row.is_completed ? 'secondary' : 'outline'}>
+                      {row.is_completed ? 'Ended' : 'Active'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm">

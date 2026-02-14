@@ -126,7 +126,9 @@ export const BatchManager = ({ sourceFilter = 'all', openBatchCreate, onBatchCre
       const [{ data: rawResponses, error: responseError }, { archivedResponseKeys }] = await Promise.all([
         supabase
           .from('experiment_responses')
-          .select('prolific_id, call_id, batch_label, assistant_type, created_at, pets_total, tias_total, formality, reviewed_by_researcher'),
+          .select('prolific_id, call_id, batch_label, assistant_type, created_at, pets_total, tias_total, formality, reviewed_by_researcher')
+          // "Completed" across the researcher UI means questionnaire submitted.
+          .eq('submission_status', 'submitted'),
         fetchArchivedFilters(),
       ]);
 

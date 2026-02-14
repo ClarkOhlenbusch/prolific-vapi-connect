@@ -180,10 +180,11 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
 
     const fetchSummary = async () => {
       try {
-        const [responsesRes, callsRes, archivedRes, prolificDemoRes, archivedFilters] = await Promise.all([
+        const [responsesRes, callsRes, archivedRes, prolificDemoRes, archivedFilters, batchesRes] = await Promise.all([
           supabase
             .from('experiment_responses' as any)
             .select('*', { count: 'exact', head: false })
+            // Only include completed questionnaires.
             .eq('submission_status', 'submitted'),
           supabase.from('participant_calls').select('id'),
           isSuperAdmin 
@@ -191,6 +192,8 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
             : Promise.resolve({ count: 0 }),
           supabase.from('prolific_export_demographics').select('*', { count: 'exact', head: true }),
           fetchArchivedFilters(),
+          // Prefer authoritative batch list over deriving from response rows (which can be row-limited).
+          supabase.from('experiment_batches').select('name').order('created_at', { ascending: false }),
         ]);
 
         const allResponsesRaw = responsesRes.data || [];
@@ -201,7 +204,10 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
         const callsFiltered = callsRaw.filter((c) => !archivedFilters.archivedParticipantCallIds.has(c.id));
 
         setAllResponses(responses);
-        setAvailableBatches(extractBatches(responses));
+        const batchNames = (batchesRes.data ?? [])
+          .map((r: any) => (r?.name ?? '').toString().trim())
+          .filter(Boolean);
+        setAvailableBatches([...new Set(batchNames)].sort());
 
         const formalResponses = responses.filter(r => r.assistant_type === 'formal');
         const informalResponses = responses.filter(r => r.assistant_type === 'informal');
@@ -397,7 +403,32 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
             <CardTitle>Formal vs Informal Comparison</CardTitle>
           </CardHeader>
           <CardContent>
-            {comparison && (comparison.formal.count > 0 || comparison.informal.count > 0) ? (
+            {(() => {
+              const total =
+                (comparison?.formal.count ?? 0) +
+                (comparison?.informal.count ?? 0) +
+                (comparison?.unknown.count ?? 0);
+              const hasAny = total > 0;
+              const hasKnown = (comparison?.formal.count ?? 0) + (comparison?.informal.count ?? 0) > 0;
+
+              if (!comparison || !hasAny) {
+                return (
+                  <p className="text-muted-foreground text-center py-8">
+                    No completed questionnaires match your current filters yet.
+                  </p>
+                );
+              }
+
+              // If we have responses but none are labeled formal/informal, call that out explicitly.
+              if (!hasKnown) {
+                return (
+                  <p className="text-muted-foreground text-center py-8">
+                    Responses exist for this selection, but they are missing assistant type labels (all “unknown”).
+                  </p>
+                );
+              }
+
+              return (
               <div className="space-y-6">
                 {/* Response Counts */}
                 <div className={`grid gap-4 ${comparison.unknown.count > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
@@ -582,11 +613,8 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
                   </table>
                 </div>
               </div>
-            ) : (
-              <p className="text-muted-foreground text-center py-8">
-                No responses with assistant type information yet.
-              </p>
-            )}
+              );
+            })()}
           </CardContent>
         </Card>
       )}

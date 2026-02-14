@@ -140,19 +140,19 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
 
   const fetchAvailableBatches = async () => {
     try {
+      // Use the authoritative batch list rather than deriving from responses
+      // (response queries can be row-limited and can omit newly created batches).
       const { data, error } = await supabase
-        .from("experiment_responses")
-        .select("batch_label")
-        .eq("submission_status", "submitted")
-        .not("batch_label", "is", null);
+        .from("experiment_batches")
+        .select("name")
+        .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("Error fetching batches:", error);
-        return;
-      }
+      if (error) throw error;
 
-      const uniqueBatches = [...new Set(data?.map(r => r.batch_label).filter(Boolean))] as string[];
-      setAvailableBatches(uniqueBatches.sort());
+      const names = (data ?? [])
+        .map((r) => (r.name ?? "").trim())
+        .filter(Boolean);
+      setAvailableBatches([...new Set(names)].sort());
     } catch (error) {
       console.error("Error:", error);
     }
@@ -164,6 +164,7 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
       let query = supabase
         .from("experiment_responses")
         .select("prolific_id, call_id, assistant_type, batch_label")
+        // Only include completed questionnaires.
         .eq("submission_status", "submitted");
 
       if (selectedBatches.length > 0) {

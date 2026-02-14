@@ -249,12 +249,12 @@ export const ParticipantCallsTable = () => {
             setCurrentPage(0);
           }}>
             <SelectTrigger className="w-full sm:w-[140px]">
-              <SelectValue placeholder="Status" />
+              <SelectValue placeholder="Call status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="completed">Ended</SelectItem>
+              <SelectItem value="pending">Active</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -296,7 +296,7 @@ export const ParticipantCallsTable = () => {
               <TableHead>Prolific ID</TableHead>
               <TableHead>Call ID</TableHead>
               <TableHead>Created At</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Call</TableHead>
               {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
@@ -326,7 +326,7 @@ export const ParticipantCallsTable = () => {
                   <TableCell>{new Date(row.created_at).toLocaleString()}</TableCell>
                   <TableCell>
                     <Badge variant={row.is_completed ? "secondary" : "outline"}>
-                      {row.is_completed ? 'Completed' : 'Pending'}
+                      {row.is_completed ? 'Ended' : 'Active'}
                     </Badge>
                   </TableCell>
                   {isSuperAdmin && (
