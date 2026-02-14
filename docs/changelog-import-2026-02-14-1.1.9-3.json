@@ -12,7 +12,7 @@
       "commit_hash": "38eb680",
       "pushed_at": "2026-02-13T19:16:23-08:00",
       "details": {
-        "summary_simple": "When Researcher Mode is enabled (including participant flow), show a small top-right badge with the current working version + local uncommitted patch counter sourced from `docs/verification-log.md`.",
+        "summary_simple": "When Researcher Mode is enabled (including participant flow), show a small top-right badge with the current working version + local uncommitted patch counter sourced from `docs/working-version.json`.",
         "verification": {
           "tested_at": "2026-02-13T19:16:57-08:00",
           "result": "PASS",
@@ -44,4 +44,3 @@
     }
   ]
 }]
-

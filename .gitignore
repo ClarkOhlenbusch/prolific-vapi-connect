@@ -25,3 +25,6 @@ dist-ssr
 # Changelog JSONs copied from docs/ at build time (source of truth: docs/)
 public/changelog
 
+# Local-only verification notes (do not commit)
+docs/verification-log.local.md
+docs/verification-log.md

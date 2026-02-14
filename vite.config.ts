@@ -40,24 +40,22 @@ const localFutureFeaturesPlugin = () => ({
   name: "local-future-features",
   apply: "serve",
   configureServer(server: any) {
-    // Local-only endpoint to expose the current working version from docs/verification-log.md.
+    // Local-only endpoint to expose the current working version from docs/working-version.json.
     // Useful for aligning the in-app version badge during local dev without depending on DB RPC.
     server.middlewares.use("/__dev__/verification-version", async (req: any, res: any, next: any) => {
       if (req.method !== "GET") return next();
       try {
-        const filePath = path.resolve(__dirname, "./docs/verification-log.md");
-        const content = await fs.readFile(filePath, "utf8");
-        const match = content.match(/^\s*Current Working Version:\s*(v?([0-9]+(?:\.[0-9]+)*))\s*$/m);
-        const version = match?.[1] || null;
-        const patchMatch = content.match(/^\s*Current Working Patch:\s*([0-9]+)\s*$/m);
-        const patch = patchMatch ? Number(patchMatch[1]) : null;
+        const filePath = path.resolve(__dirname, "./docs/working-version.json");
+        const raw = await fs.readFile(filePath, "utf8");
+        const parsed = JSON.parse(raw) as { version?: unknown };
+        const version = typeof parsed.version === "string" && parsed.version.trim() ? parsed.version.trim() : null;
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ ok: true, version, patch: Number.isFinite(patch) ? patch : null }));
+        res.end(JSON.stringify({ ok: true, version }));
       } catch (e: any) {
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ ok: false, version: null, patch: null, error: e?.message || "read_failed" }));
+        res.end(JSON.stringify({ ok: false, version: null, error: e?.message || "read_failed" }));
       }
     });
 
