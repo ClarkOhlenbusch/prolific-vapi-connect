@@ -1,0 +1,27 @@
+[{
+  "version": "1.1.10",
+  "release_date": "2026-02-14",
+  "description": "Push researcher dashboard improvements (completion semantics, release history, changelog verification UI) and feedback dictation recording/download UX fixes.",
+  "active_batch_label": "",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    { "type": "added", "description": "add status definitions page", "scope": "researcher", "commit_hash": "6ccde46", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "changed", "description": "use submitted responses for completion + batch lists", "scope": "researcher", "commit_hash": "8605620", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "changed", "description": "improve call end labeling + dev future-features capture", "scope": "both", "commit_hash": "8648cdc", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "changed", "description": "move status definitions into System Design", "scope": "researcher", "commit_hash": "ae97215", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "added", "description": "show committed vs pushed releases", "scope": "researcher", "commit_hash": "69a9af4", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "changed", "description": "extend push skill to write changelog on commit", "scope": "researcher", "commit_hash": "c3415e8", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "changed", "description": "changelog 1.1.9 (committed)", "scope": "researcher", "commit_hash": "d0eb3e9", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "fixed", "description": "allow editing release status + fix settings upsert RLS", "scope": "researcher", "commit_hash": "0ac2e08", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "changed", "description": "changelog 1.1.9 batch 2 (committed)", "scope": "researcher", "commit_hash": "ccbe72a", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "added", "description": "allow downloading feedback dictation audio", "scope": "researcher", "commit_hash": "72ddb23", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "added", "description": "add MP3/WAV downloads for feedback audio", "scope": "researcher", "commit_hash": "1a458c9", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "changed", "description": "changelog 1.1.9 batch 3 (tested)", "scope": "researcher", "commit_hash": "4706180", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "added", "description": "show tested badge and verification details", "scope": "researcher", "commit_hash": "fbd7c95", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "added", "description": "show local build/version badge in researcher mode", "scope": "researcher", "commit_hash": "38eb680", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "fixed", "description": "improve feedback dictation mic denied UX", "scope": "both", "commit_hash": "f7de6ac", "pushed_at": "2026-02-13T20:17:39-08:00" },
+    { "type": "changed", "description": "link verification to changelog batch", "scope": "researcher", "commit_hash": "5908135", "pushed_at": "2026-02-13T20:17:39-08:00" }
+  ]
+}]
+
