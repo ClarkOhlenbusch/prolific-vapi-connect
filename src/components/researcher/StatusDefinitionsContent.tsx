@@ -118,6 +118,11 @@ export const StatusDefinitionsContent = () => {
             draft, or an inconsistency).
           </div>
           <div>
+            <span className="font-medium">Abandoned (Status badge)</span> means the response is not submitted and has
+            been inactive for more than 1.5 hours (based on <code className="font-mono">last_saved_at</code>), so we
+            treat it as dropped-off.
+          </div>
+          <div>
             <span className="font-medium">Call: Ended</span> means{" "}
             <code className="font-mono">participant_calls.is_completed = true</code>.
           </div>
@@ -140,4 +145,3 @@ export const StatusDefinitionsContent = () => {
     </div>
   );
 };
-

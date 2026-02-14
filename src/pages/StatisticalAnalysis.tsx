@@ -597,7 +597,7 @@ const StatisticalAnalysis = () => {
         } else {
           const [{ data, error }, { archivedResponseKeys }] = await Promise.all([
             supabase
-              .from('experiment_responses' as any)
+              .from('experiment_responses')
               .select('*')
               .eq('submission_status', 'submitted'),
             fetchArchivedFilters(),

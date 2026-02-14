@@ -3,7 +3,7 @@
 This file records manual verification outcomes for changes made during development.
 
 Current Working Version: v1.1.9
-Current Working Patch: 6
+Current Working Patch: 8
 
 ## Entry Template
 

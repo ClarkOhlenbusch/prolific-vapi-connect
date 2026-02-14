@@ -91,7 +91,7 @@ interface UnifiedParticipant {
   /** What differs (for tooltip): age and/or gender */
   demographics_mismatch_reasons?: ('age' | 'gender')[];
   // Derived
-  status: 'Completed' | 'Pending';
+  status: 'Completed' | 'Pending' | 'Abandoned';
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -151,7 +151,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [journeyModal, setJourneyModal] = useState<{
     open: boolean;
     prolificId: string;
-    status: 'Completed' | 'Pending';
+    status: 'Completed' | 'Pending' | 'Abandoned';
     condition: string | null;
   }>({ open: false, prolificId: '', status: 'Pending', condition: null });
   const [createBatchDialog, setCreateBatchDialog] = useState<{ open: boolean; batchLabel: string | null }>({ open: false, batchLabel: null });
@@ -200,6 +200,13 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     }
     
     try {
+      // Keep abandoned status up-to-date for stale drafts (best-effort; don't block data fetch).
+      try {
+        await supabase.functions.invoke('mark-abandoned-drafts', { body: { cutoffMinutes: 90 } });
+      } catch (e) {
+        console.warn('mark-abandoned-drafts failed (continuing):', e);
+      }
+
       // Fetch participant_calls
       const { data: calls, error: callsError } = await supabase
         .from('participant_calls')
@@ -213,7 +220,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
       // Fetch experiment_responses
       let responsesQuery = supabase
-        .from('experiment_responses' as any)
+        .from('experiment_responses')
         .select('id, call_id, prolific_id, session_token, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged');
 
       const { data: responses, error: responsesError } = await responsesQuery;
@@ -324,7 +331,12 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           demographics_mismatch,
           demographics_mismatch_reasons: demographics_mismatch_reasons.length > 0 ? demographics_mismatch_reasons : undefined,
           // "Completed" across the researcher UI means questionnaire submitted.
-          status: response?.submission_status === 'submitted' ? 'Completed' : 'Pending',
+          status:
+            response?.submission_status === 'submitted'
+              ? 'Completed'
+              : response?.submission_status === 'abandoned'
+                ? 'Abandoned'
+                : 'Pending',
         };
       });
 
@@ -372,6 +384,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       result = result.filter(p => p.status === 'Completed');
     } else if (statusFilter === 'pending') {
       result = result.filter(p => p.status === 'Pending');
+    } else if (statusFilter === 'abandoned') {
+      result = result.filter(p => p.status === 'Abandoned');
     }
 
     // Source filter (uses global filter from dashboard)
@@ -688,11 +702,12 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
             <SelectTrigger className="w-full sm:w-[140px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-            </SelectContent>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="abandoned">Abandoned</SelectItem>
+          </SelectContent>
           </Select>
 
           <Select value={conditionFilter} onValueChange={setConditionFilter}>
@@ -828,7 +843,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                   )}
                   <TableCell className="font-mono text-sm">{row.prolific_id}</TableCell>
                   <TableCell>
-                    <Badge variant={row.status === 'Completed' ? 'default' : 'secondary'}>
+                    <Badge variant={row.status === 'Completed' ? 'default' : row.status === 'Abandoned' ? 'destructive' : 'secondary'}>
                       {row.status}
                     </Badge>
                   </TableCell>

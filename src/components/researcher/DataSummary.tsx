@@ -182,7 +182,7 @@ export const DataSummary = ({ sourceFilter }: DataSummaryProps) => {
       try {
         const [responsesRes, callsRes, archivedRes, prolificDemoRes, archivedFilters, batchesRes] = await Promise.all([
           supabase
-            .from('experiment_responses' as any)
+            .from('experiment_responses')
             .select('*', { count: 'exact', head: false })
             // Only include completed questionnaires.
             .eq('submission_status', 'submitted'),

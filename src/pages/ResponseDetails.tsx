@@ -1004,6 +1004,7 @@ const ResponseDetails = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPendingRecord, setIsPendingRecord] = useState(false);
+  const [nonSubmittedStatus, setNonSubmittedStatus] = useState<'pending' | 'abandoned' | null>(null);
   const [formalityCalcId, setFormalityCalcId] = useState<string | null>(null);
   const [journeyModalOpen, setJourneyModalOpen] = useState(false);
   const [createBatchDialog, setCreateBatchDialog] = useState<{ open: boolean; batchLabel: string | null }>({ open: false, batchLabel: null });
@@ -1271,7 +1272,7 @@ const ResponseDetails = () => {
           return;
         }
 
-        // Try normal completed response lookup first
+        // Try experiment_responses lookup first (submitted or draft)
         const { data: completedResponse, error: completedResponseError } = await supabase
           .from('experiment_responses')
           .select('*')
@@ -1281,6 +1282,10 @@ const ResponseDetails = () => {
         if (completedResponseError) throw completedResponseError;
 
         let response: ExperimentResponseWithDemographics | null = completedResponse;
+        if (response && (response as any).submission_status && (response as any).submission_status !== 'submitted') {
+          setIsPendingRecord(true);
+          setNonSubmittedStatus((response as any).submission_status === 'abandoned' ? 'abandoned' : 'pending');
+        }
 
         // Fallback for pending records: route id corresponds to participant_calls.id
         if (!response) {
@@ -1308,9 +1313,13 @@ const ResponseDetails = () => {
 
           if (completedByCall) {
             response = completedByCall as ExperimentResponseWithDemographics;
-            setIsPendingRecord(false);
+            const status = (completedByCall as any).submission_status;
+            const isNonSubmitted = status && status !== 'submitted';
+            setIsPendingRecord(Boolean(isNonSubmitted));
+            setNonSubmittedStatus(isNonSubmitted ? (status === 'abandoned' ? 'abandoned' : 'pending') : null);
           } else {
             setIsPendingRecord(true);
+            setNonSubmittedStatus('pending');
             response = {
               id: pendingCall.id,
               prolific_id: pendingCall.prolific_id,
@@ -2390,7 +2399,9 @@ const ResponseDetails = () => {
     const out = await ffmpeg.readFile('output.mp3');
     await ffmpeg.deleteFile('input.wav').catch(() => {});
     await ffmpeg.deleteFile('output.mp3').catch(() => {});
-    return new Blob([out], { type: 'audio/mpeg' });
+    // readFile returns FileData; copy into a plain Uint8Array to avoid TS/shared-buffer typing issues.
+    const outBytes = out instanceof Uint8Array ? new Uint8Array(out) : new TextEncoder().encode(String(out));
+    return new Blob([outBytes], { type: 'audio/mpeg' });
   };
 
   const handleDownloadDictationRecording = async (recording: DictationRecording, clipIndex: number) => {
@@ -2930,7 +2941,9 @@ const ResponseDetails = () => {
             </div>
             <div className="flex items-center gap-2">
               {isPendingRecord && (
-                <Badge variant="secondary">Pending</Badge>
+                <Badge variant={nonSubmittedStatus === 'abandoned' ? 'destructive' : 'secondary'}>
+                  {nonSubmittedStatus === 'abandoned' ? 'Abandoned' : 'Pending'}
+                </Badge>
               )}
               {data.assistant_type && (
                 <Badge variant={data.assistant_type === 'formal' ? 'default' : 'secondary'}>
@@ -2991,6 +3004,20 @@ const ResponseDetails = () => {
 
       {/* Main Content */}
       <div className="max-w-5xl mx-auto px-6 py-6 space-y-8">
+        {isPendingRecord && (
+          <Card>
+            <CardContent className="py-4 text-sm text-muted-foreground">
+              <div className="font-medium text-foreground mb-1">
+                {nonSubmittedStatus === 'abandoned' ? 'Abandoned (not submitted)' : 'Pending (not submitted)'}
+              </div>
+              <div>
+                Saved up to: <span className="font-mono">{(data as any).last_step ?? 'unknown'}</span>
+                {` `}
+                at {new Date(((data as any).last_saved_at ?? data.created_at) as string).toLocaleString()}.
+              </div>
+            </CardContent>
+          </Card>
+        )}
         {/* Summary Card */}
         <Card>
           <CardHeader className="pb-3">

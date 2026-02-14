@@ -601,11 +601,11 @@ const ResearcherChangelog = () => {
         release_status: incomingReleaseStatus ?? 'pushed',
         created_by: user?.id ?? null,
       };
-      const inserted = await supabase.from('changelog_entries').insert(insertPayload).select('id').single();
+      const inserted = await supabase.from('changelog_entries').insert([insertPayload] as any).select('id').single();
       if (inserted.error) {
         if (/release_status/i.test(inserted.error.message || '')) {
           delete insertPayload.release_status;
-          const retry = await supabase.from('changelog_entries').insert(insertPayload).select('id').single();
+          const retry = await supabase.from('changelog_entries').insert([insertPayload] as any).select('id').single();
           if (retry.error) throw retry.error;
           entryId = (retry.data as any).id;
         } else {

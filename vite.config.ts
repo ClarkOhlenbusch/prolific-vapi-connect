@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import fs from "fs/promises";
@@ -112,12 +112,20 @@ const localFutureFeaturesPlugin = () => ({
 });
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  const plugins: PluginOption[] = [
+    localFutureFeaturesPlugin(),
+    changelogPlugin(),
+    react(),
+    mode === "development" ? componentTagger() : null,
+  ].filter(Boolean) as PluginOption[];
+
+  return ({
   server: {
     host: "::",
     port: 8080,
   },
-  plugins: [localFutureFeaturesPlugin(), changelogPlugin(), react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins,
   define: {
     __APP_PKG_VERSION__: JSON.stringify(BUILD_INFO.pkgVersion),
     __APP_GIT_SHA__: JSON.stringify(BUILD_INFO.sha),
@@ -129,4 +137,5 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-}));
+  });
+});

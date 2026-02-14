@@ -15,6 +15,8 @@ session replay is black (but shows moving mouse) on localhost, but it works on p
 I want to be able to choose the batch scope for balance for different batches and then click Rebalance from then on so that it automatically sets the condition offset for the next ones. 
 And I want the condition counter to be kind of based off of that, instead of being based on the global counter, if that makes sense. Does that make sense? Help come up with a plan for this first and ask me before you continue. i just want an easy way to make sure that its balanced.
 
+Stats: keep submitted-only by default; add an optional "Include drafts" toggle (OFF by default) that warns sample sizes vary and shows per-metric n (e.g. n_pets/n_tias/n_feedback).
+
 main 2 (new batch) is not appearing on all batches, also the alternating assignment how does that wor?
 
 when filtering by batch, pending is not shown even when all status or pending is fitlered, on all responses
@@ -148,4 +150,3 @@ F_ @ index-DTGNOgU0.js:38Understand this warning
 - Goal: allow filtering Statistical Analysis results by one or more `batch_label` values (and optionally “No batch”), similar to the batch selectors on Summary/Experiment Settings.
 - Proposed UX: add a Batch multi-select (default: All batches) near the existing Source filter; selection should persist in `sessionStorage` like the Source filter does.
 - Likely impact: `src/pages/StatisticalAnalysis.tsx` (query + filtering + UI control), possibly shared batch-option fetch helper (from `experiment_batches`) to keep lists consistent across pages.
-
