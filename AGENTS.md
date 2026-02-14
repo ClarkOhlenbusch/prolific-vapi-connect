@@ -21,6 +21,21 @@ After providing `Test on your end:` steps for a change, you must explicitly ask 
 
 If the user replies FAIL, do not proceed with additional unrelated work until the failure is understood (ask 1–2 targeted questions or propose a minimal fix).
 
+## Plan-First For Big Changes (Required)
+
+When a request is a "big change" (likely to require explanation, tradeoffs, or multi-step rollout), do not immediately implement it. Instead:
+
+- Write a short, decision-complete plan first (goal, scope, steps, risks, rollback, and 1-3 acceptance tests).
+- Ask the user to confirm the plan before making repo changes.
+
+Treat a change as "big" if any are true:
+- It affects production data (SQL backfills, migrations, RLS/policies, cleanup jobs).
+- It touches Edge Functions / Supabase functions or auth/permissions.
+- It changes the meaning of core statuses/analytics (e.g., completion semantics).
+- It spans 3+ files or multiple layers (DB + function + UI).
+
+Note: we cannot literally switch the system "mode" from here, but we can enforce the same behavior: plan first, then implement after user confirmation.
+
 ## Persistent Verification Log
 
 We keep a running log of what was tested and whether it worked at `docs/verification-log.md`.
