@@ -29,6 +29,7 @@
         <div class="row">
           <span class="pill" id="sttStatus">stt: unknown</span>
           <span class="pill" id="micStatus">mic: locked</span>
+          <span class="pill" id="ttsStatus">tts: locked</span>
           <span class="pill" id="codexStatus">codex: checking</span>
         </div>
       </div>
@@ -89,14 +90,106 @@
       const sttOk = "webkitSpeechRecognition" in window;
       $("sttStatus").textContent = sttOk ? "stt: ok" : "stt: missing";
 
-      let audioUnlocked = false;
-      const speak = (text) => {
+      const hasTts = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+      let audioCtx = null;
+      let ttsUnlocked = false;
+      let voicesLoaded = false;
+
+      const unlockAudio = async () => {
+        // Chrome sometimes won't play TTS until some audio has been "unlocked" by a user gesture.
+        // We do both: resume AudioContext and prime SpeechSynthesis.
         try {
-          if (!("speechSynthesis" in window)) return;
-          const u = new SpeechSynthesisUtterance(text);
+          audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+          await audioCtx.resume();
+          ttsUnlocked = true;
+          $("ttsStatus").textContent = "tts: ready";
+        } catch {
+          $("ttsStatus").textContent = "tts: failed";
+        }
+      };
+
+      const beep = (durationMs) => {
+        if (!audioCtx) return;
+        try {
+          const o = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          o.type = "sine";
+          o.frequency.value = 880;
+          g.gain.value = 0.0001;
+          o.connect(g);
+          g.connect(audioCtx.destination);
+          const t0 = audioCtx.currentTime;
+          o.start(t0);
+          g.gain.setValueAtTime(0.0001, t0);
+          g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + (durationMs / 1000));
+          o.stop(t0 + (durationMs / 1000) + 0.02);
+        } catch {}
+      };
+
+      const pickVoice = () => {
+        if (!hasTts) return null;
+        const voices = window.speechSynthesis.getVoices() || [];
+        if (voices.length > 0) voicesLoaded = true;
+        return (
+          voices.find((v) => /en[-_]?/i.test(v.lang) && /samantha|ava|serena|alex/i.test(v.name)) ||
+          voices.find((v) => /en[-_]?/i.test(v.lang)) ||
+          voices[0] ||
+          null
+        );
+      };
+
+      if (hasTts) {
+        // Trigger voice list population on some Chrome versions.
+        try { window.speechSynthesis.getVoices(); } catch {}
+        window.speechSynthesis.onvoiceschanged = () => {
+          pickVoice();
+          if (ttsUnlocked) $("ttsStatus").textContent = "tts: ready";
+        };
+      } else {
+        $("ttsStatus").textContent = "tts: missing";
+      }
+
+      const speak = async (text) => {
+        const msg = String(text || "").trim();
+        if (!msg) return;
+
+        // Always try to unlock audio on user-triggered speaks.
+        if (!ttsUnlocked) await unlockAudio();
+
+        if (!hasTts) {
+          beep(180);
+          return;
+        }
+
+        try {
+          const u = new SpeechSynthesisUtterance(msg);
+          const voice = pickVoice();
+          if (voice) u.voice = voice;
+          u.rate = 1.0;
+          u.pitch = 1.0;
+          u.volume = 1.0;
+          u.onstart = () => { $("ttsStatus").textContent = voicesLoaded ? "tts: speaking" : "tts: speaking (no voices)"; };
+          u.onend = () => { $("ttsStatus").textContent = "tts: ready"; };
+          u.onerror = () => {
+            $("ttsStatus").textContent = "tts: error (beep)";
+            beep(240);
+          };
+
           window.speechSynthesis.cancel();
           window.speechSynthesis.speak(u);
-        } catch {}
+
+          // If the queue is blocked (common when voices aren't loaded), beep as a fallback.
+          setTimeout(() => {
+            if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+              $("ttsStatus").textContent = "tts: blocked (beep)";
+              beep(240);
+            }
+          }, 600);
+        } catch {
+          $("ttsStatus").textContent = "tts: failed (beep)";
+          beep(240);
+        }
       };
 
       const api = async (path, body) => {
@@ -163,7 +256,7 @@
         try {
           await navigator.mediaDevices.getUserMedia({ audio: true });
           $("micStatus").textContent = "mic: ready";
-          audioUnlocked = true;
+          await unlockAudio();
           return true;
         } catch {
           $("micStatus").textContent = "mic: denied";
@@ -290,4 +383,3 @@
     </script>
   </body>
 </html>
-
