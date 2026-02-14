@@ -40,7 +40,6 @@ const StatisticalAnalysis = lazy(() => import("./pages/StatisticalAnalysis"));
 const ResponseDetails = lazy(() => import("./pages/ResponseDetails"));
 const ResearcherChangelog = lazy(() => import("./pages/ResearcherChangelog"));
 const ResearcherBackups = lazy(() => import("./pages/ResearcherBackups"));
-const ResearcherStatusDefinitions = lazy(() => import("./pages/ResearcherStatusDefinitions"));
 
 const queryClient = new QueryClient();
 
@@ -100,7 +99,6 @@ const App = () => (
                 <Route path="/researcher/response/:id" element={<ResearcherProtectedRoute><ResponseDetails /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/changelog" element={<ResearcherProtectedRoute><ResearcherChangelog /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/backups" element={<ResearcherProtectedRoute><ResearcherBackups /></ResearcherProtectedRoute>} />
-                <Route path="/researcher/definitions" element={<ResearcherProtectedRoute><ResearcherStatusDefinitions /></ResearcherProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

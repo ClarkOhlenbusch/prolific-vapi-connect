@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Eye, ExternalLink, Navigation, RefreshCw, Route } from "lucide-react";
+import { BookOpen, Download, Eye, ExternalLink, Navigation, RefreshCw, Route } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   MASTER_STUDY_MAP_MERMAID,
@@ -26,6 +26,7 @@ import {
   STUDY_MAP_GROUP_LABELS,
   type StudyMapFocus,
 } from "@/lib/study-map/masterDiagram";
+import { StatusDefinitionsContent } from "@/components/researcher/StatusDefinitionsContent";
 import "reactflow/dist/style.css";
 
 type ParsedNode = {
@@ -792,6 +793,7 @@ const StudyMap = () => {
   const [snapshotCache, setSnapshotCache] = useState<Record<string, SystemDesignSnapshot>>({});
   const [isManifestLoading, setIsManifestLoading] = useState(true);
   const [isGeneratingSnapshot, setIsGeneratingSnapshot] = useState(false);
+  const [isDefinitionsOpen, setIsDefinitionsOpen] = useState(false);
   const [selectedFileDiff, setSelectedFileDiff] = useState<string>("");
   const [isLoadingSelectedFileDiff, setIsLoadingSelectedFileDiff] = useState(false);
   const [selectedFileDiffError, setSelectedFileDiffError] = useState<string | null>(null);
@@ -1474,6 +1476,17 @@ const StudyMap = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <Dialog open={isDefinitionsOpen} onOpenChange={setIsDefinitionsOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Status Definitions</DialogTitle>
+            </DialogHeader>
+            <div className="max-h-[70vh] overflow-auto pr-1">
+              <StatusDefinitionsContent />
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">Layer</Badge>
           <Button
@@ -1507,6 +1520,10 @@ const StudyMap = () => {
             onClick={() => setClickMode("inspect")}
           >
             Inspect Node
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setIsDefinitionsOpen(true)}>
+            <BookOpen className="h-4 w-4 mr-2" />
+            Status definitions
           </Button>
         </div>
 
