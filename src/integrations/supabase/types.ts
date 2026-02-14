@@ -522,10 +522,12 @@ export type Database = {
           u3_position: number | null
           u4: number | null
           u4_position: number | null
+          vapi_evaluation_metric_id: string | null
           vapi_structured_output: Json | null
           vapi_structured_output_at: string | null
           vapi_structured_outputs: Json | null
           vapi_structured_outputs_at: string | null
+          vapi_total_score: number | null
           voice_assistant_feedback: string | null
         }
         Insert: {
@@ -671,10 +673,12 @@ export type Database = {
           u3_position?: number | null
           u4?: number | null
           u4_position?: number | null
+          vapi_evaluation_metric_id?: string | null
           vapi_structured_output?: Json | null
           vapi_structured_output_at?: string | null
           vapi_structured_outputs?: Json | null
           vapi_structured_outputs_at?: string | null
+          vapi_total_score?: number | null
           voice_assistant_feedback?: string | null
         }
         Update: {
@@ -820,10 +824,12 @@ export type Database = {
           u3_position?: number | null
           u4?: number | null
           u4_position?: number | null
+          vapi_evaluation_metric_id?: string | null
           vapi_structured_output?: Json | null
           vapi_structured_output_at?: string | null
           vapi_structured_outputs?: Json | null
           vapi_structured_outputs_at?: string | null
+          vapi_total_score?: number | null
           voice_assistant_feedback?: string | null
         }
         Relationships: []
@@ -1290,6 +1296,90 @@ export type Database = {
         }
         Relationships: []
       }
+      vapi_evaluation_metrics: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          definition: Json | null
+          definition_hash: string | null
+          id: string
+          name: string
+          notes: string | null
+          structured_output_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          definition?: Json | null
+          definition_hash?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          structured_output_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          definition?: Json | null
+          definition_hash?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          structured_output_id?: string
+        }
+        Relationships: []
+      }
+      vapi_evaluation_queue: {
+        Row: {
+          attempts: number
+          call_id: string
+          created_at: string
+          id: string
+          last_error: string | null
+          metric_id: string
+          run_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          call_id: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          metric_id: string
+          run_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          call_id?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          metric_id?: string
+          run_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vapi_evaluation_queue_metric_id_fkey"
+            columns: ["metric_id"]
+            isOneToOne: false
+            referencedRelation: "vapi_evaluation_metrics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vapi_evaluation_queue_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "vapi_structured_output_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vapi_prompts: {
         Row: {
           batch_label: string | null
@@ -1354,6 +1444,10 @@ export type Database = {
           call_ids: string[]
           created_at: string
           id: string
+          last_error: string | null
+          last_polled_at: string | null
+          metric_id: string | null
+          poll_attempts: number
           status: string
           updated_at: string
           workflow_id: string
@@ -1362,6 +1456,10 @@ export type Database = {
           call_ids: string[]
           created_at?: string
           id?: string
+          last_error?: string | null
+          last_polled_at?: string | null
+          metric_id?: string | null
+          poll_attempts?: number
           status?: string
           updated_at?: string
           workflow_id: string
@@ -1370,11 +1468,23 @@ export type Database = {
           call_ids?: string[]
           created_at?: string
           id?: string
+          last_error?: string | null
+          last_polled_at?: string | null
+          metric_id?: string | null
+          poll_attempts?: number
           status?: string
           updated_at?: string
           workflow_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "vapi_structured_output_runs_metric_id_fkey"
+            columns: ["metric_id"]
+            isOneToOne: false
+            referencedRelation: "vapi_evaluation_metrics"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

@@ -6,6 +6,7 @@ const corsHeaders = {
 };
 
 const VAPI_STRUCTURED_OUTPUT_ID = "421185d2-5349-4acb-9444-2d6a0f67d154";
+const ACTIVE_METRIC_SETTING_KEY = "active_vapi_evaluation_metric_id";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -78,7 +79,47 @@ Deno.serve(async (req) => {
       });
     }
 
-    const structuredOutputId = body?.structuredOutputId ?? Deno.env.get("VAPI_STRUCTURED_OUTPUT_ID") ?? VAPI_STRUCTURED_OUTPUT_ID;
+    const metricId = typeof body?.metricId === "string" ? body.metricId.trim() : "";
+    const structuredOutputIdOverride = typeof body?.structuredOutputId === "string" ? body.structuredOutputId.trim() : "";
+
+    // Resolve metric + structuredOutputId:
+    // 1) explicit structuredOutputId override
+    // 2) explicit metricId
+    // 3) active metric from experiment_settings
+    // 4) env var fallback / constant
+    let structuredOutputId: string | null = structuredOutputIdOverride || null;
+    let resolvedMetricId: string | null = metricId || null;
+
+    if (!structuredOutputId && resolvedMetricId) {
+      const { data: metricRow } = await supabaseAdmin
+        .from("vapi_evaluation_metrics")
+        .select("structured_output_id")
+        .eq("id", resolvedMetricId)
+        .maybeSingle();
+      const so = metricRow && (metricRow as Record<string, unknown>).structured_output_id;
+      structuredOutputId = typeof so === "string" && so.trim() ? so.trim() : null;
+    }
+
+    if (!structuredOutputId && !resolvedMetricId) {
+      const { data: settingRow } = await supabaseAdmin
+        .from("experiment_settings")
+        .select("setting_value")
+        .eq("setting_key", ACTIVE_METRIC_SETTING_KEY)
+        .maybeSingle();
+      const activeMetricId = settingRow && (settingRow as Record<string, unknown>).setting_value;
+      if (typeof activeMetricId === "string" && activeMetricId.trim()) {
+        resolvedMetricId = activeMetricId.trim();
+        const { data: metricRow } = await supabaseAdmin
+          .from("vapi_evaluation_metrics")
+          .select("structured_output_id")
+          .eq("id", resolvedMetricId)
+          .maybeSingle();
+        const so = metricRow && (metricRow as Record<string, unknown>).structured_output_id;
+        structuredOutputId = typeof so === "string" && so.trim() ? so.trim() : null;
+      }
+    }
+
+    structuredOutputId = structuredOutputId ?? (Deno.env.get("VAPI_STRUCTURED_OUTPUT_ID") ?? VAPI_STRUCTURED_OUTPUT_ID);
 
     const vapiRes = await fetch("https://api.vapi.ai/structured-output/run", {
       method: "POST",
@@ -115,6 +156,7 @@ Deno.serve(async (req) => {
       .insert({
         workflow_id: workflowId,
         call_ids: callIds,
+        metric_id: resolvedMetricId || null,
         status: "pending",
         updated_at: new Date().toISOString(),
       })
