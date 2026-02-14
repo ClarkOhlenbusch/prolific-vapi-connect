@@ -1,0 +1,32 @@
+[{
+  "version": "1.1.11",
+  "release_date": "2026-02-14",
+  "description": "Add a scoped Rebalance workflow for alternating assignment and switch verification logging to a local-only scratchpad workflow.",
+  "active_batch_label": "",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "added",
+      "description": "add Rebalance button to rebase counters to selected batch scope and auto-set condition offset (with undo + active-batch guard)",
+      "scope": "both",
+      "commit_hash": "f064b4a",
+      "pushed_at": "2026-02-13T22:13:26-08:00"
+    },
+    {
+      "type": "changed",
+      "description": "switch verification logging to local-only notes; keep official PASS/FAIL on changelog entries; move dev version source to docs/working-version.json",
+      "scope": "researcher",
+      "commit_hash": "ed31f00",
+      "pushed_at": "2026-02-13T22:13:26-08:00"
+    },
+    {
+      "type": "changed",
+      "description": "record PASS for abandoned drafts (local workflow)",
+      "scope": "researcher",
+      "commit_hash": "8e7696a",
+      "pushed_at": "2026-02-13T22:13:26-08:00"
+    }
+  ]
+}]
+
