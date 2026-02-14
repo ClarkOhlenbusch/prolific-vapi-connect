@@ -70,7 +70,7 @@ Modes:
   plan             Create IMPLEMENTATION_PLAN.md (OPTIONAL)
 
 Work Source:
-  Agent reads specs/*.md and picks the highest priority incomplete spec.
+  Agent reads specs/*/spec.md and picks the highest priority incomplete spec.
 
 YOLO Mode: Uses --dangerously-bypass-approvals-and-sandbox
 
@@ -271,7 +271,7 @@ Read `.specify/memory/constitution.md` to understand project principles and cons
 
 Search for incomplete work from these sources (in order):
 
-1. **specs/ folder** — Look for `.md` files NOT marked `## Status: COMPLETE`
+1. **specs/ folder** — Look for `specs/*/spec.md` NOT marked `## Status: COMPLETE`
 2. **IMPLEMENTATION_PLAN.md** — If exists, find unchecked `- [ ]` tasks
 3. **GitHub Issues** — Check for open issues (if this is a GitHub repo)
 4. **Any task tracker** — Jira, Linear, etc. if configured
@@ -289,7 +289,7 @@ Before implementing, search the codebase to verify it's not already done.
 
 **If ALL specs appear complete**, don't just exit — do a quality check:
 
-1. **Randomly pick** one completed spec from `specs/`
+1. **Randomly pick** one completed spec from `specs/*/spec.md`
 2. **Strictly re-verify** ALL its acceptance criteria:
    - Run the actual tests mentioned in the spec
    - Manually verify each criterion is truly met
@@ -322,10 +322,9 @@ Run the project's test suite and verify:
 
 ## Phase 4: Commit & Update
 
-1. Mark the spec/task as complete (add `## Status: COMPLETE` to spec file)
+1. Mark the spec/task as complete (set `## Status: COMPLETE` in the spec)
 2. `git add -A`
 3. `git commit` with a descriptive message
-4. `git push`
 
 ---
 
@@ -337,7 +336,7 @@ Check:
 - [ ] Implementation matches all requirements
 - [ ] All tests pass
 - [ ] All acceptance criteria verified
-- [ ] Changes committed and pushed
+- [ ] Changes committed
 - [ ] Spec marked as complete
 
 **If ALL checks pass, output:** `<promise>DONE</promise>`
@@ -421,11 +420,11 @@ fi
 # Get current branch
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
 
-# Check for work sources - count .md files in specs/
+# Check for work sources - count spec.md files in specs/*/
 HAS_SPECS=false
 SPEC_COUNT=0
 if [ -d "specs" ]; then
-    SPEC_COUNT=$(find specs -maxdepth 1 -name "*.md" -type f 2>/dev/null | wc -l)
+    SPEC_COUNT=$(find specs -maxdepth 2 -name "spec.md" -type f 2>/dev/null | wc -l)
     [ "$SPEC_COUNT" -gt 0 ] && HAS_SPECS=true
 fi
 
@@ -446,7 +445,7 @@ echo -e "${BLUE}Work source:${NC}"
 if [ "$HAS_SPECS" = true ]; then
     echo -e "  ${GREEN}✓${NC} specs/ folder ($SPEC_COUNT specs)"
 else
-    echo -e "  ${RED}✗${NC} specs/ folder (no .md files found)"
+    echo -e "  ${RED}✗${NC} specs/ folder (no spec.md files found)"
 fi
 echo ""
 echo -e "${CYAN}Using: $CODEX_CMD $CODEX_FLAGS${NC}"

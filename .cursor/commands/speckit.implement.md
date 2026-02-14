@@ -16,19 +16,23 @@ This command launches the Ralph Wiggum implementation loop to process specificat
 
 ## Prerequisites
 
-1. **Ralph Wiggum Plugin**: Must be installed in Claude Code
-   ```
-   /plugin install ralph-loop@claude-plugins-official
-   ```
+1. **At least one spec**: Specs must exist in `specs/` with Completion Signal sections
 
-2. **At least one spec**: Specs must exist in `specs/` with Completion Signal sections
-
-3. **Context files**:
+2. **Context files**:
    - `.specify/memory/constitution.md` — Project principles
    - `AGENTS.md` — Development guidelines
    - `RALPH_PROMPT.md` — Master prompt (optional, can use inline)
 
 ## Execution
+
+### Option 0 (Recommended): Codex Loop (No Plugin Needed)
+
+Use the local Codex Ralph loop:
+
+```bash
+./scripts/ralph-loop-codex.sh plan
+./scripts/ralph-loop-codex.sh
+```
 
 ### Option A: Single Spec
 
@@ -80,8 +84,8 @@ Output <promise>ALL_DONE</promise> when all specs complete." --completion-promis
 
 If the Ralph Wiggum plugin is not available:
 
-1. Read `RALPH_PROMPT.md` for the master prompt
-2. Manually iterate through specs in order
+1. Use the Codex loop (`./scripts/ralph-loop-codex.sh`) OR read `RALPH_PROMPT.md` for the master prompt
+2. Iterate through specs in order
 3. For each spec, implement until Completion Signal requirements are met
-4. Commit and push after each major milestone
+4. Commit after each major milestone (push remains manual in this repo)
 5. Continue until all specs complete

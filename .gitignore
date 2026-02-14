@@ -34,3 +34,6 @@ IMPLEMENTATION_PLAN.md
 PROMPT_build.md
 PROMPT_plan.md
 rlm/
+
+# Voice planner sessions (local-only)
+voice-planner/sessions/

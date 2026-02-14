@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Voice Planner</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; margin: 24px; }
+      .wrap { max-width: 980px; }
+      .card { border: 1px solid rgba(127,127,127,.35); border-radius: 12px; padding: 16px; margin: 12px 0; }
+      textarea, input { width: 100%; font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(127,127,127,.35); background: transparent; }
+      textarea { min-height: 80px; resize: vertical; }
+      button { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(127,127,127,.45); background: transparent; cursor: pointer; }
+      button:disabled { opacity: .6; cursor: not-allowed; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      .small { opacity: .75; font-size: 12px; }
+      .pill { padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(127,127,127,.35); }
+      .q { padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(127,127,127,.25); }
+      pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Voice Planner (Local)</h1>
+      <p class="small">Chrome recommended (uses Web Speech APIs). Voice capture is local; Codex is called only to generate questions/spec files.</p>
+
+      <div class="card">
+        <div class="row">
+          <span class="pill" id="sttStatus">stt: unknown</span>
+          <span class="pill" id="micStatus">mic: locked</span>
+          <span class="pill" id="codexStatus">codex: checking</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>1) Feature seed</h2>
+        <textarea id="seed" placeholder="One sentence: what do you want to build and why?"></textarea>
+        <div class="row" style="margin-top: 10px;">
+          <button id="enableMic">Enable mic</button>
+          <button id="genQuestions">Generate questions</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2) Questions</h2>
+        <div id="questions"></div>
+        <p class="small" id="questionsHint">Generate questions to start a voice session.</p>
+      </div>
+
+      <div class="card">
+        <h2>3) Voice session</h2>
+        <div class="row">
+          <button id="startSession" disabled>Start session</button>
+          <button id="speakQuestion" disabled>Speak current question</button>
+          <button id="recordAnswer" disabled>Record answer</button>
+          <button id="nextQuestion" disabled>Next question</button>
+          <button id="endSession" disabled>End session</button>
+        </div>
+        <p class="small">Tip: recording ends automatically when the browser stops recognition.</p>
+        <div class="card" style="margin-top: 12px;">
+          <div class="row">
+            <span class="pill" id="qIdx">q: -</span>
+            <span class="pill" id="recState">rec: idle</span>
+          </div>
+          <div style="margin-top: 10px;">
+            <div class="q" id="currentQ">(no question)</div>
+          </div>
+          <div style="margin-top: 10px;">
+            <div class="small">Current answer draft:</div>
+            <pre id="answerDraft">(none)</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>4) Generate spec files</h2>
+        <div class="row">
+          <button id="saveSession" disabled>Save session</button>
+          <button id="genSpec" disabled>Generate spec files</button>
+        </div>
+        <p class="small">This writes into <code>specs/NNN-...</code>. No git commits/pushes are done.</p>
+        <pre id="result">(no output)</pre>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const sttOk = "webkitSpeechRecognition" in window;
+      $("sttStatus").textContent = sttOk ? "stt: ok" : "stt: missing";
+
+      let audioUnlocked = false;
+      const speak = (text) => {
+        try {
+          if (!("speechSynthesis" in window)) return;
+          const u = new SpeechSynthesisUtterance(text);
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(u);
+        } catch {}
+      };
+
+      const api = async (path, body) => {
+        const res = await fetch(path, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body || {}),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(json.error || `http_${res.status}`);
+        return json;
+      };
+
+      const refreshHealth = async () => {
+        try {
+          const res = await fetch("/health");
+          const j = await res.json();
+          $("codexStatus").textContent = j.codexEnabled ? "codex: enabled" : "codex: disabled";
+        } catch {
+          $("codexStatus").textContent = "codex: error";
+        }
+      };
+      refreshHealth();
+
+      let questions = [];
+      let answers = [];
+      let idx = 0;
+      let sessionActive = false;
+      let answerDraft = "";
+      let sessionId = null;
+
+      const renderQuestions = () => {
+        const host = $("questions");
+        host.innerHTML = "";
+        if (!questions.length) {
+          $("questionsHint").style.display = "block";
+          return;
+        }
+        $("questionsHint").style.display = "none";
+        questions.forEach((q, i) => {
+          const div = document.createElement("div");
+          div.className = "q";
+          div.style.marginTop = "8px";
+          div.textContent = `${i+1}. ${q}`;
+          host.appendChild(div);
+        });
+      };
+
+      const updateSessionUi = () => {
+        $("qIdx").textContent = sessionActive ? `q: ${idx+1}/${questions.length}` : "q: -";
+        $("currentQ").textContent = sessionActive && questions[idx] ? questions[idx] : "(no question)";
+        $("answerDraft").textContent = answerDraft || "(none)";
+
+        $("startSession").disabled = !questions.length || sessionActive;
+        $("speakQuestion").disabled = !sessionActive;
+        $("recordAnswer").disabled = !sessionActive || !sttOk;
+        $("nextQuestion").disabled = !sessionActive;
+        $("endSession").disabled = !sessionActive;
+        $("saveSession").disabled = sessionActive || !questions.length || answers.length === 0;
+        $("genSpec").disabled = !sessionId;
+      };
+
+      const ensureMic = async () => {
+        try {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+          $("micStatus").textContent = "mic: ready";
+          audioUnlocked = true;
+          return true;
+        } catch {
+          $("micStatus").textContent = "mic: denied";
+          return false;
+        }
+      };
+
+      $("enableMic").addEventListener("click", async () => {
+        const ok = await ensureMic();
+        if (ok) speak("Microphone enabled.");
+      });
+
+      $("genQuestions").addEventListener("click", async () => {
+        $("result").textContent = "(working...)";
+        try {
+          const seed = $("seed").value.trim();
+          const j = await api("/api/questions", { seed });
+          questions = j.questions || [];
+          answers = new Array(questions.length).fill("");
+          idx = 0;
+          sessionId = null;
+          renderQuestions();
+          $("result").textContent = "Questions generated.";
+          speak("Questions generated.");
+        } catch (e) {
+          $("result").textContent = `Error: ${e.message}`;
+        } finally {
+          updateSessionUi();
+        }
+      });
+
+      $("startSession").addEventListener("click", async () => {
+        sessionActive = true;
+        idx = 0;
+        answerDraft = "";
+        $("recState").textContent = "rec: idle";
+        speak("Starting session.");
+        updateSessionUi();
+        speak(questions[idx] || "");
+      });
+
+      $("speakQuestion").addEventListener("click", () => {
+        speak(questions[idx] || "");
+      });
+
+      $("recordAnswer").addEventListener("click", () => {
+        if (!sttOk) return;
+        answerDraft = "";
+        $("recState").textContent = "rec: listening";
+        updateSessionUi();
+
+        const rec = new webkitSpeechRecognition();
+        rec.continuous = false;
+        rec.interimResults = true;
+        rec.lang = "en-US";
+
+        let finalText = "";
+        rec.onresult = (ev) => {
+          let interim = "";
+          for (let i = ev.resultIndex; i < ev.results.length; i++) {
+            const r = ev.results[i];
+            const txt = r[0] && r[0].transcript ? r[0].transcript : "";
+            if (r.isFinal) finalText += txt;
+            else interim += txt;
+          }
+          answerDraft = (finalText + " " + interim).trim();
+          updateSessionUi();
+        };
+        rec.onerror = () => {
+          $("recState").textContent = "rec: error";
+          updateSessionUi();
+        };
+        rec.onend = () => {
+          $("recState").textContent = "rec: idle";
+          answers[idx] = (answerDraft || "").trim();
+          updateSessionUi();
+          speak("Captured.");
+        };
+        rec.start();
+      });
+
+      $("nextQuestion").addEventListener("click", () => {
+        if (!sessionActive) return;
+        idx = Math.min(idx + 1, questions.length - 1);
+        answerDraft = answers[idx] || "";
+        updateSessionUi();
+        speak(questions[idx] || "");
+      });
+
+      $("endSession").addEventListener("click", () => {
+        sessionActive = false;
+        updateSessionUi();
+        speak("Session ended.");
+      });
+
+      $("saveSession").addEventListener("click", async () => {
+        $("result").textContent = "(saving session...)";
+        try {
+          const seed = $("seed").value.trim();
+          const rawTranscript = questions.map((q, i) => `Q: ${q}\nA: ${answers[i] || ""}`).join("\n\n");
+          const j = await api("/api/session", { seed, questions, answers, rawTranscript });
+          sessionId = j.id;
+          $("result").textContent = `Saved session: ${sessionId}`;
+          speak("Session saved.");
+        } catch (e) {
+          $("result").textContent = `Error: ${e.message}`;
+        } finally {
+          updateSessionUi();
+        }
+      });
+
+      $("genSpec").addEventListener("click", async () => {
+        $("result").textContent = "(generating spec...)";
+        try {
+          const j = await api("/api/generate-spec", { sessionId });
+          $("result").textContent = JSON.stringify(j, null, 2);
+          speak("Spec files generated.");
+        } catch (e) {
+          $("result").textContent = `Error: ${e.message}`;
+        }
+      });
+
+      updateSessionUi();
+    </script>
+  </body>
+</html>
+

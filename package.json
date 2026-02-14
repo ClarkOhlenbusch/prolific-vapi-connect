@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "notify:server": "node scripts/notify-browser-server.mjs",
+    "voice:server": "VOICE_PLANNER_ENABLE_CODEX=1 node scripts/voice-planner-server.mjs",
     "smoke:participant-flow": "node scripts/participant-flow-smoke-test.mjs"
   },
   "dependencies": {

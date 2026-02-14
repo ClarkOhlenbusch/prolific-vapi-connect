@@ -47,9 +47,11 @@ Given that description, do this:
    - Iteration instructions
    - Completion promise (`<promise>DONE</promise>`)
 
-6. **Create a quality checklist** at `specs/NNN-short-name/checklists/requirements.md` using `templates/checklist-template.md`.
+6. **Status**: Ensure the spec includes `## Status: INCOMPLETE` near the top (and later can be flipped to `## Status: COMPLETE` when finished).
 
-7. If anything is ambiguous, add up to 3 `[NEEDS CLARIFICATION: ...]` markers in the spec. For each marker, present a clear question and suggested answers.
+7. **Create a quality checklist** at `specs/NNN-short-name/checklists/requirements.md` using `templates/checklist-template.md`.
+
+8. If anything is ambiguous, add up to 3 `[NEEDS CLARIFICATION: ...]` markers in the spec. For each marker, present a clear question and suggested answers.
 
 ## Output
 

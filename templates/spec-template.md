@@ -2,6 +2,8 @@
 
 ## Feature: [Feature Title]
 
+## Status: INCOMPLETE
+
 ### Overview
 [Brief description of the feature - what it does and why it matters]
 
