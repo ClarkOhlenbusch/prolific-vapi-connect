@@ -12,6 +12,7 @@ import PageSkeleton from "@/components/PageSkeleton";
 import { useSessionValidation } from "@/hooks/useSessionValidation";
 import { useRoutePreload } from "@/hooks/useRoutePreload";
 import { useSessionReplayTracking } from "@/hooks/useSessionReplayTracking";
+import { BuildVersionBadge } from "@/components/BuildVersionBadge";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
@@ -72,6 +73,7 @@ const App = () => (
           <BrowserRouter>
             <SessionReplayTracker />
             <ResearcherModeToggle />
+            <BuildVersionBadge />
             <Suspense fallback={<PageSkeleton />}>
               <Routes>
                 <Route path="/" element={<ProlificId />} />
