@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "notify:server": "node scripts/notify-browser-server.mjs",
     "smoke:participant-flow": "node scripts/participant-flow-smoke-test.mjs"
   },
   "dependencies": {
