@@ -37,7 +37,7 @@ interface ParticipantJourneyModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   prolificId: string;
-  status?: 'Completed' | 'Pending';
+  status?: 'Completed' | 'Pending' | 'Abandoned';
   condition?: string | null;
 }
 

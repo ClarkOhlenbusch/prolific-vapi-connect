@@ -9,6 +9,11 @@ lerna-debug.log*
 
 node_modules
 dist
+.deno
+.vscode
+
+# Deno cache/lockfile used only for local type-checking edge functions.
+deno.lock
 dist-ssr
 *.local
 # Editor directories and files

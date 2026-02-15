@@ -65,6 +65,10 @@ type ParticipantCall = Tables<'participant_calls'>;
 type ExperimentResponse = Tables<'experiment_responses'>;
 type Demographics = Tables<'demographics'>;
 
+const isSubmissionStatus = (v: unknown): v is 'pending' | 'submitted' | 'abandoned' => {
+  return v === 'pending' || v === 'submitted' || v === 'abandoned';
+};
+
 interface UnifiedParticipant {
   // From participant_calls
   id: string;
@@ -92,6 +96,11 @@ interface UnifiedParticipant {
   demographics_mismatch_reasons?: ('age' | 'gender')[];
   // Derived
   status: 'Completed' | 'Pending' | 'Abandoned';
+
+  // Vapi evaluation (lightweight dashboard fields)
+  vapi_total_score?: number | null;
+  vapi_structured_output_at?: string | null;
+  vapi_evaluation_metric_id?: string | null;
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -102,6 +111,13 @@ const formatNumber = (value: number | null | undefined): string => {
 };
 
 type UnifiedParticipantRow = UnifiedParticipant;
+
+const formatEvalTimestamp = (iso: string | null | undefined): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString();
+};
 
 const EXPORT_COLUMNS: { id: string; label: string; getValue: (row: UnifiedParticipantRow) => string | number | null | undefined }[] = [
   { id: 'id', label: 'Row ID (participant_calls)', getValue: (r) => r.id },
@@ -123,6 +139,7 @@ const EXPORT_COLUMNS: { id: string; label: string; getValue: (row: UnifiedPartic
   { id: 'pets_total', label: 'PETS Total', getValue: (r) => r.pets_total ?? '' },
   { id: 'tias_total', label: 'TIAS Total', getValue: (r) => r.tias_total ?? '' },
   { id: 'formality', label: 'Formality', getValue: (r) => r.formality ?? '' },
+  { id: 'vapi_total_score', label: 'Vapi Eval Total Score', getValue: (r) => r.vapi_total_score ?? '' },
 ];
 
 import { SourceFilterValue } from './GlobalSourceFilter';
@@ -159,9 +176,19 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [runEvaluationLoading, setRunEvaluationLoading] = useState(false);
   const [checkResultsLoading, setCheckResultsLoading] = useState(false);
 
+  // Evaluation metric context (for stale detection + button-driven worker)
+  const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
+  const [enqueueLoading, setEnqueueLoading] = useState(false);
+  const [processQueueLoading, setProcessQueueLoading] = useState(false);
+
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
   const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const { logActivity } = useActivityLog();
+
+  const openEvalMetricSettings = () => {
+    // ResearcherDashboard listens to `location.state.openTab`.
+    navigate('/researcher/dashboard', { state: { openTab: 'settings' } });
+  };
 
   // Fetch from experiment_batches so newly created batches appear in filter UI
   // even if they don't show up in the currently loaded response rows.
@@ -182,6 +209,77 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     };
     fetchBatchOptions();
   }, [isGuestMode]);
+
+  useEffect(() => {
+    if (isGuestMode) return;
+    const fetchActiveMetric = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("experiment_settings")
+          .select("setting_value")
+          .eq("setting_key", "active_vapi_evaluation_metric_id")
+          .maybeSingle();
+        if (error) throw error;
+        const v = (data?.setting_value ?? "").toString().trim();
+        setActiveMetricId(v || null);
+      } catch (e) {
+        console.warn("Failed to fetch active eval metric id:", e);
+        setActiveMetricId(null);
+      }
+    };
+    fetchActiveMetric();
+  }, [isGuestMode]);
+
+  const enqueueEvaluations = async (callIds: string[], mode: "missing" | "stale" | "all") => {
+    if (callIds.length === 0 || isGuestMode) return;
+    if (!activeMetricId) {
+      toast.error("No active evaluation metric configured. Create one in Experiment Settings.", {
+        action: { label: "Open settings", onClick: openEvalMetricSettings },
+      });
+      return;
+    }
+    setEnqueueLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("enqueue-vapi-evaluations", {
+        body: { callIds, mode },
+      });
+      if (error) throw error;
+      toast.success(data?.message ?? `Enqueued ${callIds.length} call(s).`);
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Failed to enqueue evaluations", {
+        action: { label: "Open settings", onClick: openEvalMetricSettings },
+      });
+    } finally {
+      setEnqueueLoading(false);
+    }
+  };
+
+  const processQueueNow = async () => {
+    if (isGuestMode) return;
+    if (!activeMetricId) {
+      toast.error("No active evaluation metric configured. Create one in Experiment Settings.", {
+        action: { label: "Open settings", onClick: openEvalMetricSettings },
+      });
+      return;
+    }
+    setProcessQueueLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("worker-vapi-evaluations", {
+        body: {},
+      });
+      if (error) throw error;
+      toast.success(data?.message ?? "Processed evaluation queue.");
+      fetchData();
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Failed to process evaluation queue", {
+        action: { label: "Open settings", onClick: openEvalMetricSettings },
+      });
+    } finally {
+      setProcessQueueLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -221,7 +319,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       // Fetch experiment_responses
       let responsesQuery = supabase
         .from('experiment_responses')
-        .select('id, call_id, prolific_id, session_token, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged');
+        .select('id, call_id, prolific_id, session_token, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged, vapi_total_score, vapi_structured_output_at, vapi_evaluation_metric_id');
 
       const { data: responses, error: responsesError } = await responsesQuery;
 
@@ -317,12 +415,15 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           created_at: call.created_at,
           is_completed: call.is_completed,
           response_id: response?.id,
-          response_submission_status: response?.submission_status ?? null,
+          response_submission_status: isSubmissionStatus(response?.submission_status) ? response.submission_status : null,
           assistant_type: response?.assistant_type,
           batch_label: response?.batch_label,
           pets_total: response?.pets_total,
           tias_total: response?.tias_total,
           formality: response?.formality,
+          vapi_total_score: response?.vapi_total_score ?? null,
+          vapi_structured_output_at: response?.vapi_structured_output_at ?? null,
+          vapi_evaluation_metric_id: response?.vapi_evaluation_metric_id ?? null,
           reviewed_by_researcher: response?.reviewed_by_researcher ?? false,
           flagged: response?.flagged ?? false,
           age: age ?? null,
@@ -416,6 +517,35 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     const start = currentPage * pageSize;
     return filteredData.slice(start, start + pageSize);
   }, [filteredData, currentPage, pageSize]);
+
+  const visibleCompletedCallIds = useMemo(() => {
+    // "Filtered set" means the visible rows after all filters are applied (paginated subset).
+    // For now we scope to the visible page to keep things safe; if you want "all filtered across pages",
+    // we can switch to a backend query later.
+    return paginatedData
+      .filter((r) => r.is_completed && r.call_id)
+      .map((r) => r.call_id);
+  }, [paginatedData]);
+
+  const missingEvalCallIds = useMemo(() => {
+    return visibleCompletedCallIds.filter((callId) => {
+      const row = paginatedData.find((r) => r.call_id === callId);
+      return row ? row.vapi_total_score == null : false;
+    });
+  }, [visibleCompletedCallIds, paginatedData]);
+
+  const staleEvalCallIds = useMemo(() => {
+    if (!activeMetricId) return [];
+    return visibleCompletedCallIds.filter((callId) => {
+      const row = paginatedData.find((r) => r.call_id === callId);
+      return Boolean(
+        row &&
+          row.vapi_total_score != null &&
+          row.vapi_evaluation_metric_id &&
+          row.vapi_evaluation_metric_id !== activeMetricId
+      );
+    });
+  }, [visibleCompletedCallIds, paginatedData, activeMetricId]);
 
   useEffect(() => {
     setTotalCount(filteredData.length);
@@ -736,6 +866,50 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         </div>
         
         <div className="flex gap-2 flex-wrap">
+          {isSuperAdmin && (
+            <>
+              <Button
+                onClick={() => enqueueEvaluations(missingEvalCallIds, "missing")}
+                disabled={enqueueLoading || isGuestMode || missingEvalCallIds.length === 0 || !activeMetricId}
+                variant="outline"
+                size="sm"
+                title={!activeMetricId ? "No active metric configured yet" : "Enqueue evaluation for visible filtered rows missing a score"}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${enqueueLoading ? "animate-spin" : ""}`} />
+                Refresh missing evals ({missingEvalCallIds.length})
+              </Button>
+              <Button
+                onClick={() => enqueueEvaluations(staleEvalCallIds, "stale")}
+                disabled={enqueueLoading || isGuestMode || staleEvalCallIds.length === 0 || !activeMetricId}
+                variant="outline"
+                size="sm"
+                title={!activeMetricId ? "No active metric configured yet" : "Enqueue evaluation refresh for visible stale rows"}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${enqueueLoading ? "animate-spin" : ""}`} />
+                Refresh stale evals ({staleEvalCallIds.length})
+              </Button>
+              <Button
+                onClick={() => enqueueEvaluations(visibleCompletedCallIds, "all")}
+                disabled={enqueueLoading || isGuestMode || visibleCompletedCallIds.length === 0 || !activeMetricId}
+                variant="outline"
+                size="sm"
+                title={!activeMetricId ? "No active metric configured yet" : "Enqueue evaluation refresh for all visible completed rows"}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${enqueueLoading ? "animate-spin" : ""}`} />
+                Refresh all evals ({visibleCompletedCallIds.length})
+              </Button>
+              <Button
+                onClick={processQueueNow}
+                disabled={processQueueLoading || isGuestMode || !activeMetricId}
+                variant="outline"
+                size="sm"
+                title={!activeMetricId ? "No active metric configured yet" : "Run the evaluation worker once (starts runs and polls some results)"}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${processQueueLoading ? "animate-spin" : ""}`} />
+                Process queue now
+              </Button>
+            </>
+          )}
           {isSuperAdmin && selectedCompletedCallIds.length > 0 && (
             <Button
               onClick={handleRunEvaluation}
@@ -815,13 +989,14 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
               <TableHead className="w-[80px] text-center" title="Flagged">Flag</TableHead>
               <TableHead className="text-right">PETS</TableHead>
               <TableHead className="text-right">TIAS</TableHead>
+              <TableHead className="text-center">Eval</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isSuperAdmin ? 16 : 15} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isSuperAdmin ? 17 : 16} className="text-center py-8 text-muted-foreground">
                   No participants found
                 </TableCell>
               </TableRow>
@@ -933,6 +1108,42 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm">
                     {formatNumber(row.tias_total)}
+                  </TableCell>
+                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                    {row.vapi_total_score != null ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge
+                            variant="outline"
+                            className={
+                              activeMetricId && row.vapi_evaluation_metric_id && row.vapi_evaluation_metric_id !== activeMetricId
+                                ? "border-amber-500 text-amber-600"
+                                : undefined
+                            }
+                          >
+                            {row.vapi_total_score}
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[280px]">
+                          <div className="text-xs space-y-1">
+                            {row.vapi_structured_output_at ? (
+                              <div>Fetched: {formatEvalTimestamp(row.vapi_structured_output_at)}</div>
+                            ) : null}
+                            {activeMetricId ? (
+                              <div>
+                                {row.vapi_evaluation_metric_id && row.vapi_evaluation_metric_id !== activeMetricId
+                                  ? "Status: stale (metric changed)"
+                                  : "Status: current"}
+                              </div>
+                            ) : (
+                              <div>Status: unknown (no active metric configured)</div>
+                            )}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <span className="text-muted-foreground" title="No evaluation score saved yet">-</span>
+                    )}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">

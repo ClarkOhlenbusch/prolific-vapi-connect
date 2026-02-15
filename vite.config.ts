@@ -49,9 +49,23 @@ const localFutureFeaturesPlugin = () => ({
         const raw = await fs.readFile(filePath, "utf8");
         const parsed = JSON.parse(raw) as { version?: unknown };
         const version = typeof parsed.version === "string" && parsed.version.trim() ? parsed.version.trim() : null;
+
+        // Best-effort local "uncommitted" counter from git status (excluding docs/future-features.md which is often used as a scratchpad).
+        let patch = 0;
+        try {
+          const porcelain = execSync("git status --porcelain", { stdio: ["ignore", "pipe", "ignore"] }).toString("utf8");
+          patch = porcelain
+            .split("\n")
+            .map((l) => l.trimEnd())
+            .filter(Boolean)
+            .filter((l) => !l.includes("docs/future-features.md"))
+            .length;
+        } catch {
+          // ignore if git isn't available
+        }
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ ok: true, version }));
+        res.end(JSON.stringify({ ok: true, version, patch }));
       } catch (e: any) {
         res.statusCode = 200;
         res.setHeader("content-type", "application/json");

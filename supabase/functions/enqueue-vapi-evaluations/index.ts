@@ -106,6 +106,7 @@ Deno.serve(async (req) => {
     }));
 
     // Use Supabase upsert with onConflict unique key; duplicates are naturally ignored/updated.
+    // (Some client versions don't support ignoreDuplicates; we can safely omit it.)
     const { error: upsertErr } = await supabaseAdmin
       .from("vapi_evaluation_queue")
       .upsert(rows, { onConflict: "call_id,metric_id" });

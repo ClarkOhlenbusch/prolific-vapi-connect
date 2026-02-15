@@ -44,6 +44,14 @@ We keep **local-only** verification notes in `docs/verification-log.local.md` (i
 
 Supabase schema/migrations and Edge Functions are managed/deployed via **Lovable** in this project. Prefer Lovable's Supabase tooling (e.g. SQL editor / function deploy flows) over ad-hoc local Supabase management when the change is intended for the hosted environment.
 
+### Required Callout: Edge Function Deploy Checklist
+
+Whenever changes touch Supabase Edge Functions, the agent must explicitly list which functions need to be created or redeployed in Lovable.
+
+- If a function's code changes: it must be redeployed.
+- If a new folder is added under `supabase/functions/<name>`: it must be created/deployed.
+- `src/integrations/supabase/types.ts` changes do not require any Supabase deploy; they only affect frontend type-checking/build.
+
 ## Notifications (Local Dev)
 
 When the user has the local notify server + browser tab open, use it to get their attention:

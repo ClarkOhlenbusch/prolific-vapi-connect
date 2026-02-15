@@ -9,12 +9,21 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useResearcherAuth } from "@/contexts/ResearcherAuthContext";
 import { RefreshCw, RotateCcw, Users, Check } from "lucide-react";
 import { BatchManager } from "./BatchManager";
 import { fetchArchivedFilters } from "@/lib/archived-responses";
 import type { SourceFilterValue } from "./GlobalSourceFilter";
+import type { Tables } from "@/integrations/supabase/types";
 
 // Prolific participant IDs are 24 chars; researcher/demo IDs are not
 const isResearcherId = (prolificId: string | null): boolean => {
@@ -68,6 +77,17 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
   const [isLoadingBatchCounts, setIsLoadingBatchCounts] = useState(false);
   const [activeBatchName, setActiveBatchName] = useState<string | null>(null);
 
+  // Evaluation metric management (super admin)
+  type EvalMetric = Tables<"vapi_evaluation_metrics">;
+  const [evalMetrics, setEvalMetrics] = useState<EvalMetric[]>([]);
+  const [activeEvalMetricId, setActiveEvalMetricId] = useState<string | null>(null);
+  const [evalMetricLoading, setEvalMetricLoading] = useState(false);
+  const [createMetricOpen, setCreateMetricOpen] = useState(false);
+  const [metricName, setMetricName] = useState("");
+  const [metricStructuredOutputId, setMetricStructuredOutputId] = useState("");
+  const [metricNotes, setMetricNotes] = useState("");
+  const [metricSaving, setMetricSaving] = useState(false);
+
   useEffect(() => {
     // Use dummy data for guest mode
     if (isGuestMode) {
@@ -88,6 +108,7 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
     fetchSettings();
     fetchAvailableBatches();
     fetchActiveBatch();
+    fetchEvalMetrics();
   }, [isGuestMode]);
 
   useEffect(() => {
@@ -95,6 +116,114 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
       fetchBatchCounts();
     }
   }, [selectedBatches, sourceFilter, isGuestMode]);
+
+  const fetchEvalMetrics = async () => {
+    if (isGuestMode) return;
+    setEvalMetricLoading(true);
+    try {
+      const [{ data: metrics, error: metricsError }, { data: activeSetting, error: activeError }] = await Promise.all([
+        supabase
+          .from("vapi_evaluation_metrics")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("experiment_settings")
+          .select("setting_value")
+          .eq("setting_key", "active_vapi_evaluation_metric_id")
+          .maybeSingle(),
+      ]);
+      if (metricsError) throw metricsError;
+      if (activeError) throw activeError;
+
+      setEvalMetrics((metrics as EvalMetric[]) ?? []);
+      const v = (activeSetting?.setting_value ?? "").toString().trim();
+      setActiveEvalMetricId(v || null);
+    } catch (e) {
+      console.error("Failed to fetch evaluation metrics:", e);
+      setEvalMetrics([]);
+      setActiveEvalMetricId(null);
+    } finally {
+      setEvalMetricLoading(false);
+    }
+  };
+
+  const setActiveMetric = async (metricId: string) => {
+    if (isGuestMode) return;
+    if (!isSuperAdmin) {
+      toast.error("Only super admins can change the evaluation metric");
+      return;
+    }
+    try {
+      const nowIso = new Date().toISOString();
+      const { error } = await supabase
+        .from("experiment_settings")
+        .upsert(
+          [
+            {
+              setting_key: "active_vapi_evaluation_metric_id",
+              setting_value: metricId,
+              updated_at: nowIso,
+              updated_by: user?.id,
+            },
+          ],
+          { onConflict: "setting_key" }
+        );
+      if (error) throw error;
+      setActiveEvalMetricId(metricId);
+      toast.success("Active evaluation metric updated");
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Failed to set active metric");
+    }
+  };
+
+  const createMetric = async () => {
+    if (isGuestMode) return;
+    if (!isSuperAdmin) {
+      toast.error("Only super admins can create evaluation metrics");
+      return;
+    }
+    const name = metricName.trim();
+    const soId = metricStructuredOutputId.trim();
+    if (!name || !soId) {
+      toast.error("Name and structured output id are required");
+      return;
+    }
+    setMetricSaving(true);
+    try {
+      // Best-effort snapshot: we don't know if Vapi exposes a stable "structured output definition" endpoint.
+      // Store null definition for now; we can add the snapshot call once we confirm the endpoint.
+      const { data, error } = await supabase
+        .from("vapi_evaluation_metrics")
+        .insert({
+          name,
+          structured_output_id: soId,
+          notes: metricNotes.trim() || null,
+          created_by: user?.id ?? null,
+          definition: null,
+          definition_hash: null,
+        })
+        .select("*")
+        .single();
+      if (error) throw error;
+
+      if (data?.id) {
+        await setActiveMetric(String(data.id));
+      }
+
+      setCreateMetricOpen(false);
+      setMetricName("");
+      setMetricStructuredOutputId("");
+      setMetricNotes("");
+      await fetchEvalMetrics();
+      toast.success("Metric created");
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Failed to create metric");
+    } finally {
+      setMetricSaving(false);
+    }
+  };
 
   useEffect(() => {
     // If persisted selection contains deleted/unknown batches, filter them out once we have the authoritative list.
@@ -701,6 +830,109 @@ export const ExperimentSettings = ({ sourceFilter = "all", openBatchCreate, onBa
 
   return (
     <div className="space-y-6">
+      {/* Evaluation Metric (Vapi structured output) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Evaluation metric</CardTitle>
+          <CardDescription>
+            Tracks which Vapi structured output is used to compute the evaluation score. Changing the active metric will make older scores stale until refreshed.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-sm text-muted-foreground">
+              Active metric:{" "}
+              <span className="font-mono text-foreground">
+                {activeEvalMetricId ?? "(not set)"}
+              </span>
+            </div>
+            {isSuperAdmin && (
+              <Button variant="outline" size="sm" onClick={() => setCreateMetricOpen(true)} disabled={isGuestMode}>
+                Create metric version
+              </Button>
+            )}
+          </div>
+
+          {evalMetricLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : evalMetrics.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No metrics yet. Create one and set it active to enable staleness tracking.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {evalMetrics.slice(0, 8).map((m) => {
+                const isActive = activeEvalMetricId && m.id === activeEvalMetricId;
+                return (
+                  <div key={m.id} className="flex items-center justify-between gap-2 border rounded-md p-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="font-medium truncate">{m.name}</div>
+                        {isActive ? <Badge variant="default">Active</Badge> : <Badge variant="outline">Version</Badge>}
+                      </div>
+                      <div className="text-xs text-muted-foreground font-mono truncate">
+                        structuredOutputId: {m.structured_output_id}
+                      </div>
+                      {m.notes ? (
+                        <div className="text-xs text-muted-foreground truncate">notes: {m.notes}</div>
+                      ) : null}
+                      <div className="text-xs text-muted-foreground">
+                        created: {new Date(m.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    {isSuperAdmin ? (
+                      <Button
+                        variant={isActive ? "secondary" : "outline"}
+                        size="sm"
+                        onClick={() => setActiveMetric(m.id)}
+                        disabled={isGuestMode}
+                        title={isActive ? "Already active" : "Set active"}
+                      >
+                        Set active
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <Dialog open={createMetricOpen} onOpenChange={setCreateMetricOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create metric version</DialogTitle>
+                <DialogDescription>
+                  Creates a new metric version and sets it active.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label>Name</Label>
+                  <Input value={metricName} onChange={(e) => setMetricName(e.target.value)} placeholder="e.g. Well-Being Check-In v2" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Structured output id</Label>
+                  <Input value={metricStructuredOutputId} onChange={(e) => setMetricStructuredOutputId(e.target.value)} placeholder="UUID from Vapi structured output" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Notes (optional)</Label>
+                  <Input value={metricNotes} onChange={(e) => setMetricNotes(e.target.value)} placeholder="What changed?" />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCreateMetricOpen(false)} disabled={metricSaving}>
+                  Cancel
+                </Button>
+                <Button onClick={createMetric} disabled={metricSaving || isGuestMode}>
+                  {metricSaving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Create + set active
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      </Card>
+
       {/* Current Active Condition Banner */}
       <Card className="border-2 border-primary">
         <CardContent className="pt-6">
