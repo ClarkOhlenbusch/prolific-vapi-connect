@@ -121,6 +121,13 @@ const createDictationRecorderStateMap = (): Record<FeedbackField, DictationRecor
   experiment_feedback: createDictationRecorderState(),
 });
 
+type FeedbackRequirementStatus = {
+  count: number;
+  hasMinimumText: boolean;
+  hasMinimumRecording: boolean;
+  isRequirementMet: boolean;
+};
+
 const resetDictationSegmentState = (recorderState: DictationRecorderState) => {
   recorderState.chunks = [];
   recorderState.storagePath = null;
@@ -216,6 +223,9 @@ const FeedbackQuestionnaire = () => {
   const MIN_RECORDING_SECONDS = Math.floor(MIN_RECORDING_DURATION_MS / 1000);
   // If a clip is extremely short, we assume a mic capture issue and nudge the user to the text box.
   const DICTATION_MIC_ISSUE_DURATION_MS = 3_000;
+  // Keep dictation running while participants think/speak; SpeechRecognition silence heuristics can be aggressive.
+  // Increased by 100% from 240s to 480s to reduce premature auto-stop.
+  const FEEDBACK_DICTATION_SILENCE_TIMEOUT_MS = 480_000;
 
   const [highlightedTextField, setHighlightedTextField] = useState<FeedbackField | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1177,6 +1187,9 @@ const FeedbackQuestionnaire = () => {
   ]);
 
   const handleDictationError = useCallback((field: FeedbackField, errorCode: string, message?: string) => {
+    if (errorCode === "no-speech") {
+      return;
+    }
     logFeedbackEvent("dictation_error", {
       field,
       fieldLabel: FEEDBACK_FIELD_LABELS[field],
@@ -1206,6 +1219,19 @@ const FeedbackQuestionnaire = () => {
   const getWordCountStatus = (text: string): { count: number; isValid: boolean } => {
     const count = countWords(text);
     return { count, isValid: count >= MIN_WORDS };
+  };
+
+  const getFeedbackRequirementStatus = (typedText: string, field: FeedbackField): FeedbackRequirementStatus => {
+    const typedStatus = getWordCountStatus(typedText);
+    const recordingSeconds = getRecordingDurationSeconds(field);
+    const hasMinimumRecording = recordingSeconds >= MIN_RECORDING_SECONDS;
+
+    return {
+      count: typedStatus.count,
+      hasMinimumText: typedStatus.isValid,
+      hasMinimumRecording,
+      isRequirementMet: typedStatus.isValid || hasMinimumRecording,
+    };
   };
 
   useEffect(() => {
@@ -1497,34 +1523,28 @@ const FeedbackQuestionnaire = () => {
     await persistFeedbackDraft("submit_click", true);
     stopAllDictation();
     
-    const experienceStatus = getWordCountStatus(
-      [voiceAssistantExperience, dictatedFeedbackByField.voice_assistant_feedback].filter(Boolean).join(" ")
-    );
-    const styleStatus = getWordCountStatus(
-      [communicationStyleFeedback, dictatedFeedbackByField.communication_style_feedback].filter(Boolean).join(" ")
-    );
-    const experimentStatus = getWordCountStatus(
-      [experimentFeedback, dictatedFeedbackByField.experiment_feedback].filter(Boolean).join(" ")
-    );
+    const experienceStatus = getFeedbackRequirementStatus(voiceAssistantExperience, "voice_assistant_feedback");
+    const styleStatus = getFeedbackRequirementStatus(communicationStyleFeedback, "communication_style_feedback");
+    const experimentStatus = getFeedbackRequirementStatus(experimentFeedback, "experiment_feedback");
 
     if (!isResearcherMode) {
-      if (!experienceStatus.isValid || !styleStatus.isValid || !experimentStatus.isValid) {
+      if (!experienceStatus.isRequirementMet || !styleStatus.isRequirementMet || !experimentStatus.isRequirementMet) {
         setShowValidationErrors(true);
         
         // Scroll to the first question that doesn't meet the minimum
         setTimeout(() => {
-          if (!experienceStatus.isValid && experienceQuestionRef.current) {
+          if (!experienceStatus.isRequirementMet && experienceQuestionRef.current) {
             experienceQuestionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          } else if (!styleStatus.isValid && styleQuestionRef.current) {
+          } else if (!styleStatus.isRequirementMet && styleQuestionRef.current) {
             styleQuestionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          } else if (!experimentStatus.isValid && experimentQuestionRef.current) {
+          } else if (!experimentStatus.isRequirementMet && experimentQuestionRef.current) {
             experimentQuestionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
         }, 100);
         
         toast({
-          title: "Minimum Word Count Required",
-          description: `Please write at least ${MIN_WORDS} words for each question before submitting (record ${MIN_RECORDING_SECONDS} seconds minimum, or use the text field below).`,
+          title: "Response Requirement Not Met",
+          description: `For each question, provide either at least ${MIN_WORDS} words (typed text) or at least ${MIN_RECORDING_SECONDS} seconds of recording before submitting.`,
           variant: "destructive",
           duration: 3000,
         });
@@ -1842,15 +1862,9 @@ const FeedbackQuestionnaire = () => {
     );
   }
 
-  const experienceStatus = getWordCountStatus(
-    [voiceAssistantExperience, dictatedFeedbackByField.voice_assistant_feedback].filter(Boolean).join(" ")
-  );
-  const styleStatus = getWordCountStatus(
-    [communicationStyleFeedback, dictatedFeedbackByField.communication_style_feedback].filter(Boolean).join(" ")
-  );
-  const experimentStatus = getWordCountStatus(
-    [experimentFeedback, dictatedFeedbackByField.experiment_feedback].filter(Boolean).join(" ")
-  );
+  const experienceStatus = getFeedbackRequirementStatus(voiceAssistantExperience, "voice_assistant_feedback");
+  const styleStatus = getFeedbackRequirementStatus(communicationStyleFeedback, "communication_style_feedback");
+  const experimentStatus = getFeedbackRequirementStatus(experimentFeedback, "experiment_feedback");
   const showDictationDebug = isResearcherMode || new URLSearchParams(location.search).get("debugAudio") === "1";
 
   const getDebugStatusColor = (status: DictationDebugInfo["lastUploadStatus"]) => {
@@ -1995,13 +2009,13 @@ const FeedbackQuestionnaire = () => {
         </CardHeader>
         <CardContent className="space-y-8">
           {/* Question 1: Voice Assistant Experience */}
-          <div ref={experienceQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experienceStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && experienceStatus.isValid ? 'border border-green-500/30' : ''}`}>
+          <div ref={experienceQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experienceStatus.isRequirementMet ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && experienceStatus.isRequirementMet ? 'border border-green-500/30' : ''}`}>
             <p className="text-xs font-medium text-muted-foreground">Question 1 of 3</p>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Experience with Cali
               </p>
-              <label className={`text-lg font-medium block ${showValidationErrors && !experienceStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
+              <label className={`text-lg font-medium block ${showValidationErrors && !experienceStatus.isRequirementMet ? 'text-destructive' : 'text-foreground'}`}>
                 Describe your experience interacting with Cali during the conversation.
               </label>
               <p className="text-sm text-foreground/70">
@@ -2041,6 +2055,7 @@ const FeedbackQuestionnaire = () => {
                   disabled={isSubmitting}
                   startLabel="Click to record"
                   prominentWhenIdle
+                  silenceTimeoutMs={FEEDBACK_DICTATION_SILENCE_TIMEOUT_MS}
                   className="shrink-0"
                 />
                 <div className="flex-1 min-w-0">
@@ -2048,8 +2063,8 @@ const FeedbackQuestionnaire = () => {
                     durationSeconds={getRecordingDurationSeconds("voice_assistant_feedback")}
                     isRecording={dictationDebug.voice_assistant_feedback.recorderState === "recording"}
                     minSeconds={MIN_RECORDING_SECONDS}
-                    showValidationError={showValidationErrors && !experienceStatus.isValid && getRecordingDurationSeconds("voice_assistant_feedback") < MIN_RECORDING_SECONDS}
-                    showValidationSuccess={showValidationErrors && getRecordingDurationSeconds("voice_assistant_feedback") >= MIN_RECORDING_SECONDS}
+                    showValidationError={showValidationErrors && !experienceStatus.isRequirementMet}
+                    showValidationSuccess={showValidationErrors && experienceStatus.isRequirementMet}
                   />
                 </div>
               </div>
@@ -2110,27 +2125,27 @@ const FeedbackQuestionnaire = () => {
                   highlightedTextField === "voice_assistant_feedback"
                     ? "ring-4 ring-amber-400 ring-offset-4 ring-offset-background border-amber-400 bg-amber-50/50 motion-safe:animate-pulse"
                     : ""
-                } ${showValidationErrors && !experienceStatus.isValid ? "border-destructive" : ""}`}
+                } ${showValidationErrors && !experienceStatus.isRequirementMet ? "border-destructive" : ""}`}
                 placeholder="Type additional feedback if you like..."
               />
               <FeedbackProgressBar
                 wordCount={experienceStatus.count}
                 minWords={MIN_WORDS}
-                showValidationError={showValidationErrors && !experienceStatus.isValid}
-                showValidationSuccess={showValidationErrors && experienceStatus.isValid}
+                showValidationError={showValidationErrors && !experienceStatus.isRequirementMet}
+                showValidationSuccess={showValidationErrors && experienceStatus.isRequirementMet}
               />
             </div>
             <p className="text-sm text-center text-muted-foreground pt-2 border-t border-border/50">↓ Scroll down for question 2</p>
           </div>
 
           {/* Question 2: Communication Style and Formality */}
-          <div ref={styleQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !styleStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && styleStatus.isValid ? 'border border-green-500/30' : ''}`}>
+          <div ref={styleQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !styleStatus.isRequirementMet ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && styleStatus.isRequirementMet ? 'border border-green-500/30' : ''}`}>
             <p className="text-xs font-medium text-muted-foreground">Question 2 of 3</p>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
                 Communication Style (Formality)
               </p>
-              <label className={`text-lg font-medium block ${showValidationErrors && !styleStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
+              <label className={`text-lg font-medium block ${showValidationErrors && !styleStatus.isRequirementMet ? 'text-destructive' : 'text-foreground'}`}>
                 How would you describe Cali's communication style?
               </label>
               <p className="text-sm text-foreground/70">
@@ -2169,6 +2184,7 @@ const FeedbackQuestionnaire = () => {
                   disabled={isSubmitting}
                   startLabel="Click to record"
                   prominentWhenIdle
+                  silenceTimeoutMs={FEEDBACK_DICTATION_SILENCE_TIMEOUT_MS}
                   className="shrink-0"
                 />
                 <div className="flex-1 min-w-0">
@@ -2176,8 +2192,8 @@ const FeedbackQuestionnaire = () => {
                     durationSeconds={getRecordingDurationSeconds("communication_style_feedback")}
                     isRecording={dictationDebug.communication_style_feedback.recorderState === "recording"}
                     minSeconds={MIN_RECORDING_SECONDS}
-                    showValidationError={showValidationErrors && !styleStatus.isValid && getRecordingDurationSeconds("communication_style_feedback") < MIN_RECORDING_SECONDS}
-                    showValidationSuccess={showValidationErrors && getRecordingDurationSeconds("communication_style_feedback") >= MIN_RECORDING_SECONDS}
+                    showValidationError={showValidationErrors && !styleStatus.isRequirementMet}
+                    showValidationSuccess={showValidationErrors && styleStatus.isRequirementMet}
                   />
                 </div>
               </div>
@@ -2235,21 +2251,21 @@ const FeedbackQuestionnaire = () => {
                   highlightedTextField === "communication_style_feedback"
                     ? "ring-4 ring-amber-400 ring-offset-4 ring-offset-background border-amber-400 bg-amber-50/50 motion-safe:animate-pulse"
                     : ""
-                } ${showValidationErrors && !styleStatus.isValid ? "border-destructive" : ""}`}
+                } ${showValidationErrors && !styleStatus.isRequirementMet ? "border-destructive" : ""}`}
                 placeholder="Type additional feedback if you like..."
               />
               <FeedbackProgressBar
                 wordCount={styleStatus.count}
                 minWords={MIN_WORDS}
-                showValidationError={showValidationErrors && !styleStatus.isValid}
-                showValidationSuccess={showValidationErrors && styleStatus.isValid}
+                showValidationError={showValidationErrors && !styleStatus.isRequirementMet}
+                showValidationSuccess={showValidationErrors && styleStatus.isRequirementMet}
               />
             </div>
             <p className="text-sm text-center text-muted-foreground pt-2 border-t border-border/50">↓ Scroll down for question 3</p>
           </div>
 
           {/* Question 3: Experiment Feedback */}
-          <div ref={experimentQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentStatus.isValid ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && experimentStatus.isValid ? 'border border-green-500/30' : ''}`}>
+          <div ref={experimentQuestionRef} className={`space-y-3 p-4 rounded-lg transition-colors ${showValidationErrors && !experimentStatus.isRequirementMet ? 'bg-destructive/10 border border-destructive/50' : showValidationErrors && experimentStatus.isRequirementMet ? 'border border-green-500/30' : ''}`}>
             <p className="text-xs font-medium text-muted-foreground">Question 3 of 3</p>
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">
@@ -2258,7 +2274,7 @@ const FeedbackQuestionnaire = () => {
               <p className="text-xs text-foreground/60 italic -mt-1">
                 This question is about the study setup and experience, not about Cali.
               </p>
-              <label className={`text-lg font-medium block ${showValidationErrors && !experimentStatus.isValid ? 'text-destructive' : 'text-foreground'}`}>
+              <label className={`text-lg font-medium block ${showValidationErrors && !experimentStatus.isRequirementMet ? 'text-destructive' : 'text-foreground'}`}>
                 Please share any feedback on the experiment itself, such as:
               </label>
               <ul className="text-sm text-foreground/70 list-disc list-inside ml-2 space-y-1">
@@ -2295,6 +2311,7 @@ const FeedbackQuestionnaire = () => {
                   disabled={isSubmitting}
                   startLabel="Click to record"
                   prominentWhenIdle
+                  silenceTimeoutMs={FEEDBACK_DICTATION_SILENCE_TIMEOUT_MS}
                   className="shrink-0"
                 />
                 <div className="flex-1 min-w-0">
@@ -2302,8 +2319,8 @@ const FeedbackQuestionnaire = () => {
                     durationSeconds={getRecordingDurationSeconds("experiment_feedback")}
                     isRecording={dictationDebug.experiment_feedback.recorderState === "recording"}
                     minSeconds={MIN_RECORDING_SECONDS}
-                    showValidationError={showValidationErrors && !experimentStatus.isValid && getRecordingDurationSeconds("experiment_feedback") < MIN_RECORDING_SECONDS}
-                    showValidationSuccess={showValidationErrors && getRecordingDurationSeconds("experiment_feedback") >= MIN_RECORDING_SECONDS}
+                    showValidationError={showValidationErrors && !experimentStatus.isRequirementMet}
+                    showValidationSuccess={showValidationErrors && experimentStatus.isRequirementMet}
                   />
                 </div>
               </div>
@@ -2362,13 +2379,13 @@ const FeedbackQuestionnaire = () => {
                   highlightedTextField === "experiment_feedback"
                     ? "ring-4 ring-amber-400 ring-offset-4 ring-offset-background border-amber-400 bg-amber-50/50 motion-safe:animate-pulse"
                     : ""
-                } ${showValidationErrors && !experimentStatus.isValid ? "border-destructive" : ""}`}
+                } ${showValidationErrors && !experimentStatus.isRequirementMet ? "border-destructive" : ""}`}
               />
               <FeedbackProgressBar
                 wordCount={experimentStatus.count}
                 minWords={MIN_WORDS}
-                showValidationError={showValidationErrors && !experimentStatus.isValid}
-                showValidationSuccess={showValidationErrors && experimentStatus.isValid}
+                showValidationError={showValidationErrors && !experimentStatus.isRequirementMet}
+                showValidationSuccess={showValidationErrors && experimentStatus.isRequirementMet}
               />
             </div>
           </div>

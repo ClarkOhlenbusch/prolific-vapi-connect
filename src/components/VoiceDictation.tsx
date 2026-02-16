@@ -62,7 +62,7 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
     onDictationError,
     disabled,
     className,
-    silenceTimeoutMs = 15000,
+    silenceTimeoutMs = 30000,
     startLabel = "Dictate",
     prominentWhenIdle = false,
   }, ref) => {
@@ -198,9 +198,14 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.error("Speech recognition error:", event.error);
+        // Keep listening through transient/no-speech conditions.
+        if (event.error === "no-speech") {
+          return;
+        }
+
         onDictationErrorRef.current?.(event.error, event.message);
-        // Don't stop on "aborted" or "no-speech" errors - these are expected
-        if (event.error !== "aborted" && event.error !== "no-speech") {
+        // Don't stop on aborts; aborts are expected during explicit stop.
+        if (event.error !== "aborted") {
           shouldRestartRef.current = false;
           setListeningState(false, `error:${event.error}`);
           onInterimTranscriptRef.current?.("");
@@ -208,11 +213,11 @@ export const VoiceDictation = forwardRef<VoiceDictationRef, VoiceDictationProps>
       };
 
       recognition.onend = () => {
-        // Auto-restart if we should keep listening (handles browser auto-stop)
-        if (shouldRestartRef.current && isListeningRef.current) {
+        // Auto-restart if we should keep listening (handles browser auto-stop/no-speech)
+        if (shouldRestartRef.current) {
           try {
             setTimeout(() => {
-              if (shouldRestartRef.current && isListeningRef.current) {
+              if (shouldRestartRef.current) {
                 recognition.start();
               }
             }, 100);

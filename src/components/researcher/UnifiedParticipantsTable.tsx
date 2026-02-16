@@ -1527,7 +1527,11 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                 disabled={evalRefreshInFlight || enqueueLoading || processQueueLoading || isGuestMode || neededEvalCallIdsVisiblePage.length === 0 || !activeMetricId}
                 variant="outline"
                 size="sm"
-                title={!activeMetricId ? "No active metric configured yet" : "Refresh evals that are missing or stale for the currently visible rows"}
+                title={
+                  !activeMetricId
+                    ? "Set an active evaluation metric first (Experiment Settings)."
+                    : "Updates only the rows on this page that are missing a score or have an outdated score (after metric changes)."
+                }
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${evalRefreshInFlight ? "animate-spin" : ""}`} />
                 Refresh needed evals ({neededEvalCallIdsVisiblePage.length})
@@ -1537,14 +1541,23 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                 disabled={evalRefreshInFlight || enqueueLoading || processQueueLoading || isGuestMode || filteredCompletedCallIds.length === 0 || !activeMetricId}
                 variant="outline"
                 size="sm"
-                title={!activeMetricId ? "No active metric configured yet" : "Force refresh evaluation for all completed rows matching current filters (across pages)"}
+                title={
+                  !activeMetricId
+                    ? "Set an active evaluation metric first (Experiment Settings)."
+                    : "Force-refreshes scores for all completed rows matching your current filters (across all pages). Use after changing the metric."
+                }
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${evalRefreshInFlight ? "animate-spin" : ""}`} />
                 Hard refresh filtered evals ({filteredCompletedCallIds.length})
               </Button>
               <Collapsible open={showEvalAdvanced} onOpenChange={setShowEvalAdvanced}>
                 <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" type="button" title="Advanced evaluation controls">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    title="Advanced: manual controls for the evaluation queue (useful for debugging)."
+                  >
                     Advanced
                     <ChevronDown className={`h-4 w-4 ml-2 transition-transform ${showEvalAdvanced ? "rotate-180" : ""}`} />
                   </Button>
@@ -1556,7 +1569,11 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                       disabled={processQueueLoading || isGuestMode || !activeMetricId}
                       variant="outline"
                       size="sm"
-                      title={!activeMetricId ? "No active metric configured yet" : "Run the evaluation worker once (starts runs and polls some results)"}
+                      title={
+                        !activeMetricId
+                          ? "Set an active evaluation metric first (Experiment Settings)."
+                          : "Runs the evaluation worker once. This starts/polls queued work, but may not finish everything."
+                      }
                     >
                       <RefreshCw className={`h-4 w-4 mr-2 ${processQueueLoading ? "animate-spin" : ""}`} />
                       Process queue now
@@ -1579,7 +1596,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
               disabled={runEvaluationLoading || isGuestMode}
               variant="outline"
               size="sm"
-              title="Run VAPI structured output evaluation on selected completed calls"
+              title="Run evaluation for the selected rows (starts a new Vapi run). Then use “Check for results” after 1–2 minutes."
             >
               {runEvaluationLoading ? (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -1595,7 +1612,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
               disabled={checkResultsLoading || isGuestMode}
               variant="outline"
               size="sm"
-              title="Fetch evaluation results from VAPI and save to responses"
+              title="Fetch results for the last “Run evaluation” run and save them into responses."
             >
               {checkResultsLoading ? (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />

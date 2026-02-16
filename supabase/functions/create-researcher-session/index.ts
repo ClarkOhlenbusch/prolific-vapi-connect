@@ -7,7 +7,12 @@ const corsHeaders = {
 
 interface CreateResearcherSessionRequest {
   source?: string;
+  existingSessionToken?: string;
 }
+
+const isUuid = (value: string): boolean => {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+};
 
 const formatDbError = (error: unknown) => {
   if (!error || typeof error !== "object") {
@@ -58,6 +63,63 @@ Deno.serve(async (req) => {
     });
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    if (requestBody?.existingSessionToken) {
+      const candidateToken = requestBody.existingSessionToken.trim();
+      if (isUuid(candidateToken)) {
+        const { data: existingSession, error: existingLookupError } = await supabase
+          .from("participant_calls")
+          .select("prolific_id, call_id, expires_at")
+          .eq("session_token", candidateToken)
+          .eq("is_completed", false)
+          .gt("expires_at", new Date().toISOString())
+          .maybeSingle();
+
+        if (existingLookupError) {
+          const formattedExistingLookupError = formatDbError(existingLookupError);
+          console.error("Failed to check existing researcher session", {
+            requestId,
+            existingSessionToken: candidateToken,
+            error: formattedExistingLookupError,
+          });
+          return new Response(
+            JSON.stringify({
+              error: "Failed to check existing researcher session",
+              requestId,
+              dbError: formattedExistingLookupError,
+            }),
+            {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
+        }
+
+        if (existingSession) {
+          console.log("Reusing existing researcher session", {
+            requestId,
+            prolificId: existingSession.prolific_id,
+            callId: existingSession.call_id,
+          });
+          return new Response(
+            JSON.stringify({
+              prolificId: existingSession.prolific_id,
+              callId: existingSession.call_id,
+              sessionToken: candidateToken,
+              expiresAt: existingSession.expires_at,
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+
+      if (!isUuid(candidateToken)) {
+        console.log("Ignoring invalid existingSessionToken", {
+          requestId,
+          existingSessionToken: requestBody.existingSessionToken,
+        });
+      }
+    }
 
     const { data: prolificId, error: idError } = await supabase.rpc("next_researcher_prolific_id");
     if (idError || !prolificId || typeof prolificId !== "string") {

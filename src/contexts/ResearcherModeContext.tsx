@@ -36,9 +36,74 @@ const RESEARCHER_SESSION_RESET_KEYS = [
   'isRestarting',
 ] as const;
 
+const RESEARCHER_SESSION_STATE_KEY = 'researcher-session-state';
+
+const isResearcherSessionState = (value: unknown): value is ResearcherSessionState => {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as {
+    prolificId?: unknown;
+    callId?: unknown;
+    sessionToken?: unknown;
+  };
+  return (
+    typeof candidate.prolificId === 'string' &&
+    candidate.prolificId.length > 0 &&
+    typeof candidate.callId === 'string' &&
+    candidate.callId.length > 0 &&
+    typeof candidate.sessionToken === 'string' &&
+    candidate.sessionToken.length > 0
+  );
+};
+
+interface ResearcherSessionState {
+  prolificId: string;
+  callId: string;
+  sessionToken: string;
+}
+
+const getStoredResearcherSessionState = (): ResearcherSessionState | null => {
+  try {
+    const raw = localStorage.getItem(RESEARCHER_SESSION_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return isResearcherSessionState(parsed) ? parsed : null;
+  } catch {
+    localStorage.removeItem(RESEARCHER_SESSION_STATE_KEY);
+    return null;
+  }
+};
+
+const persistResearcherSessionState = (state: ResearcherSessionState) => {
+  localStorage.setItem(
+    RESEARCHER_SESSION_STATE_KEY,
+    JSON.stringify({
+      prolificId: state.prolificId,
+      callId: state.callId,
+      sessionToken: state.sessionToken,
+    }),
+  );
+};
+
+const clearResearcherSessionState = () => {
+  localStorage.removeItem(RESEARCHER_SESSION_STATE_KEY);
+  localStorage.removeItem('sessionToken');
+};
+
+const applyResearcherSessionState = (state: ResearcherSessionState) => {
+  RESEARCHER_SESSION_RESET_KEYS.forEach((key) => sessionStorage.removeItem(key));
+  sessionStorage.setItem('prolificId', state.prolificId);
+  sessionStorage.setItem('callId', state.callId);
+  sessionStorage.setItem('flowStep', '0');
+  localStorage.setItem('sessionToken', state.sessionToken);
+  persistResearcherSessionState(state);
+};
+
 export const ResearcherModeProvider = ({ children }: { children: ReactNode }) => {
   const [isResearcherMode, setIsResearcherMode] = useState(false);
-  const [activeResearcherId, setActiveResearcherId] = useState<string | null>(() => sessionStorage.getItem('prolificId'));
+  const [activeResearcherId, setActiveResearcherId] = useState<string | null>(() => {
+    const storedSession = getStoredResearcherSessionState();
+    return storedSession?.prolificId || sessionStorage.getItem('prolificId');
+  });
   const startInFlightRef = useRef(false);
 
   const startResearcherSession = useCallback(async (): Promise<boolean> => {
@@ -46,39 +111,42 @@ export const ResearcherModeProvider = ({ children }: { children: ReactNode }) =>
     startInFlightRef.current = true;
 
     try {
+      const storedSession = getStoredResearcherSessionState();
+
       const { data, error } = await supabase.functions.invoke<CreateSessionResponse>(
         'create-researcher-session',
-        { body: { source: 'researcher_mode' } },
+        {
+          body: {
+            source: 'researcher_mode',
+            ...(storedSession ? { existingSessionToken: storedSession.sessionToken } : {}),
+          },
+        },
       );
 
       if (error || !data?.prolificId || !data?.callId || !data?.sessionToken) {
         console.error('Failed to create researcher session:', error || data);
+        clearResearcherSessionState();
         setActiveResearcherId(null);
         RESEARCHER_SESSION_RESET_KEYS.forEach((key) => sessionStorage.removeItem(key));
         sessionStorage.removeItem('prolificId');
         sessionStorage.removeItem('callId');
         sessionStorage.setItem('flowStep', '0');
-        localStorage.removeItem('sessionToken');
         toast.error('Failed to start researcher session. Please try again.');
         return false;
       }
 
       const { prolificId, callId, sessionToken } = data;
-      RESEARCHER_SESSION_RESET_KEYS.forEach((key) => sessionStorage.removeItem(key));
-      sessionStorage.setItem('prolificId', prolificId);
-      sessionStorage.setItem('callId', callId);
-      sessionStorage.setItem('flowStep', '0');
-      localStorage.setItem('sessionToken', sessionToken);
+      applyResearcherSessionState({ prolificId, callId, sessionToken });
       setActiveResearcherId(prolificId);
       return true;
     } catch (err) {
       console.error('Error starting researcher session:', err);
+      clearResearcherSessionState();
       setActiveResearcherId(null);
       RESEARCHER_SESSION_RESET_KEYS.forEach((key) => sessionStorage.removeItem(key));
       sessionStorage.removeItem('prolificId');
       sessionStorage.removeItem('callId');
       sessionStorage.setItem('flowStep', '0');
-      localStorage.removeItem('sessionToken');
       toast.error('Failed to start researcher session. Please try again.');
       return false;
     } finally {
@@ -113,7 +181,12 @@ export const ResearcherModeProvider = ({ children }: { children: ReactNode }) =>
         return false;
       }
 
-      return data?.success ?? false;
+      const succeeded = data?.success ?? false;
+      if (succeeded) {
+        setActiveResearcherId(null);
+        clearResearcherSessionState();
+      }
+      return succeeded;
     } catch (err) {
       console.error('Error marking session complete:', err);
       return false;

@@ -41,4 +41,12 @@ PROMPT_plan.md
 rlm/
 
 # Voice planner sessions (local-only)
-voice-planner/sessions/
+voice-planner/sessions/# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# Local Playwright login credentials (do not commit)
+.env.playwright.local
