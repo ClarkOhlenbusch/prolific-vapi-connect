@@ -1,7 +1,11 @@
-import { useEffect, useState, useMemo } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   Table,
   TableBody,
@@ -15,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -25,6 +30,7 @@ import {
 import { 
   Search, 
   Download,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Archive,
@@ -33,9 +39,11 @@ import {
   Flag,
   AlertTriangle,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  GripVertical
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import { ParticipantJourneyModal } from './ParticipantJourneyModal';
@@ -64,10 +72,71 @@ import { fetchArchivedFilters } from '@/lib/archived-responses';
 type ParticipantCall = Tables<'participant_calls'>;
 type ExperimentResponse = Tables<'experiment_responses'>;
 type Demographics = Tables<'demographics'>;
+type VapiEvaluationQueueRow = Tables<'vapi_evaluation_queue'>;
+
+type EvalQueueStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+type EvalQueueCounts = {
+  total: number;
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+  unknown: number;
+};
+
+type ColumnId =
+  | 'select'
+  | 'prolific_id'
+  | 'status'
+  | 'call'
+  | 'created_at'
+  | 'condition'
+  | 'batch'
+  | 'age'
+  | 'gender'
+  | 'ethnicity'
+  | 'demo'
+  | 'reviewed'
+  | 'flag'
+  | 'pets'
+  | 'tias'
+  | 'eval'
+  | 'actions';
+
+const ALL_RESPONSES_COLUMN_ORDER_STORAGE_KEY = 'researcher-all-responses-column-order-v1';
+const DEFAULT_MOVABLE_COLUMN_ORDER: ColumnId[] = [
+  'prolific_id',
+  'status',
+  'call',
+  'created_at',
+  'condition',
+  'batch',
+  'age',
+  'gender',
+  'ethnicity',
+  'demo',
+  'reviewed',
+  'flag',
+  'pets',
+  'tias',
+  'eval',
+];
 
 const isSubmissionStatus = (v: unknown): v is 'pending' | 'submitted' | 'abandoned' => {
   return v === 'pending' || v === 'submitted' || v === 'abandoned';
 };
+
+const uniqStrings = (xs: string[]) => Array.from(new Set(xs.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim())));
+
+const chunkArray = <T,>(xs: T[], size: number): T[][] => {
+  if (size <= 0) return [xs];
+  const out: T[][] = [];
+  for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size));
+  return out;
+};
+
+const sleepMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 interface UnifiedParticipant {
   // From participant_calls
@@ -117,6 +186,69 @@ const formatEvalTimestamp = (iso: string | null | undefined): string => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString();
+};
+
+const ColumnDragHandle = ({ disabled }: { disabled: boolean }) => {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex items-center justify-center rounded-sm mr-1 ${
+        disabled ? 'opacity-40' : 'opacity-70 hover:opacity-100'
+      }`}
+    >
+      <GripVertical className="h-4 w-4" />
+    </span>
+  );
+};
+
+const SortableHeaderCell = ({
+  id,
+  enabled,
+  className,
+  children,
+}: {
+  id: ColumnId;
+  enabled: boolean;
+  className?: string;
+  children: ReactNode;
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: !enabled,
+  });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.7 : 1,
+    whiteSpace: 'nowrap',
+  };
+
+  return (
+    <TableHead
+      ref={setNodeRef}
+      style={style}
+      data-testid={`all-responses-col-${id}`}
+      className={`${enabled ? 'select-none' : ''} ${className ?? ''}`.trim() || undefined}
+    >
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className={`inline-flex items-center rounded-sm p-0.5 -ml-1 ${
+            enabled ? 'cursor-grab active:cursor-grabbing hover:bg-muted' : 'cursor-default'
+          }`}
+          aria-label={`Drag column ${id}`}
+          data-testid={`all-responses-col-handle-${id}`}
+          disabled={!enabled}
+          {...attributes}
+          {...listeners}
+        >
+          <ColumnDragHandle disabled={!enabled} />
+        </button>
+        <div className="flex-1">{children}</div>
+      </div>
+    </TableHead>
+  );
 };
 
 const EXPORT_COLUMNS: { id: string; label: string; getValue: (row: UnifiedParticipantRow) => string | number | null | undefined }[] = [
@@ -180,10 +312,33 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
   const [enqueueLoading, setEnqueueLoading] = useState(false);
   const [processQueueLoading, setProcessQueueLoading] = useState(false);
+  const [evalRefreshInFlight, setEvalRefreshInFlight] = useState(false);
+  const [evalRefreshLabel, setEvalRefreshLabel] = useState<string>('');
+  const [evalRefreshCounts, setEvalRefreshCounts] = useState<EvalQueueCounts | null>(null);
+  const [evalRefreshNote, setEvalRefreshNote] = useState<string>('');
+  const [showEvalAdvanced, setShowEvalAdvanced] = useState(false);
+  const [reorderColumnsEnabled, setReorderColumnsEnabled] = useState(false);
+  const [movableColumnOrder, setMovableColumnOrder] = useState<ColumnId[]>(() => {
+    try {
+      const raw = localStorage.getItem(ALL_RESPONSES_COLUMN_ORDER_STORAGE_KEY);
+      if (!raw) return DEFAULT_MOVABLE_COLUMN_ORDER;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return DEFAULT_MOVABLE_COLUMN_ORDER;
+      const ids = parsed.filter((v) => typeof v === 'string') as string[];
+      const allowed = new Set<ColumnId>(DEFAULT_MOVABLE_COLUMN_ORDER);
+      const cleaned = ids.filter((id): id is ColumnId => allowed.has(id as ColumnId));
+      // Auto-append any newly added columns so older saved orders still work.
+      const merged = [...cleaned, ...DEFAULT_MOVABLE_COLUMN_ORDER.filter((id) => !cleaned.includes(id))];
+      return merged;
+    } catch {
+      return DEFAULT_MOVABLE_COLUMN_ORDER;
+    }
+  });
 
   const [availableBatches, setAvailableBatches] = useState<string[]>([]);
   const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const { logActivity } = useActivityLog();
+  const mountedRef = useRef(true);
 
   const openEvalMetricSettings = () => {
     // ResearcherDashboard listens to `location.state.openTab`.
@@ -209,6 +364,13 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     };
     fetchBatchOptions();
   }, [isGuestMode]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (isGuestMode) return;
@@ -240,11 +402,21 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     }
     setEnqueueLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("enqueue-vapi-evaluations", {
-        body: { callIds, mode },
-      });
-      if (error) throw error;
-      toast.success(data?.message ?? `Enqueued ${callIds.length} call(s).`);
+      const callIdsClean = uniqStrings(callIds);
+      // Edge function enforces a hard limit (currently 500). Batch to be safe.
+      const batches = chunkArray(callIdsClean, 500);
+      let enqueued = 0;
+      for (const b of batches) {
+        const { data, error } = await supabase.functions.invoke("enqueue-vapi-evaluations", {
+          body: { callIds: b, mode },
+        });
+        if (error) throw error;
+        enqueued += b.length;
+        if (mountedRef.current) {
+          setEvalRefreshNote(data?.message ?? `Enqueued ${enqueued}/${callIdsClean.length} call(s).`);
+        }
+      }
+      toast.success(`Enqueued ${enqueued} call(s).`);
     } catch (e) {
       console.error(e);
       toast.error(e instanceof Error ? e.message : "Failed to enqueue evaluations", {
@@ -255,7 +427,44 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     }
   };
 
-  const processQueueNow = async () => {
+  const fetchEvalQueueCounts = async (callIds: string[]): Promise<EvalQueueCounts> => {
+    const ids = uniqStrings(callIds);
+    const total = ids.length;
+    const base: EvalQueueCounts = { total, pending: 0, running: 0, completed: 0, failed: 0, unknown: total };
+    if (total === 0 || isGuestMode || !activeMetricId) return base;
+
+    const chunks = chunkArray(ids, 500);
+    const seen = new Map<string, EvalQueueStatus>();
+    for (const c of chunks) {
+      const { data, error } = await supabase
+        .from('vapi_evaluation_queue')
+        .select('call_id,status')
+        .eq('metric_id', activeMetricId)
+        .in('call_id', c);
+      if (error) throw error;
+      for (const row of data ?? []) {
+        const r = row as Pick<VapiEvaluationQueueRow, 'call_id' | 'status'>;
+        const callId: unknown = r?.call_id;
+        const status: unknown = r?.status;
+        if (typeof callId === 'string' && (status === 'pending' || status === 'running' || status === 'completed' || status === 'failed')) {
+          seen.set(callId, status as EvalQueueStatus);
+        }
+      }
+    }
+
+    const counts: EvalQueueCounts = { total, pending: 0, running: 0, completed: 0, failed: 0, unknown: 0 };
+    for (const id of ids) {
+      const st = seen.get(id);
+      if (!st) counts.unknown += 1;
+      else if (st === 'pending') counts.pending += 1;
+      else if (st === 'running') counts.running += 1;
+      else if (st === 'completed') counts.completed += 1;
+      else if (st === 'failed') counts.failed += 1;
+    }
+    return counts;
+  };
+
+  const processQueueNow = async (opts?: { refreshTable?: boolean }) => {
     if (isGuestMode) return;
     if (!activeMetricId) {
       toast.error("No active evaluation metric configured. Create one in Experiment Settings.", {
@@ -270,7 +479,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       });
       if (error) throw error;
       toast.success(data?.message ?? "Processed evaluation queue.");
-      fetchData();
+      if (opts?.refreshTable !== false) fetchData();
     } catch (e) {
       console.error(e);
       toast.error(e instanceof Error ? e.message : "Failed to process evaluation queue", {
@@ -278,6 +487,83 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       });
     } finally {
       setProcessQueueLoading(false);
+    }
+  };
+
+  const runEvalRefresh = async (opts: { callIds: string[]; label: string; confirmLarge?: boolean }) => {
+    const callIds = uniqStrings(opts.callIds);
+    if (callIds.length === 0 || isGuestMode) return;
+    if (!isSuperAdmin) return;
+    if (!activeMetricId) {
+      toast.error("No active evaluation metric configured. Create one in Experiment Settings.", {
+        action: { label: "Open settings", onClick: openEvalMetricSettings },
+      });
+      return;
+    }
+    if (evalRefreshInFlight) return;
+    if (opts.confirmLarge && callIds.length > 200) {
+      const ok = window.confirm(`This will enqueue ${callIds.length} calls for evaluation refresh. Continue?`);
+      if (!ok) return;
+    }
+
+    setEvalRefreshInFlight(true);
+    setEvalRefreshLabel(opts.label);
+    setEvalRefreshNote('');
+    setEvalRefreshCounts({ total: callIds.length, pending: 0, running: 0, completed: 0, failed: 0, unknown: callIds.length });
+
+    try {
+      // 1) Enqueue in batches.
+      await enqueueEvaluations(callIds, "all");
+
+      // 2) Kick the worker once immediately (starts runs).
+      setEvalRefreshNote('Starting runs…');
+      await processQueueNow({ refreshTable: false });
+
+      // 3) Poll loop (best-effort).
+      const startedAt = Date.now();
+      const maxDurationMs = 180_000;
+      const initialWaitMs = 70_000;
+      const intervalMs = 20_000;
+
+      setEvalRefreshNote('Waiting for results to become pollable…');
+      await sleepMs(initialWaitMs);
+
+      // Update counts before entering the loop.
+      const firstCounts = await fetchEvalQueueCounts(callIds);
+      if (mountedRef.current) setEvalRefreshCounts(firstCounts);
+
+      while (Date.now() - startedAt < maxDurationMs) {
+        const counts = await fetchEvalQueueCounts(callIds);
+        if (mountedRef.current) setEvalRefreshCounts(counts);
+
+        const remaining = counts.pending + counts.running + counts.unknown;
+        if (remaining === 0) {
+          setEvalRefreshNote('Done.');
+          break;
+        }
+
+        setEvalRefreshNote('Polling worker…');
+        await processQueueNow({ refreshTable: false });
+        await sleepMs(intervalMs);
+      }
+
+      const finalCounts = await fetchEvalQueueCounts(callIds);
+      if (mountedRef.current) setEvalRefreshCounts(finalCounts);
+
+      const remaining = finalCounts.pending + finalCounts.running + finalCounts.unknown;
+      if (remaining > 0) {
+        setEvalRefreshNote(`Timed out with ${remaining} still pending/running. Click again to continue.`);
+      } else {
+        setEvalRefreshNote('Completed.');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to refresh evaluations');
+      setEvalRefreshNote('Failed.');
+    } finally {
+      // Always refresh table once at the end.
+      fetchData();
+      if (mountedRef.current) setEvalRefreshInFlight(false);
     }
   };
 
@@ -317,7 +603,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       const callsFiltered = (calls || []).filter((c) => !archivedParticipantCallIds.has(c.id));
 
       // Fetch experiment_responses
-      let responsesQuery = supabase
+      const responsesQuery = supabase
         .from('experiment_responses')
         .select('id, call_id, prolific_id, session_token, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged, vapi_total_score, vapi_structured_output_at, vapi_evaluation_metric_id');
 
@@ -373,7 +659,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       // In-app stores birth year in demographics.age; Prolific export stores age.
       const norm = (s: string | null | undefined) => (s ?? '').toString().trim().toLowerCase();
       const unified: UnifiedParticipant[] = callsFiltered.map(call => {
-        const sessionToken = (call as any).session_token ? String((call as any).session_token) : null;
+        const sessionTokenRaw = (call as unknown as { session_token?: unknown })?.session_token;
+        const sessionToken = sessionTokenRaw ? String(sessionTokenRaw) : null;
         const response =
           (sessionToken ? responseBySession.get(sessionToken) : undefined) ??
           (call.call_id ? responseByCallId.get(call.call_id) : undefined);
@@ -459,6 +746,24 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   };
 
   useEffect(() => {
+    try {
+      localStorage.setItem(ALL_RESPONSES_COLUMN_ORDER_STORAGE_KEY, JSON.stringify(movableColumnOrder));
+    } catch {
+      // ignore (private mode, etc.)
+    }
+  }, [movableColumnOrder]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const orderedColumnIds: ColumnId[] = useMemo(() => {
+    const prefix: ColumnId[] = isSuperAdmin ? ['select'] : [];
+    return [...prefix, ...movableColumnOrder, 'actions'];
+  }, [isSuperAdmin, movableColumnOrder]);
+
+  useEffect(() => {
     fetchData();
   }, []);
 
@@ -527,6 +832,10 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       .map((r) => r.call_id);
   }, [paginatedData]);
 
+  const filteredCompletedCallIds = useMemo(() => {
+    return uniqStrings(filteredData.filter((r) => r.is_completed && r.call_id).map((r) => r.call_id));
+  }, [filteredData]);
+
   const missingEvalCallIds = useMemo(() => {
     return visibleCompletedCallIds.filter((callId) => {
       const row = paginatedData.find((r) => r.call_id === callId);
@@ -546,6 +855,10 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       );
     });
   }, [visibleCompletedCallIds, paginatedData, activeMetricId]);
+
+  const neededEvalCallIdsVisiblePage = useMemo(() => {
+    return uniqStrings([...missingEvalCallIds, ...staleEvalCallIds]);
+  }, [missingEvalCallIds, staleEvalCallIds]);
 
   useEffect(() => {
     setTotalCount(filteredData.length);
@@ -803,6 +1116,347 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const allSelected = paginatedData.length > 0 && paginatedData.every(item => selectedIds.has(item.id));
   const someSelected = selectedIds.size > 0 && !allSelected;
 
+  const handleColumnDragEnd = (event: { active: { id: unknown }; over: { id: unknown } | null }) => {
+    const activeId = event.active.id as ColumnId;
+    const overId = event.over?.id as ColumnId | undefined;
+    if (!overId || activeId === overId) return;
+    setMovableColumnOrder((items) => {
+      const oldIndex = items.indexOf(activeId);
+      const newIndex = items.indexOf(overId);
+      if (oldIndex === -1 || newIndex === -1) return items;
+      return arrayMove(items, oldIndex, newIndex);
+    });
+  };
+
+  const resetColumnOrder = () => {
+    setMovableColumnOrder(DEFAULT_MOVABLE_COLUMN_ORDER);
+  };
+
+  const renderHeaderCell = (id: ColumnId, sortable: boolean) => {
+    if (id === 'select') {
+      return (
+        <TableHead key={id} data-testid={`all-responses-col-${id}`} className="w-[50px]">
+          <Checkbox
+            checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+            onCheckedChange={handleSelectAll}
+            aria-label="Select all"
+          />
+        </TableHead>
+      );
+    }
+
+    if (id === 'demo') {
+      const content = (
+        <span title="In-app vs Prolific demographics mismatch" className="inline-flex items-center justify-center w-full">
+          Demo
+        </span>
+      );
+      return sortable ? (
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled} className="w-[60px] text-center">
+          {content}
+        </SortableHeaderCell>
+      ) : (
+        <TableHead key={id} data-testid={`all-responses-col-${id}`} className="w-[60px] text-center" title="In-app vs Prolific demographics mismatch">
+          Demo
+        </TableHead>
+      );
+    }
+
+    if (id === 'reviewed') {
+      const content = (
+        <span title="Reviewed by researcher" className="inline-flex items-center justify-center w-full">
+          Reviewed
+        </span>
+      );
+      return sortable ? (
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled} className="w-[80px] text-center">
+          {content}
+        </SortableHeaderCell>
+      ) : (
+        <TableHead key={id} data-testid={`all-responses-col-${id}`} className="w-[80px] text-center" title="Reviewed by researcher">
+          Reviewed
+        </TableHead>
+      );
+    }
+
+    if (id === 'flag') {
+      const content = (
+        <span title="Flagged" className="inline-flex items-center justify-center w-full">
+          Flag
+        </span>
+      );
+      return sortable ? (
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled} className="w-[80px] text-center">
+          {content}
+        </SortableHeaderCell>
+      ) : (
+        <TableHead key={id} data-testid={`all-responses-col-${id}`} className="w-[80px] text-center" title="Flagged">
+          Flag
+        </TableHead>
+      );
+    }
+
+    const label: Record<Exclude<ColumnId, 'select' | 'demo' | 'reviewed' | 'flag'>, string> = {
+      prolific_id: 'Prolific ID',
+      status: 'Status',
+      call: 'Call',
+      created_at: 'Created At',
+      condition: 'Condition',
+      batch: 'Batch',
+      age: 'Age',
+      gender: 'Gender',
+      ethnicity: 'Ethnicity',
+      pets: 'PETS',
+      tias: 'TIAS',
+      eval: 'Eval',
+      actions: 'Actions',
+    };
+
+    const text = label[id as keyof typeof label] ?? id;
+
+    // Preserve a few alignments from the old table.
+    const className =
+      id === 'pets' || id === 'tias' ? 'text-right' : id === 'eval' ? 'text-center' : undefined;
+
+    return sortable ? (
+      <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled} className={className}>
+        <span className={className}>{text}</span>
+      </SortableHeaderCell>
+    ) : (
+      <TableHead key={id} data-testid={`all-responses-col-${id}`} className={className}>
+        {text}
+      </TableHead>
+    );
+  };
+
+  const renderBodyCell = (id: ColumnId, row: UnifiedParticipantRow) => {
+    switch (id) {
+      case 'select':
+        return (
+          <TableCell key={id} onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={selectedIds.has(row.id)}
+              onCheckedChange={(checked) => handleSelectOne(row.id, !!checked)}
+              aria-label={`Select ${row.prolific_id}`}
+            />
+          </TableCell>
+        );
+      case 'prolific_id':
+        return (
+          <TableCell key={id} className="font-mono text-sm">
+            {row.prolific_id}
+          </TableCell>
+        );
+      case 'status':
+        return (
+          <TableCell key={id}>
+            <Badge
+              variant={
+                row.status === 'Completed' ? 'default' : row.status === 'Abandoned' ? 'destructive' : 'secondary'
+              }
+            >
+              {row.status}
+            </Badge>
+          </TableCell>
+        );
+      case 'call':
+        return (
+          <TableCell key={id}>
+            <Badge variant={row.is_completed ? 'secondary' : 'outline'}>
+              {row.is_completed ? 'Ended' : 'Active'}
+            </Badge>
+          </TableCell>
+        );
+      case 'created_at':
+        return (
+          <TableCell key={id} className="text-sm">
+            {new Date(row.created_at).toLocaleString()}
+          </TableCell>
+        );
+      case 'condition':
+        return (
+          <TableCell key={id}>
+            {row.assistant_type ? (
+              <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'}>{row.assistant_type}</Badge>
+            ) : (
+              <span className="text-muted-foreground">-</span>
+            )}
+          </TableCell>
+        );
+      case 'batch':
+        return (
+          <TableCell key={id}>
+            {row.batch_label ? <Badge variant="outline">{row.batch_label}</Badge> : <span className="text-muted-foreground">-</span>}
+          </TableCell>
+        );
+      case 'age':
+        return (
+          <TableCell key={id} className="text-sm">
+            {row.age ?? '-'}
+          </TableCell>
+        );
+      case 'gender':
+        return (
+          <TableCell key={id} className="text-sm">
+            {row.gender ?? '-'}
+          </TableCell>
+        );
+      case 'ethnicity':
+        return (
+          <TableCell key={id} className="text-sm max-w-[120px] truncate" title={row.ethnicity_simplified ?? undefined}>
+            {row.ethnicity_simplified ?? '-'}
+          </TableCell>
+        );
+      case 'demo':
+        return (
+          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+            {row.demographics_mismatch ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="inline-flex items-center justify-center text-amber-600 dark:text-amber-500"
+                    aria-label="In-app demographics differ from Prolific export"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[260px]">
+                  {row.demographics_mismatch_reasons?.length ? (
+                    <>
+                      In-app questionnaire differs from Prolific export:{' '}
+                      {row.demographics_mismatch_reasons.map((r) => (r === 'age' ? 'age (≥2 years)' : 'gender')).join(' and ')}.
+                    </>
+                  ) : (
+                    "In-app demographics don't match Prolific export."
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="inline-flex items-center justify-center text-green-600 dark:text-green-500" aria-label="No demographics mismatch">
+                <Check className="h-4 w-4" />
+              </span>
+            )}
+          </TableCell>
+        );
+      case 'reviewed':
+        return (
+          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+            {row.response_id ? (
+              <button
+                type="button"
+                onClick={(e) => handleToggleReviewed(row, e)}
+                className={`inline-flex items-center justify-center w-8 h-8 rounded border transition-colors ${
+                  row.reviewed_by_researcher ? 'bg-primary text-primary-foreground border-primary' : 'border-muted-foreground/30 hover:bg-muted'
+                }`}
+                title={row.reviewed_by_researcher ? 'Reviewed' : 'Mark as reviewed'}
+              >
+                <Check className="h-4 w-4" />
+              </button>
+            ) : (
+              <span className="text-muted-foreground">-</span>
+            )}
+          </TableCell>
+        );
+      case 'flag':
+        return (
+          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+            {row.response_id ? (
+              <button
+                type="button"
+                onClick={(e) => handleToggleFlagged(row, e)}
+                className={`inline-flex items-center justify-center w-8 h-8 rounded border transition-colors ${
+                  row.flagged ? 'bg-destructive/15 text-destructive border-destructive/50' : 'border-muted-foreground/30 hover:bg-muted'
+                }`}
+                title={row.flagged ? 'Flagged' : 'Flag'}
+              >
+                <Flag className="h-4 w-4" />
+              </button>
+            ) : (
+              <span className="text-muted-foreground">-</span>
+            )}
+          </TableCell>
+        );
+      case 'pets':
+        return (
+          <TableCell key={id} className="text-right font-mono text-sm">
+            {formatNumber(row.pets_total)}
+          </TableCell>
+        );
+      case 'tias':
+        return (
+          <TableCell key={id} className="text-right font-mono text-sm">
+            {formatNumber(row.tias_total)}
+          </TableCell>
+        );
+      case 'eval':
+        return (
+          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+            {row.vapi_total_score != null ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className={
+                      activeMetricId && row.vapi_evaluation_metric_id && row.vapi_evaluation_metric_id !== activeMetricId
+                        ? 'border-amber-500 text-amber-600'
+                        : undefined
+                    }
+                  >
+                    {row.vapi_total_score}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[280px]">
+                  <div className="text-xs space-y-1">
+                    {row.vapi_structured_output_at ? <div>Fetched: {formatEvalTimestamp(row.vapi_structured_output_at)}</div> : null}
+                    {activeMetricId ? (
+                      <div>
+                        {row.vapi_evaluation_metric_id && row.vapi_evaluation_metric_id !== activeMetricId
+                          ? 'Status: stale (metric changed)'
+                          : 'Status: current'}
+                      </div>
+                    ) : (
+                      <div>Status: unknown (no active metric configured)</div>
+                    )}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="text-muted-foreground" title="No evaluation score saved yet">
+                -
+              </span>
+            )}
+          </TableCell>
+        );
+      case 'actions':
+        return (
+          <TableCell key={id} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" onClick={() => handleViewJourney(row)} title="View Journey">
+                <Route className="h-4 w-4" />
+              </Button>
+              {isSuperAdmin && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleArchiveSingle(row.id)}
+                  className="text-destructive hover:text-destructive"
+                  title="Archive"
+                >
+                  <Archive className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </TableCell>
+        );
+      default:
+        return (
+          <TableCell key={id} className="text-muted-foreground">
+            -
+          </TableCell>
+        );
+    }
+  };
+
   if (isLoading && data.length === 0) {
     return (
       <div className="space-y-4">
@@ -869,46 +1523,55 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           {isSuperAdmin && (
             <>
               <Button
-                onClick={() => enqueueEvaluations(missingEvalCallIds, "missing")}
-                disabled={enqueueLoading || isGuestMode || missingEvalCallIds.length === 0 || !activeMetricId}
+                onClick={() => runEvalRefresh({ callIds: neededEvalCallIdsVisiblePage, label: 'Refresh needed evals (visible page)' })}
+                disabled={evalRefreshInFlight || enqueueLoading || processQueueLoading || isGuestMode || neededEvalCallIdsVisiblePage.length === 0 || !activeMetricId}
                 variant="outline"
                 size="sm"
-                title={!activeMetricId ? "No active metric configured yet" : "Enqueue evaluation for visible filtered rows missing a score"}
+                title={!activeMetricId ? "No active metric configured yet" : "Refresh evals that are missing or stale for the currently visible rows"}
               >
-                <RefreshCw className={`h-4 w-4 mr-2 ${enqueueLoading ? "animate-spin" : ""}`} />
-                Refresh missing evals ({missingEvalCallIds.length})
+                <RefreshCw className={`h-4 w-4 mr-2 ${evalRefreshInFlight ? "animate-spin" : ""}`} />
+                Refresh needed evals ({neededEvalCallIdsVisiblePage.length})
               </Button>
               <Button
-                onClick={() => enqueueEvaluations(staleEvalCallIds, "stale")}
-                disabled={enqueueLoading || isGuestMode || staleEvalCallIds.length === 0 || !activeMetricId}
+                onClick={() => runEvalRefresh({ callIds: filteredCompletedCallIds, label: 'Hard refresh all filtered evals', confirmLarge: true })}
+                disabled={evalRefreshInFlight || enqueueLoading || processQueueLoading || isGuestMode || filteredCompletedCallIds.length === 0 || !activeMetricId}
                 variant="outline"
                 size="sm"
-                title={!activeMetricId ? "No active metric configured yet" : "Enqueue evaluation refresh for visible stale rows"}
+                title={!activeMetricId ? "No active metric configured yet" : "Force refresh evaluation for all completed rows matching current filters (across pages)"}
               >
-                <RefreshCw className={`h-4 w-4 mr-2 ${enqueueLoading ? "animate-spin" : ""}`} />
-                Refresh stale evals ({staleEvalCallIds.length})
+                <RefreshCw className={`h-4 w-4 mr-2 ${evalRefreshInFlight ? "animate-spin" : ""}`} />
+                Hard refresh filtered evals ({filteredCompletedCallIds.length})
               </Button>
-              <Button
-                onClick={() => enqueueEvaluations(visibleCompletedCallIds, "all")}
-                disabled={enqueueLoading || isGuestMode || visibleCompletedCallIds.length === 0 || !activeMetricId}
-                variant="outline"
-                size="sm"
-                title={!activeMetricId ? "No active metric configured yet" : "Enqueue evaluation refresh for all visible completed rows"}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${enqueueLoading ? "animate-spin" : ""}`} />
-                Refresh all evals ({visibleCompletedCallIds.length})
-              </Button>
-              <Button
-                onClick={processQueueNow}
-                disabled={processQueueLoading || isGuestMode || !activeMetricId}
-                variant="outline"
-                size="sm"
-                title={!activeMetricId ? "No active metric configured yet" : "Run the evaluation worker once (starts runs and polls some results)"}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${processQueueLoading ? "animate-spin" : ""}`} />
-                Process queue now
-              </Button>
+              <Collapsible open={showEvalAdvanced} onOpenChange={setShowEvalAdvanced}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" type="button" title="Advanced evaluation controls">
+                    Advanced
+                    <ChevronDown className={`h-4 w-4 ml-2 transition-transform ${showEvalAdvanced ? "rotate-180" : ""}`} />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="mt-2 flex gap-2 flex-wrap">
+                    <Button
+                      onClick={processQueueNow}
+                      disabled={processQueueLoading || isGuestMode || !activeMetricId}
+                      variant="outline"
+                      size="sm"
+                      title={!activeMetricId ? "No active metric configured yet" : "Run the evaluation worker once (starts runs and polls some results)"}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${processQueueLoading ? "animate-spin" : ""}`} />
+                      Process queue now
+                    </Button>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             </>
+          )}
+          {isSuperAdmin && evalRefreshCounts && (
+            <div className="basis-full text-xs text-muted-foreground">
+              <span className="font-medium">{evalRefreshLabel}</span>: {evalRefreshCounts.completed}/{evalRefreshCounts.total} completed, {evalRefreshCounts.running} running, {evalRefreshCounts.pending} pending, {evalRefreshCounts.failed} failed
+              {evalRefreshCounts.unknown ? `, ${evalRefreshCounts.unknown} unknown` : ''}
+              {evalRefreshNote ? ` · ${evalRefreshNote}` : ''}
+            </div>
           )}
           {isSuperAdmin && selectedCompletedCallIds.length > 0 && (
             <Button
@@ -954,43 +1617,50 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
               Export CSV
             </Button>
           )}
+          <div className="flex items-center gap-2 pl-2 ml-1 border-l">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Reorder columns</span>
+              <Switch
+                checked={reorderColumnsEnabled}
+                onCheckedChange={setReorderColumnsEnabled}
+                data-testid="all-responses-reorder-toggle"
+                aria-label="Toggle reorder columns"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={resetColumnOrder}
+              disabled={movableColumnOrder.join('|') === DEFAULT_MOVABLE_COLUMN_ORDER.join('|')}
+              data-testid="all-responses-columns-reset"
+              title="Reset column order"
+            >
+              Reset
+            </Button>
+          </div>
         </div>
       </div>
 
       <div className="rounded-md border overflow-x-auto">
-        <Table>
+        <Table data-testid="all-responses-table">
           <TableHeader>
             <TableRow>
-              {isSuperAdmin && (
-                <TableHead className="w-[50px]">
-                  <Checkbox
-                    checked={allSelected}
-                    ref={(el) => {
-                      if (el) {
-                        (el as any).indeterminate = someSelected;
-                      }
-                    }}
-                    onCheckedChange={handleSelectAll}
-                    aria-label="Select all"
-                  />
-                </TableHead>
+              {reorderColumnsEnabled ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleColumnDragEnd}
+                >
+                  {isSuperAdmin ? renderHeaderCell('select', false) : null}
+                  <SortableContext items={movableColumnOrder} strategy={horizontalListSortingStrategy}>
+                    {movableColumnOrder.map((id) => renderHeaderCell(id, true))}
+                  </SortableContext>
+                  {renderHeaderCell('actions', false)}
+                </DndContext>
+              ) : (
+                orderedColumnIds.map((id) => renderHeaderCell(id, false))
               )}
-              <TableHead>Prolific ID</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Call</TableHead>
-              <TableHead>Created At</TableHead>
-              <TableHead>Condition</TableHead>
-              <TableHead>Batch</TableHead>
-              <TableHead>Age</TableHead>
-              <TableHead>Gender</TableHead>
-              <TableHead>Ethnicity</TableHead>
-              <TableHead className="w-[60px] text-center" title="In-app vs Prolific demographics mismatch">Demo</TableHead>
-              <TableHead className="w-[80px] text-center" title="Reviewed by researcher">Reviewed</TableHead>
-              <TableHead className="w-[80px] text-center" title="Flagged">Flag</TableHead>
-              <TableHead className="text-right">PETS</TableHead>
-              <TableHead className="text-right">TIAS</TableHead>
-              <TableHead className="text-center">Eval</TableHead>
-              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1007,167 +1677,10 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                   className={`${selectedIds.has(row.id) ? 'bg-muted/50' : ''} cursor-pointer hover:bg-muted/30`}
                   onClick={() => handleOpenRow(row)}
                 >
-                  {isSuperAdmin && (
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={selectedIds.has(row.id)}
-                        onCheckedChange={(checked) => handleSelectOne(row.id, !!checked)}
-                        aria-label={`Select ${row.prolific_id}`}
-                      />
-                    </TableCell>
-                  )}
-                  <TableCell className="font-mono text-sm">{row.prolific_id}</TableCell>
-                  <TableCell>
-                    <Badge variant={row.status === 'Completed' ? 'default' : row.status === 'Abandoned' ? 'destructive' : 'secondary'}>
-                      {row.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={row.is_completed ? 'secondary' : 'outline'}>
-                      {row.is_completed ? 'Ended' : 'Active'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {new Date(row.created_at).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    {row.assistant_type ? (
-                      <Badge variant={row.assistant_type === 'formal' ? 'default' : 'secondary'}>
-                        {row.assistant_type}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {row.batch_label ? (
-                      <Badge variant="outline">{row.batch_label}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-sm">{row.age ?? '-'}</TableCell>
-                  <TableCell className="text-sm">{row.gender ?? '-'}</TableCell>
-                  <TableCell className="text-sm max-w-[120px] truncate" title={row.ethnicity_simplified ?? undefined}>
-                    {row.ethnicity_simplified ?? '-'}
-                  </TableCell>
-                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                    {row.demographics_mismatch ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex items-center justify-center text-amber-600 dark:text-amber-500" aria-label="In-app demographics differ from Prolific export">
-                            <AlertTriangle className="h-4 w-4" />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[260px]">
-                          {row.demographics_mismatch_reasons?.length
-                            ? <>In-app questionnaire differs from Prolific export: {row.demographics_mismatch_reasons.map(r => r === 'age' ? 'age (≥2 years)' : 'gender').join(' and ')}.</>
-                            : 'In-app demographics don\'t match Prolific export.'}
-                        </TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      <span className="inline-flex items-center justify-center text-green-600 dark:text-green-500" aria-label="No demographics mismatch">
-                        <Check className="h-4 w-4" />
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                    {row.response_id ? (
-                      <button
-                        type="button"
-                        onClick={(e) => handleToggleReviewed(row, e)}
-                        className={`inline-flex items-center justify-center w-8 h-8 rounded border transition-colors ${
-                          row.reviewed_by_researcher ? 'bg-primary text-primary-foreground border-primary' : 'border-muted-foreground/30 hover:bg-muted'
-                        }`}
-                        title={row.reviewed_by_researcher ? 'Reviewed' : 'Mark as reviewed'}
-                      >
-                        <Check className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                    {row.response_id ? (
-                      <button
-                        type="button"
-                        onClick={(e) => handleToggleFlagged(row, e)}
-                        className={`inline-flex items-center justify-center w-8 h-8 rounded border transition-colors ${
-                          row.flagged ? 'bg-destructive/15 text-destructive border-destructive/50' : 'border-muted-foreground/30 hover:bg-muted'
-                        }`}
-                        title={row.flagged ? 'Flagged' : 'Flag'}
-                      >
-                        <Flag className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm">
-                    {formatNumber(row.pets_total)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm">
-                    {formatNumber(row.tias_total)}
-                  </TableCell>
-                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                    {row.vapi_total_score != null ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Badge
-                            variant="outline"
-                            className={
-                              activeMetricId && row.vapi_evaluation_metric_id && row.vapi_evaluation_metric_id !== activeMetricId
-                                ? "border-amber-500 text-amber-600"
-                                : undefined
-                            }
-                          >
-                            {row.vapi_total_score}
-                          </Badge>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[280px]">
-                          <div className="text-xs space-y-1">
-                            {row.vapi_structured_output_at ? (
-                              <div>Fetched: {formatEvalTimestamp(row.vapi_structured_output_at)}</div>
-                            ) : null}
-                            {activeMetricId ? (
-                              <div>
-                                {row.vapi_evaluation_metric_id && row.vapi_evaluation_metric_id !== activeMetricId
-                                  ? "Status: stale (metric changed)"
-                                  : "Status: current"}
-                              </div>
-                            ) : (
-                              <div>Status: unknown (no active metric configured)</div>
-                            )}
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      <span className="text-muted-foreground" title="No evaluation score saved yet">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewJourney(row)}
-                        title="View Journey"
-                      >
-                        <Route className="h-4 w-4" />
-                      </Button>
-                      {isSuperAdmin && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleArchiveSingle(row.id)}
-                          className="text-destructive hover:text-destructive"
-                          title="Archive"
-                        >
-                          <Archive className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
+                  {orderedColumnIds.map((id) => {
+                    if (id === 'select' && !isSuperAdmin) return null;
+                    return renderBodyCell(id, row);
+                  })}
                 </TableRow>
               ))
             )}
