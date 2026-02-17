@@ -1,0 +1,19 @@
+[
+  {
+    "version": "1.1.12",
+    "release_date": "2026-02-17",
+    "description": "Add Playwright automation scaffolding and ignore local runtime artifacts for cleaner repository status.",
+    "active_batch_label": "",
+    "release_status": "pushed",
+    "auto_mark_release_on_push": false,
+    "changes": [
+      {
+        "type": "added",
+        "description": "added Playwright config, scripts, tests, and CI workflow while updating gitignore to ignore local generated artifacts",
+        "scope": "researcher",
+        "commit_hash": "189c2fe",
+        "pushed_at": "2026-02-17T13:33:21-08:00"
+      }
+    ]
+  }
+]
