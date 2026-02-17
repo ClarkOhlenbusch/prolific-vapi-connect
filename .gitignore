@@ -41,12 +41,30 @@ PROMPT_plan.md
 rlm/
 
 # Voice planner sessions (local-only)
-voice-planner/sessions/# Playwright
+voice-planner/sessions/
+
+# Playwright
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
 
+# Local Playwright/runtime artifacts
+.playwright-cli/
+.playwright-user-data/
+playwright-feedback-videos/
+playwright-recordings/
+
 # Local Playwright login credentials (do not commit)
 .env.playwright.local
+
+# Local temporary scripts and snapshot exports
+_tmp-*.mjs
+scripts/tmp-*.mjs
+ext-*.yml
+tt-*.yml
+responses-*.yml
+
+# Local Codex/Claude skill docs
+.claude/
