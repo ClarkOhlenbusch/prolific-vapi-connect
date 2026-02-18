@@ -8,6 +8,26 @@ const root = path.resolve(__dirname);
 const docsDir = path.join(root, 'docs');
 const outDir = path.join(root, 'public', 'changelog');
 
+// Playwright run debug JSONs (docs/playwright-runs/ → public/playwright-runs/)
+const playwrightRunsDocsDir = path.join(root, 'docs', 'playwright-runs');
+const playwrightRunsOutDir = path.join(root, 'public', 'playwright-runs');
+const PLAYWRIGHT_RUN_SUFFIX = '.debug.json';
+
+function getPlaywrightRunFilenames() {
+  if (!fs.existsSync(playwrightRunsDocsDir)) return [];
+  return fs.readdirSync(playwrightRunsDocsDir).filter((n) => n.endsWith(PLAYWRIGHT_RUN_SUFFIX));
+}
+
+function copyPlaywrightRunFiles() {
+  if (!fs.existsSync(playwrightRunsDocsDir)) return;
+  if (!fs.existsSync(playwrightRunsOutDir)) fs.mkdirSync(playwrightRunsOutDir, { recursive: true });
+  const names = getPlaywrightRunFilenames();
+  for (const name of names) {
+    fs.copyFileSync(path.join(playwrightRunsDocsDir, name), path.join(playwrightRunsOutDir, name));
+  }
+  fs.writeFileSync(path.join(playwrightRunsOutDir, 'manifest.json'), JSON.stringify(names));
+}
+
 const PREFIX_IMPORT = 'changelog-import-';
 const PREFIX_MERGE = 'changelog-merge-';
 const SUFFIX = '.json';
@@ -88,6 +108,7 @@ export function changelogPlugin() {
     name: 'changelog-copy',
     buildStart() {
       copyChangelogFiles();
+      copyPlaywrightRunFiles();
     },
     // In dev: serve /changelog/* directly from docs/ so no restart needed and responses are JSON, not SPA index.html
     configureServer(server) {
@@ -144,6 +165,28 @@ export function changelogPlugin() {
               }),
             );
           }
+          return;
+        }
+
+        // Serve /playwright-runs/* from docs/playwright-runs/ in dev
+        if (url.startsWith('/playwright-runs/')) {
+          if (url === '/playwright-runs/manifest.json') {
+            const names = getPlaywrightRunFilenames();
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(names));
+            return;
+          }
+          const name = decodeURIComponent(path.basename(url));
+          if (!name.endsWith(PLAYWRIGHT_RUN_SUFFIX)) return next();
+          const filePath = path.join(playwrightRunsDocsDir, name);
+          if (!fs.existsSync(filePath)) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Not found' }));
+            return;
+          }
+          res.setHeader('Content-Type', 'application/json');
+          res.end(fs.readFileSync(filePath, 'utf8'));
           return;
         }
 

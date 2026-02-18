@@ -27,8 +27,9 @@ dist-ssr
 *.sln
 *.sw?
 
-# Changelog JSONs copied from docs/ at build time (source of truth: docs/)
+# Static assets copied from docs/ at build time (source of truth: docs/)
 public/changelog
+public/playwright-runs
 
 # Local-only verification notes (do not commit)
 docs/verification-log.local.md

@@ -1,0 +1,283 @@
+{
+  "runId": "flow1-backlog-tabs-1771452936427-dzyjff",
+  "flowId": "flow1-backlog-tabs",
+  "createdAt": "2026-02-18T22:15:36.427Z",
+  "ok": true,
+  "attempts": 1,
+  "syncModel": "serial-gated",
+  "narrationScope": "all",
+  "narrationGapMaxMs": 2000,
+  "narrationOverlapResolved": true,
+  "syncFallbackUsed": false,
+  "ttsError": null,
+  "failureExplanations": [],
+  "progressPhases": [
+    {
+      "phase": "preflight_attempts",
+      "percentStart": 0,
+      "percentEnd": 35,
+      "startedAtMs": 1771452936428,
+      "endedAtMs": 1771452942196
+    },
+    {
+      "phase": "recording_run",
+      "percentStart": 35,
+      "percentEnd": 55,
+      "startedAtMs": 1771452942196,
+      "endedAtMs": 1771453000351
+    },
+    {
+      "phase": "profile_render",
+      "percentStart": 55,
+      "percentEnd": 98,
+      "startedAtMs": 1771453000351,
+      "endedAtMs": 1771453131185
+    },
+    {
+      "phase": "finalize_fast_artifact",
+      "percentStart": 98,
+      "percentEnd": 99,
+      "startedAtMs": 1771453000352,
+      "endedAtMs": 1771453000355
+    },
+    {
+      "phase": "follow_render",
+      "percentStart": 70,
+      "percentEnd": 90,
+      "startedAtMs": 1771453000355,
+      "endedAtMs": 1771453043589
+    },
+    {
+      "phase": "slowdown_render",
+      "percentStart": 55,
+      "percentEnd": 65,
+      "startedAtMs": 1771453043589,
+      "endedAtMs": 1771453086599
+    },
+    {
+      "phase": "tts_generation",
+      "percentStart": 65,
+      "percentEnd": 80,
+      "startedAtMs": 1771453086599,
+      "endedAtMs": 1771453093452
+    },
+    {
+      "phase": "serial_schedule_build",
+      "percentStart": 80,
+      "percentEnd": 86,
+      "startedAtMs": 1771453093452,
+      "endedAtMs": 1771453093452
+    },
+    {
+      "phase": "video_retime",
+      "percentStart": 86,
+      "percentEnd": 92,
+      "startedAtMs": 1771453093452,
+      "endedAtMs": 1771453130523
+    },
+    {
+      "phase": "audio_mux",
+      "percentStart": 92,
+      "percentEnd": 98,
+      "startedAtMs": 1771453130523,
+      "endedAtMs": 1771453131183
+    }
+  ],
+  "ffmpegStages": [
+    {
+      "label": "follow-render:with-audio",
+      "command": "ffmpeg -y -i playwright-recordings/flow1-backlog-tabs.fast.webm -filter:v setpts=2.5*PTS -filter:a atempo=0.5,atempo=0.8000 -c:v libvpx-vp9 -c:a libopus playwright-recordings/flow1-backlog-tabs.follow.webm",
+      "startedAtMs": 1771453000355,
+      "endedAtMs": 1771453043588,
+      "durationMs": 43233
+    },
+    {
+      "label": "slowdown-serial:video-only",
+      "command": "ffmpeg -y -i playwright-recordings/flow1-backlog-tabs.fast.webm -filter:v setpts=3*PTS -an -c:v libvpx-vp9 playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/flow1-backlog-tabs.slowed.webm",
+      "startedAtMs": 1771453043589,
+      "endedAtMs": 1771453086599,
+      "durationMs": 43010
+    },
+    {
+      "label": "tts-aiff-to-wav:intro",
+      "command": "ffmpeg -y -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-1.aiff -ar 48000 -ac 2 playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-1.wav",
+      "startedAtMs": 1771453087544,
+      "endedAtMs": 1771453087579,
+      "durationMs": 35
+    },
+    {
+      "label": "tts-aiff-to-wav:step_1",
+      "command": "ffmpeg -y -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-2.aiff -ar 48000 -ac 2 playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-2.wav",
+      "startedAtMs": 1771453088504,
+      "endedAtMs": 1771453088532,
+      "durationMs": 28
+    },
+    {
+      "label": "tts-aiff-to-wav:step_2",
+      "command": "ffmpeg -y -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-3.aiff -ar 48000 -ac 2 playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-3.wav",
+      "startedAtMs": 1771453089466,
+      "endedAtMs": 1771453089494,
+      "durationMs": 28
+    },
+    {
+      "label": "tts-aiff-to-wav:step_3",
+      "command": "ffmpeg -y -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-4.aiff -ar 48000 -ac 2 playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-4.wav",
+      "startedAtMs": 1771453090436,
+      "endedAtMs": 1771453090465,
+      "durationMs": 29
+    },
+    {
+      "label": "tts-aiff-to-wav:step_4",
+      "command": "ffmpeg -y -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-5.aiff -ar 48000 -ac 2 playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-5.wav",
+      "startedAtMs": 1771453091414,
+      "endedAtMs": 1771453091444,
+      "durationMs": 30
+    },
+    {
+      "label": "tts-aiff-to-wav:step_5",
+      "command": "ffmpeg -y -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-6.aiff -ar 48000 -ac 2 playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-6.wav",
+      "startedAtMs": 1771453092387,
+      "endedAtMs": 1771453092419,
+      "durationMs": 32
+    },
+    {
+      "label": "tts-aiff-to-wav:summary",
+      "command": "ffmpeg -y -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-7.aiff -ar 48000 -ac 2 playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-7.wav",
+      "startedAtMs": 1771453093362,
+      "endedAtMs": 1771453093394,
+      "durationMs": 32
+    },
+    {
+      "label": "retime-video-to-narration",
+      "command": "ffmpeg -y -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/flow1-backlog-tabs.slowed.webm -filter_complex [0:v]trim=start=0.000000:end=53.346000,setpts=0.345855*(PTS-STARTPTS)[v0];[0:v]trim=start=53.346000:end=65.157000,setpts=0.409533*(PTS-STARTPTS)[v1];[0:v]trim=start=65.157000:end=74.814000,setpts=0.429947*(PTS-STARTPTS)[v2];[0:v]trim=start=74.814000:end=89.061000,setpts=0.403874*(PTS-STARTPTS)[v3];[0:v]trim=start=89.061000:end=101.994000,setpts=0.408103*(PTS-STARTPTS)[v4];[0:v]trim=start=101.994000:end=120.084000,setpts=0.287894*(PTS-STARTPTS)[v5];[0:v]trim=start=120.084000:end=169.360000,setpts=1.000000*(PTS-STARTPTS)[v6];[v0][v1][v2][v3][v4][v5][v6]concat=n=7:v=1:a=0[vout] -map [vout] -an -c:v libvpx-vp9 playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/flow1-backlog-tabs.serial.webm",
+      "startedAtMs": 1771453093480,
+      "endedAtMs": 1771453130523,
+      "durationMs": 37043
+    },
+    {
+      "label": "mux-narration-audio",
+      "command": "ffmpeg -y -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/flow1-backlog-tabs.serial.webm -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-1.wav -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-2.wav -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-3.wav -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-4.wav -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-5.wav -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-6.wav -i playwright-recordings/.tts-serial-flow1-backlog-tabs-1771453043589/speech-7.wav -filter_complex [1:a]adelay=0|0[a0];[2:a]adelay=18450|18450[a1];[3:a]adelay=23287|23287[a2];[4:a]adelay=27439|27439[a3];[5:a]adelay=33193|33193[a4];[6:a]adelay=38471|38471[a5];[7:a]adelay=43679|43679[a6];[a0][a1][a2][a3][a4][a5][a6]amix=inputs=7:normalize=0,apad[aout] -map 0:v:0 -map [aout] -c:v copy -c:a libopus -shortest playwright-recordings/flow1-backlog-tabs.narrated.webm",
+      "startedAtMs": 1771453130523,
+      "endedAtMs": 1771453131183,
+      "durationMs": 660
+    }
+  ],
+  "narrationSkippedSteps": [],
+  "timeline": [
+    {
+      "step": "Open researcher dashboard",
+      "stepStartMs": 17782,
+      "stepEndMs": 21717,
+      "plannedMs": 2837,
+      "actualMs": 2954,
+      "narrationMs": 2837
+    },
+    {
+      "step": "Open Backlog",
+      "stepStartMs": 21719,
+      "stepEndMs": 24936,
+      "plannedMs": 2152,
+      "actualMs": 2251,
+      "narrationMs": 2152
+    },
+    {
+      "step": "Switch backlog tab: Future Features",
+      "stepStartMs": 24938,
+      "stepEndMs": 29683,
+      "plannedMs": 3754,
+      "actualMs": 3794,
+      "narrationMs": 3754
+    },
+    {
+      "step": "Switch backlog tab: Errors",
+      "stepStartMs": 29687,
+      "stepEndMs": 33995,
+      "plannedMs": 3278,
+      "actualMs": 3328,
+      "narrationMs": 3278
+    },
+    {
+      "step": "Switch backlog tab: All",
+      "stepStartMs": 33998,
+      "stepEndMs": 38223,
+      "plannedMs": 3208,
+      "actualMs": 3289,
+      "narrationMs": 3208
+    }
+  ],
+  "narrationEvents": [
+    {
+      "label": "intro",
+      "sourceMs": 0,
+      "narratedMs": 0,
+      "clipDurationMs": 16450,
+      "scheduledStartMs": 0,
+      "scheduledEndMs": 16450,
+      "gapCompressedMs": 0
+    },
+    {
+      "label": "step_1",
+      "sourceMs": 17782,
+      "narratedMs": 53346,
+      "clipDurationMs": 2837,
+      "scheduledStartMs": 18450,
+      "scheduledEndMs": 21287,
+      "gapCompressedMs": 34896
+    },
+    {
+      "label": "step_2",
+      "sourceMs": 21719,
+      "narratedMs": 65157,
+      "clipDurationMs": 2152,
+      "scheduledStartMs": 23287,
+      "scheduledEndMs": 25439,
+      "gapCompressedMs": 41870
+    },
+    {
+      "label": "step_3",
+      "sourceMs": 24938,
+      "narratedMs": 74814,
+      "clipDurationMs": 3754,
+      "scheduledStartMs": 27439,
+      "scheduledEndMs": 31193,
+      "gapCompressedMs": 47375
+    },
+    {
+      "label": "step_4",
+      "sourceMs": 29687,
+      "narratedMs": 89061,
+      "clipDurationMs": 3278,
+      "scheduledStartMs": 33193,
+      "scheduledEndMs": 36471,
+      "gapCompressedMs": 55868
+    },
+    {
+      "label": "step_5",
+      "sourceMs": 33998,
+      "narratedMs": 101994,
+      "clipDurationMs": 3208,
+      "scheduledStartMs": 38471,
+      "scheduledEndMs": 41679,
+      "gapCompressedMs": 63523
+    },
+    {
+      "label": "summary",
+      "sourceMs": 40028,
+      "narratedMs": 120084,
+      "clipDurationMs": 2999,
+      "scheduledStartMs": 43679,
+      "scheduledEndMs": 46678,
+      "gapCompressedMs": 76405
+    }
+  ],
+  "artifacts": {
+    "fast": "flow1-backlog-tabs.fast.webm",
+    "follow": "flow1-backlog-tabs.follow.webm",
+    "narrated": "flow1-backlog-tabs.narrated.webm"
+  },
+  "artifactUrls": {
+    "fast": "/__dev__/playwright-runs/artifact/flow1-backlog-tabs.fast.webm",
+    "follow": "/__dev__/playwright-runs/artifact/flow1-backlog-tabs.follow.webm",
+    "narrated": "/__dev__/playwright-runs/artifact/flow1-backlog-tabs.narrated.webm"
+  }
+}
