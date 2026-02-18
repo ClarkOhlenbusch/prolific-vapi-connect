@@ -37,6 +37,9 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
+import ffmpegCoreURL from '@ffmpeg/core?url';
+import ffmpegCoreWasmURL from '@ffmpeg/core/wasm?url';
+import ffmpegWorkerURL from '@ffmpeg/ffmpeg/worker?url';
 import { cn } from '@/lib/utils';
 import {
   Collapsible,
@@ -2440,10 +2443,9 @@ const ResponseDetails = () => {
     const { FFmpeg } = await import('@ffmpeg/ffmpeg');
     const ffmpeg = new FFmpeg();
     await ffmpeg.load({
-      // Use package export subpaths so Vite can resolve assets under "exports".
-      coreURL: new URL('@ffmpeg/core', import.meta.url).toString(),
-      wasmURL: new URL('@ffmpeg/core/wasm', import.meta.url).toString(),
-      classWorkerURL: new URL('@ffmpeg/ffmpeg/worker', import.meta.url).toString(),
+      coreURL: ffmpegCoreURL,
+      wasmURL: ffmpegCoreWasmURL,
+      classWorkerURL: ffmpegWorkerURL,
     });
     return ffmpeg;
   };
