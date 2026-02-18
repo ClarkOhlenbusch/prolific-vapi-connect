@@ -42,6 +42,8 @@ const ResponseDetails = lazy(() => import("./pages/ResponseDetails"));
 const ResearcherChangelog = lazy(() => import("./pages/ResearcherChangelog"));
 const ResearcherErrorLog = lazy(() => import("./pages/ResearcherErrorLog"));
 const ResearcherBackups = lazy(() => import("./pages/ResearcherBackups"));
+const ResearcherVideoRunDebug = lazy(() => import("./pages/ResearcherVideoRunDebug"));
+const ENABLE_PLAYWRIGHT_DEBUG_PAGE = import.meta.env.DEV && import.meta.env.VITE_ENABLE_PLAYWRIGHT_DEBUG === "true";
 
 const queryClient = new QueryClient();
 
@@ -103,6 +105,16 @@ const App = () => (
                 <Route path="/researcher/changelog" element={<ResearcherProtectedRoute><ResearcherChangelog /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/error-log" element={<ResearcherProtectedRoute><ResearcherErrorLog /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/backups" element={<ResearcherProtectedRoute><ResearcherBackups /></ResearcherProtectedRoute>} />
+                {ENABLE_PLAYWRIGHT_DEBUG_PAGE && (
+                  <Route
+                    path="/researcher/debug/video-runs"
+                    element={
+                      <ResearcherProtectedRoute requireSuperAdmin>
+                        <ResearcherVideoRunDebug />
+                      </ResearcherProtectedRoute>
+                    }
+                  />
+                )}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

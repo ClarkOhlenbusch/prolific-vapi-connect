@@ -2,6 +2,7 @@ import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import fs from "fs/promises";
+import fsSync from "node:fs";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { componentTagger } from "lovable-tagger";
@@ -119,6 +120,99 @@ const localFutureFeaturesPlugin = () => ({
         res.setHeader("content-type", "text/plain");
         res.end(e?.message || "Failed to append future-features.md");
       }
+    });
+
+    server.middlewares.use("/__dev__/playwright-runs", async (req: any, res: any, next: any) => {
+      if (req.method !== "GET") return next();
+      try {
+        const base = "http://localhost";
+        const requestUrl = new URL(req.originalUrl || req.url || "/", base);
+        const pathname = requestUrl.pathname;
+        const outDir = path.resolve(__dirname, "./playwright-recordings");
+        const manifestPath = path.join(outDir, "manifest.debug.json");
+
+        const sendJson = (payload: unknown) => {
+          res.statusCode = 200;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify(payload));
+        };
+
+        if (pathname.endsWith("/manifest")) {
+          try {
+            const raw = await fs.readFile(manifestPath, "utf8");
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/json");
+            res.end(raw);
+          } catch {
+            sendJson({ updatedAt: new Date().toISOString(), runs: [] });
+          }
+          return;
+        }
+
+        if (pathname.endsWith("/debug")) {
+          const file = String(requestUrl.searchParams.get("file") || "").trim();
+          if (!file || file.includes("/") || file.includes("\\")) {
+            res.statusCode = 400;
+            res.setHeader("content-type", "text/plain");
+            res.end("Missing or invalid file query param");
+            return;
+          }
+          const debugPath = path.join(outDir, file);
+          if (!debugPath.startsWith(outDir)) {
+            res.statusCode = 400;
+            res.setHeader("content-type", "text/plain");
+            res.end("Invalid path");
+            return;
+          }
+          const raw = await fs.readFile(debugPath, "utf8");
+          res.statusCode = 200;
+          res.setHeader("content-type", "application/json");
+          res.end(raw);
+          return;
+        }
+
+        if (pathname.includes("/artifact/")) {
+          const rawName = decodeURIComponent(pathname.split("/artifact/")[1] || "");
+          const safeName = path.basename(rawName);
+          if (!safeName || safeName === "." || safeName === "..") {
+            res.statusCode = 400;
+            res.setHeader("content-type", "text/plain");
+            res.end("Invalid artifact name");
+            return;
+          }
+          const artifactPath = path.join(outDir, safeName);
+          if (!artifactPath.startsWith(outDir)) {
+            res.statusCode = 400;
+            res.setHeader("content-type", "text/plain");
+            res.end("Invalid path");
+            return;
+          }
+          const exists = fsSync.existsSync(artifactPath);
+          if (!exists) {
+            res.statusCode = 404;
+            res.setHeader("content-type", "text/plain");
+            res.end("Artifact not found");
+            return;
+          }
+          const ext = path.extname(safeName).toLowerCase();
+          const type = ext === ".json"
+            ? "application/json"
+            : ext === ".webm"
+              ? "video/webm"
+              : "application/octet-stream";
+          res.statusCode = 200;
+          res.setHeader("content-type", type);
+          fsSync.createReadStream(artifactPath).pipe(res);
+          return;
+        }
+      } catch (e: any) {
+        res.statusCode = 500;
+        res.setHeader("content-type", "text/plain");
+        res.end(e?.message || "Failed to serve playwright debug artifacts");
+        return;
+      }
+
+      next();
     });
   },
 });

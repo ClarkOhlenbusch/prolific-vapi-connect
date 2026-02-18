@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -84,18 +84,16 @@ export const BatchManager = ({ sourceFilter = 'all', openBatchCreate, onBatchCre
   const [newBatchNotes, setNewBatchNotes] = useState('');
   const [editNotes, setEditNotes] = useState('');
 
-  useEffect(() => {
-    fetchBatches();
-  }, [isGuestMode, sourceFilter]);
-
-  useEffect(() => {
-    if (openBatchCreate) {
-      setShowCreateDialog(true);
-      onBatchCreateConsumed?.();
+  const getErrorMessage = (error: unknown): string => {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string') return message;
     }
-  }, [openBatchCreate, onBatchCreateConsumed]);
+    return '';
+  };
 
-  const fetchBatches = async () => {
+  const fetchBatches = useCallback(async () => {
     try {
       setIsLoading(true);
       
@@ -202,7 +200,19 @@ export const BatchManager = ({ sourceFilter = 'all', openBatchCreate, onBatchCre
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isGuestMode, sourceFilter]);
+
+  useEffect(() => {
+    fetchBatches();
+  }, [fetchBatches]);
+
+  useEffect(() => {
+    if (openBatchCreate) {
+      setShowCreateDialog(true);
+      onBatchCreateConsumed?.();
+    }
+  }, [openBatchCreate, onBatchCreateConsumed]);
+
 
   const handleCreateBatch = async () => {
     if (!newBatchName.trim()) {
@@ -250,9 +260,10 @@ export const BatchManager = ({ sourceFilter = 'all', openBatchCreate, onBatchCre
       setNewBatchNotes('');
       setShowCreateDialog(false);
       fetchBatches();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating batch:', error);
-      if (error.message?.includes('duplicate key')) {
+      const errorMessage = getErrorMessage(error);
+      if (errorMessage.includes('duplicate key')) {
         toast.error('A batch with this name already exists');
       } else {
         toast.error('Failed to create batch');

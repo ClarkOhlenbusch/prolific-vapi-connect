@@ -941,6 +941,59 @@ export type Database = {
         }
         Relationships: []
       }
+      researcher_backlog_items: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          details: string
+          display_order: number
+          id: string
+          item_type: string
+          linked_response_id: string | null
+          priority: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          details?: string
+          display_order?: number
+          id?: string
+          item_type: string
+          linked_response_id?: string | null
+          priority?: string
+          status: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          details?: string
+          display_order?: number
+          id?: string
+          item_type?: string
+          linked_response_id?: string | null
+          priority?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "researcher_backlog_items_linked_response_id_fkey"
+            columns: ["linked_response_id"]
+            isOneToOne: false
+            referencedRelation: "experiment_responses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       formality_calculations: {
         Row: {
           ai_only_mode: boolean

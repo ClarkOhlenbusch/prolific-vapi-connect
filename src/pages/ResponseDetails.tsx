@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   ArrowLeft, 
   User, 
@@ -96,7 +97,10 @@ type DictationTranscriptSegmentsByField = Record<FeedbackFieldKey, DictationTran
 type MergedDictationByField = Record<FeedbackFieldKey, MergedDictationAudioState>;
 type FeedbackDraftUsage = Record<FeedbackFieldKey, boolean>;
 
-type FutureFeaturesDraft = {
+type BacklogDraft = {
+  itemType: 'error' | 'feature';
+  status: 'open' | 'in_progress' | 'resolved' | 'idea' | 'planned' | 'shipped';
+  priority: 'low' | 'medium' | 'high' | 'critical';
   title: string;
   goal: string;
   proposed: string;
@@ -999,7 +1003,7 @@ const ResponseDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isGuestMode } = useResearcherAuth();
+  const { isGuestMode, user } = useResearcherAuth();
   const [data, setData] = useState<ExperimentResponseWithDemographics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1038,7 +1042,10 @@ const ResponseDetails = () => {
   const [dictationDownloadId, setDictationDownloadId] = useState<string | null>(null);
   const [futureFeaturesDialogOpen, setFutureFeaturesDialogOpen] = useState(false);
   const [futureFeaturesSaving, setFutureFeaturesSaving] = useState(false);
-  const [futureFeaturesDraft, setFutureFeaturesDraft] = useState<FutureFeaturesDraft>({
+  const [futureFeaturesDraft, setFutureFeaturesDraft] = useState<BacklogDraft>({
+    itemType: 'feature',
+    status: 'idea',
+    priority: 'medium',
     title: '',
     goal: '',
     proposed: '',
@@ -2310,10 +2317,61 @@ const ResponseDetails = () => {
     if (data?.researcher_notes !== undefined) setResearcherNotesDraft(data.researcher_notes ?? '');
   }, [data?.id, data?.researcher_notes]);
 
+  const ensureWritableResponseId = async (): Promise<string> => {
+    if (!data) throw new Error('Response not loaded');
+
+    // Typical case: route id is already an experiment_responses row.
+    if (!isPendingRecord) return data.id;
+
+    const { data: exactRow, error: exactError } = await supabase
+      .from('experiment_responses')
+      .select('id')
+      .eq('id', data.id)
+      .maybeSingle();
+    if (exactError) throw exactError;
+    if (exactRow?.id) return exactRow.id;
+
+    const { data: matchedRow, error: matchedError } = await supabase
+      .from('experiment_responses')
+      .select('id')
+      .eq('prolific_id', data.prolific_id)
+      .eq('call_id', data.call_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (matchedError) throw matchedError;
+    if (matchedRow?.id) {
+      if (matchedRow.id !== data.id) {
+        setData((prev) => (prev ? { ...prev, id: matchedRow.id } : prev));
+      }
+      return matchedRow.id;
+    }
+
+    // Pending/abandoned without an experiment_responses row yet: create a minimal draft row.
+    const now = new Date().toISOString();
+    const { data: insertedRow, error: insertError } = await supabase
+      .from('experiment_responses')
+      .insert({
+        prolific_id: data.prolific_id,
+        call_id: data.call_id,
+        submission_status: nonSubmittedStatus === 'abandoned' ? 'abandoned' : 'pending',
+        last_saved_at: now,
+        last_step: (data as any).last_step ?? null,
+      })
+      .select('id')
+      .single();
+    if (insertError) throw insertError;
+    if (!insertedRow?.id) throw new Error('Failed to create pending response row');
+
+    setData((prev) => (prev ? { ...prev, id: insertedRow.id } : prev));
+    return insertedRow.id;
+  };
+
   const handleSaveResearcherNotes = async () => {
-    if (!data?.id || isPendingRecord || isGuestMode) return;
+    if (!data || isGuestMode) return;
     setResearcherNotesSaving(true);
     try {
+      const responseId = await ensureWritableResponseId();
       const now = new Date().toISOString();
       const { error } = await supabase
         .from('experiment_responses')
@@ -2321,12 +2379,13 @@ const ResponseDetails = () => {
           researcher_notes: researcherNotesDraft.trim() || null,
           researcher_notes_at: researcherNotesDraft.trim() ? now : null,
         })
-        .eq('id', data.id);
+        .eq('id', responseId);
       if (error) throw error;
       setData((prev) =>
         prev
           ? {
               ...prev,
+              id: responseId,
               researcher_notes: researcherNotesDraft.trim() || null,
               researcher_notes_at: researcherNotesDraft.trim() ? now : null,
             }
@@ -2532,6 +2591,9 @@ const ResponseDetails = () => {
     if (!data) return;
     const callLabel = data.call_id ? `Call ${data.call_id}` : `Response ${data.id}`;
     setFutureFeaturesDraft((prev) => ({
+      itemType: prev.itemType || 'feature',
+      status: prev.itemType === 'error' ? 'open' : 'idea',
+      priority: prev.priority || 'medium',
       title: prev.title || `${callLabel}: `,
       goal: prev.goal || researcherNotesDraft.trim(),
       proposed: prev.proposed,
@@ -2541,10 +2603,6 @@ const ResponseDetails = () => {
   };
 
   const handleSaveToFutureFeatures = async () => {
-    if (!import.meta.env.DEV) {
-      toast.error('Future features saving is only available in dev mode.');
-      return;
-    }
     if (isGuestMode) {
       toast.error('Not available in Guest Mode.');
       return;
@@ -2561,41 +2619,64 @@ const ResponseDetails = () => {
       return;
     }
 
+    const itemType = futureFeaturesDraft.itemType;
+    const status = futureFeaturesDraft.status;
+    const priority = futureFeaturesDraft.priority;
+    const allowedStatuses =
+      itemType === 'error'
+        ? (['open', 'in_progress', 'resolved'] as const)
+        : (['idea', 'planned', 'in_progress', 'shipped'] as const);
+    if (!allowedStatuses.includes(status as (typeof allowedStatuses)[number])) {
+      toast.error('Selected status is not valid for this item type.');
+      return;
+    }
+
     setFutureFeaturesSaving(true);
     try {
-      const entryMarkdown = [
-        `## ${title}`,
-        '',
-        `- Goal: ${goal}`,
-        proposed ? `- Proposed UI/behavior: ${proposed}` : `- Proposed UI/behavior: (fill in)`,
-        impact ? `- Likely impact: ${impact}` : `- Likely impact: (fill in)`,
-        '',
-      ].join('\n');
+      const details = [
+        `Goal: ${goal}`,
+        proposed ? `Proposed UI/behavior: ${proposed}` : null,
+        impact ? `Likely impact: ${impact}` : null,
+      ].filter(Boolean).join('\n\n');
 
-      const res = await fetch('/__dev__/future-features', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          entryMarkdown,
-          context: {
-            responseId: data.id,
-            callId: data.call_id,
-            prolificId: data.prolific_id,
-          },
-        }),
+      const { data: orderRow, error: orderError } = await supabase
+        .from('researcher_backlog_items')
+        .select('display_order')
+        .eq('item_type', itemType)
+        .order('display_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (orderError) throw orderError;
+      const nextDisplayOrder = (orderRow?.display_order ?? -1) + 1;
+
+      if (!user?.id) throw new Error('No authenticated researcher found');
+
+      const { error: insertError } = await supabase.from('researcher_backlog_items').insert({
+        item_type: itemType,
+        title,
+        details,
+        status,
+        priority,
+        linked_response_id: await ensureWritableResponseId(),
+        display_order: nextDisplayOrder,
+        created_by: user.id,
       });
+      if (insertError) throw insertError;
 
-      if (!res.ok) {
-        const msg = await res.text().catch(() => '');
-        throw new Error(msg || `Request failed (${res.status})`);
-      }
-
-      toast.success('Saved to future features', { description: 'Appended to docs/future-features.md' });
+      toast.success('Saved to backlog');
       setFutureFeaturesDialogOpen(false);
-      setFutureFeaturesDraft({ title: '', goal: '', proposed: '', impact: '' });
+      setFutureFeaturesDraft({
+        itemType: 'feature',
+        status: 'idea',
+        priority: 'medium',
+        title: '',
+        goal: '',
+        proposed: '',
+        impact: '',
+      });
     } catch (e) {
       console.error(e);
-      toast.error(e instanceof Error ? e.message : 'Failed to save to future features');
+      toast.error(e instanceof Error ? e.message : 'Failed to save to backlog');
     } finally {
       setFutureFeaturesSaving(false);
     }
@@ -3115,24 +3196,23 @@ const ResponseDetails = () => {
                 placeholder="Add notes…"
                 value={researcherNotesDraft}
                 onChange={(e) => setResearcherNotesDraft(e.target.value)}
-                disabled={isPendingRecord || isGuestMode}
+                disabled={isGuestMode}
               />
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   onClick={handleSaveResearcherNotes}
-                  disabled={isPendingRecord || isGuestMode || researcherNotesSaving}
+                  disabled={isGuestMode || researcherNotesSaving}
                 >
                   {researcherNotesSaving ? 'Saving…' : 'Save notes'}
                 </Button>
-                {import.meta.env.DEV && !isGuestMode && (
+                {!isGuestMode && (
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={openFutureFeaturesDialog}
-                    disabled={isPendingRecord}
                   >
-                    Save to future features
+                    Add to backlog
                   </Button>
                 )}
               </div>
@@ -3143,12 +3223,80 @@ const ResponseDetails = () => {
         <Dialog open={futureFeaturesDialogOpen} onOpenChange={setFutureFeaturesDialogOpen}>
           <DialogContent className="max-w-xl">
             <DialogHeader>
-              <DialogTitle>Save to Future Features</DialogTitle>
+              <DialogTitle>Add to Backlog</DialogTitle>
               <DialogDescription>
-                Appends a new entry to <span className="font-mono">docs/future-features.md</span> (dev mode only).
+                Creates a linked backlog item for this response.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Type</label>
+                  <Select
+                    value={futureFeaturesDraft.itemType}
+                    onValueChange={(value) => {
+                      const itemType = value as 'error' | 'feature';
+                      setFutureFeaturesDraft((p) => ({
+                        ...p,
+                        itemType,
+                        status: itemType === 'error' ? 'open' : 'idea',
+                      }));
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="error">Error</SelectItem>
+                      <SelectItem value="feature">Future Feature</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Status</label>
+                  <Select
+                    value={futureFeaturesDraft.status}
+                    onValueChange={(value) => setFutureFeaturesDraft((p) => ({ ...p, status: value as BacklogDraft['status'] }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {futureFeaturesDraft.itemType === 'error' ? (
+                        <>
+                          <SelectItem value="open">Open</SelectItem>
+                          <SelectItem value="in_progress">In progress</SelectItem>
+                          <SelectItem value="resolved">Resolved</SelectItem>
+                        </>
+                      ) : (
+                        <>
+                          <SelectItem value="idea">Idea</SelectItem>
+                          <SelectItem value="planned">Planned</SelectItem>
+                          <SelectItem value="in_progress">In progress</SelectItem>
+                          <SelectItem value="shipped">Shipped</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">Priority</label>
+                  <Select
+                    value={futureFeaturesDraft.priority}
+                    onValueChange={(value) => setFutureFeaturesDraft((p) => ({ ...p, priority: value as BacklogDraft['priority'] }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium">Title</label>
                 <Textarea

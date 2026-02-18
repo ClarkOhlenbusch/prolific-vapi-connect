@@ -13,6 +13,28 @@ Whenever you make *any* change to this repository (code, migrations, config, doc
 - Avoid “open/read this file” as a verification step. Prefer runtime checks: UI flows, CLI commands, SQL queries, or observable behavior changes.
 - Do not ask the user to verify changes to agent instruction files (like `AGENTS.md`, `docs/verification-log.template.md`, `docs/future-features.md`) by opening/reading/grepping them. For instruction-file-only changes, state that there is no meaningful manual runtime test and that the effect will be observed in subsequent interactions.
 
+## Fast Execution Defaults (Required)
+
+To keep iteration speed high, prefer the smallest checks needed to safely complete the task.
+
+- **Run `npm run lint` after every repository change by default.**
+- If lint fails, do not ignore it; report the first actionable error(s) and stop before push/deploy steps.
+- Do not run global/slow checks by default (full test suites, typecheck-all, build-all, coverage, or large Playwright suites).
+- If validation is needed without user request, run only the narrowest targeted check for the exact changed area.
+- Prefer manual runtime verification steps in the response over agent-run heavy commands.
+- Escalate to broader checks only when debugging a failure, resolving ambiguity, or when the user requests deeper validation.
+
+### Push Validation Override (Required)
+
+When the user explicitly asks to **push** (or commit+push), run these checks before pushing:
+
+- On push requests, use push skill; must run lint+build before push.
+- `npm run lint`
+- `npm run build`
+
+If either fails, do not push; report the failure and the first actionable error.
+This override is in addition to the always-run lint default above.
+
 ## Confirmation Gate (Required)
 
 After providing `Test on your end:` steps for a change, you must explicitly ask the user to confirm the result before continuing with further changes. Use this exact prompt so the response is easy to parse:
@@ -58,6 +80,7 @@ When the user has the local notify server + browser tab open, use it to get thei
 
 - Done: run `./scripts/notify-browser.sh done`
 - Question/blocker: run `./scripts/notify-browser.sh question`
+- Before sending any message that asks the user a direct question or reports a blocker, you must trigger the `question` notification first.
 
 If the notify server is not running, fall back to `./scripts/notify.sh done|question`.
 

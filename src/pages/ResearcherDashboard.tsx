@@ -19,7 +19,8 @@ import {
   History,
   Bug,
   Map,
-  Cloud
+  Cloud,
+  Clapperboard
 } from 'lucide-react';
 import { UnifiedParticipantsTable } from '@/components/researcher/UnifiedParticipantsTable';
 import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponsesTable';
@@ -39,6 +40,7 @@ const SystemDesign = lazy(() => import('@/components/researcher/StudyMap'));
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
+const ENABLE_PLAYWRIGHT_DEBUG_PAGE = import.meta.env.DEV && import.meta.env.VITE_ENABLE_PLAYWRIGHT_DEBUG === 'true';
 
 export type SourceFilterValue = 'all' | 'participant' | 'researcher';
 
@@ -139,7 +141,16 @@ const ResearcherDashboard = () => {
                 onClick={() => navigate('/researcher/error-log')}
               >
                 <Bug className="h-4 w-4 mr-2" />
-                Error Log
+                Backlog
+              </Button>
+            )}
+            {!isGuestMode && isSuperAdmin && ENABLE_PLAYWRIGHT_DEBUG_PAGE && (
+              <Button
+                variant="outline"
+                onClick={() => navigate('/researcher/debug/video-runs')}
+              >
+                <Clapperboard className="h-4 w-4 mr-2" />
+                Video Debug
               </Button>
             )}
             <Button
