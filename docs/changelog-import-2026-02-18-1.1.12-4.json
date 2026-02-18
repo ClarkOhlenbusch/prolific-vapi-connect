@@ -1,0 +1,25 @@
+{
+  "version": "1.1.12",
+  "release_date": "2026-02-18",
+  "description": "Lint cleanup to zero errors and production build fix for ffmpeg WASM asset handling.",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "fix",
+      "description": "Fix production build stall caused by Rollup attempting to transform 31 MB ffmpeg WASM binary",
+      "scope": "researcher",
+      "commit_hash": "8eed2d4",
+      "pushed_at": "2026-02-18",
+      "details": "Replaced new URL('@ffmpeg/core/wasm', import.meta.url) pattern with static ?url imports so Vite copies the WASM as a static asset instead of running it through the transform pipeline."
+    },
+    {
+      "type": "chore",
+      "description": "Lint cleanup: zero ESLint errors, tailwind ESM import, gitignore additions",
+      "scope": "researcher",
+      "commit_hash": "7519b36",
+      "pushed_at": "2026-02-18",
+      "details": "Downgraded no-explicit-any to warning. Fixed block-scoping, empty catches, interface-to-type alias, escape, and const issues across researcher components and UI primitives."
+    }
+  ]
+}
