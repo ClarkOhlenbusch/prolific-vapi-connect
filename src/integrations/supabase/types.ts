@@ -858,6 +858,51 @@ export type Database = {
         }
         Relationships: []
       }
+      playwright_run_artifacts: {
+        Row: {
+          id: string
+          run_id: string
+          flow_id: string
+          run_created_at: string
+          ok: boolean
+          sync_model: string | null
+          debug_data: Json | null
+          video_fast_url: string | null
+          video_follow_url: string | null
+          video_narrated_url: string | null
+          imported_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          run_id: string
+          flow_id: string
+          run_created_at: string
+          ok: boolean
+          sync_model?: string | null
+          debug_data?: Json | null
+          video_fast_url?: string | null
+          video_follow_url?: string | null
+          video_narrated_url?: string | null
+          imported_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          run_id?: string
+          flow_id?: string
+          run_created_at?: string
+          ok?: boolean
+          sync_model?: string | null
+          debug_data?: Json | null
+          video_fast_url?: string | null
+          video_follow_url?: string | null
+          video_narrated_url?: string | null
+          imported_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       error_log_items: {
         Row: {
           changelog_version_ref: string | null

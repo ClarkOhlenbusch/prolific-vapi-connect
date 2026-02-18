@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, AlertTriangle, CheckCircle2, Bug, Clapperboard } from "lucide-react";
+import { ArrowLeft, RefreshCw, AlertTriangle, CheckCircle2, Bug, Clapperboard, Upload, CloudUpload } from "lucide-react";
 import { useResearcherAuth } from "@/contexts/ResearcherAuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { supabase } from "@/integrations/supabase/client";
+
+// ─── types ────────────────────────────────────────────────────────────────────
 
 type VideoRunPhase = {
   phase: string;
@@ -33,26 +36,6 @@ type EncodingStageDebug = {
   durationMs?: number;
 };
 
-type ManifestRun = {
-  runId: string;
-  flowId: string;
-  createdAt: string;
-  ok: boolean;
-  syncModel: string | null;
-  debugFile: string;
-  latestFile: string;
-  artifactUrls?: {
-    fast?: string | null;
-    follow?: string | null;
-    narrated?: string | null;
-  };
-};
-
-type ManifestDebug = {
-  updatedAt: string;
-  runs: ManifestRun[];
-};
-
 type VideoRunDebugRecord = {
   runId: string;
   flowId: string;
@@ -71,19 +54,28 @@ type VideoRunDebugRecord = {
   ffmpegStages: EncodingStageDebug[];
   timeline: Array<{ step: string; stepStartMs: number; stepEndMs: number; narrationMs?: number }>;
   narrationEvents: NarrationEventDebug[];
-  artifacts: {
-    fast: string | null;
-    follow: string | null;
-    narrated: string | null;
-  };
-  artifactUrls: {
-    fast: string | null;
-    follow: string | null;
-    narrated: string | null;
-  };
+  artifacts: { fast: string | null; follow: string | null; narrated: string | null };
+  artifactUrls: { fast: string | null; follow: string | null; narrated: string | null };
 };
 
-const ENABLE_PLAYWRIGHT_DEBUG_PAGE = import.meta.env.DEV && import.meta.env.VITE_ENABLE_PLAYWRIGHT_DEBUG === "true";
+type RunRow = {
+  runId: string;
+  flowId: string;
+  createdAt: string;
+  ok: boolean;
+  syncModel: string | null;
+  debugFileName: string;
+  // resolved video URLs (from DB if uploaded, or from /__dev__/ in local dev)
+  videoFastUrl: string | null;
+  videoFollowUrl: string | null;
+  videoNarratedUrl: string | null;
+};
+
+type ArtifactSlot = "fast" | "follow" | "narrated";
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+const IS_DEV = import.meta.env.DEV;
 
 const toSeconds = (ms: number | null | undefined): string => {
   if (!Number.isFinite(ms ?? NaN)) return "-";
@@ -95,50 +87,175 @@ const toDurationMs = (phase: VideoRunPhase): number | null => {
   return Math.max(0, (phase.endedAtMs || 0) - phase.startedAtMs);
 };
 
+/** Fetch a debug JSON either from /__dev__/ (local) or /playwright-runs/ (prod static). */
+async function fetchDebugJson(fileName: string): Promise<VideoRunDebugRecord> {
+  const url = IS_DEV
+    ? `/__dev__/playwright-runs/debug?file=${encodeURIComponent(fileName)}`
+    : `/playwright-runs/${encodeURIComponent(fileName)}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch debug record (${res.status})`);
+  return res.json() as Promise<VideoRunDebugRecord>;
+}
+
+/** Fetch the run manifest either from /__dev__/ (local) or /playwright-runs/ (prod static). */
+async function fetchManifest(): Promise<{ runId: string; flowId: string; createdAt: string; ok: boolean; syncModel: string | null; debugFile: string; artifactUrls?: { fast?: string | null; follow?: string | null; narrated?: string | null } }[]> {
+  if (IS_DEV) {
+    const res = await fetch("/__dev__/playwright-runs/manifest", { cache: "no-store" });
+    if (!res.ok) throw new Error(`Manifest fetch failed (${res.status})`);
+    const data = await res.json() as { updatedAt: string; runs: { runId: string; flowId: string; createdAt: string; ok: boolean; syncModel: string | null; debugFile: string; artifactUrls?: { fast?: string | null; follow?: string | null; narrated?: string | null } }[] };
+    return Array.isArray(data.runs) ? data.runs : [];
+  } else {
+    // prod: /playwright-runs/manifest.json is a list of filenames; derive run metadata from the JSONs
+    const res = await fetch("/playwright-runs/manifest.json", { cache: "no-store" });
+    if (!res.ok) throw new Error(`Manifest fetch failed (${res.status})`);
+    const names = await res.json() as string[];
+    const results = await Promise.allSettled(
+      names.map(async (name) => {
+        const r = await fetch(`/playwright-runs/${encodeURIComponent(name)}`, { cache: "no-store" });
+        if (!r.ok) throw new Error(`Failed to fetch ${name}`);
+        const d = await r.json() as VideoRunDebugRecord;
+        return { runId: d.runId, flowId: d.flowId, createdAt: d.createdAt, ok: d.ok, syncModel: d.syncModel, debugFile: name };
+      })
+    );
+    return results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  }
+}
+
+/** Fetch existing DB records for a list of runIds, returning a map runId → DB row. */
+async function fetchDbRecords(runIds: string[]) {
+  if (runIds.length === 0) return {} as Record<string, { video_fast_url: string | null; video_follow_url: string | null; video_narrated_url: string | null }>;
+  const { data } = await supabase
+    .from("playwright_run_artifacts")
+    .select("run_id, video_fast_url, video_follow_url, video_narrated_url")
+    .in("run_id", runIds);
+  const map: Record<string, { video_fast_url: string | null; video_follow_url: string | null; video_narrated_url: string | null }> = {};
+  for (const row of data ?? []) {
+    map[row.run_id] = { video_fast_url: row.video_fast_url, video_follow_url: row.video_follow_url, video_narrated_url: row.video_narrated_url };
+  }
+  return map;
+}
+
+/** Upsert run metadata into the DB (idempotent — only inserts missing rows). */
+async function upsertRunMetadata(runs: VideoRunDebugRecord[]) {
+  if (runs.length === 0) return;
+  const rows = runs.map((r) => ({
+    run_id: r.runId,
+    flow_id: r.flowId,
+    run_created_at: r.createdAt,
+    ok: r.ok,
+    sync_model: r.syncModel,
+    debug_data: r as unknown as Record<string, unknown>,
+  }));
+  await supabase.from("playwright_run_artifacts").upsert(rows, { onConflict: "run_id", ignoreDuplicates: true });
+}
+
+const STORAGE_BUCKET = "playwright-recordings";
+
+/** Upload a video Blob to Supabase Storage and return the public URL. */
+async function uploadVideoToStorage(runId: string, slot: ArtifactSlot, blob: Blob): Promise<string> {
+  const ext = blob.type.includes("webm") ? "webm" : "mp4";
+  const storagePath = `${runId}/${slot}.${ext}`;
+  const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(storagePath, blob, {
+    contentType: blob.type || "video/webm",
+    upsert: true,
+  });
+  if (error) throw new Error(error.message);
+  const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath);
+  return data.publicUrl;
+}
+
+/** Persist a video URL to the DB for a given run + slot. */
+async function saveVideoUrl(runId: string, slot: ArtifactSlot, url: string) {
+  const col = slot === "fast" ? "video_fast_url" : slot === "follow" ? "video_follow_url" : "video_narrated_url";
+  await supabase.from("playwright_run_artifacts").upsert({ run_id: runId, [col]: url } as never, { onConflict: "run_id" });
+}
+
+/** In dev: fetch a local artifact blob via the /__dev__/ endpoint. */
+async function fetchLocalArtifactBlob(localUrl: string): Promise<Blob> {
+  const res = await fetch(localUrl, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch local artifact (${res.status})`);
+  return res.blob();
+}
+
+// ─── component ────────────────────────────────────────────────────────────────
+
 const ResearcherVideoRunDebug = () => {
   const navigate = useNavigate();
   const { isSuperAdmin, isGuestMode } = useResearcherAuth();
-  const [manifest, setManifest] = useState<ManifestDebug>({ updatedAt: "", runs: [] });
+
+  const [rows, setRows] = useState<RunRow[]>([]);
   const [selectedRunId, setSelectedRunId] = useState("");
   const [detail, setDetail] = useState<VideoRunDebugRecord | null>(null);
   const [loadingManifest, setLoadingManifest] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const selectedRun = useMemo(
-    () => manifest.runs.find((run) => run.runId === selectedRunId) || null,
-    [manifest.runs, selectedRunId],
-  );
+  // per-slot upload state: { [runId+slot]: 'uploading' | 'done' | 'error' }
+  const [uploadState, setUploadState] = useState<Record<string, "uploading" | "done" | "error">>({});
+  const [autoUploadState, setAutoUploadState] = useState<"idle" | "running" | "done" | "error">("idle");
 
-  const loadManifest = useCallback(async () => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingUpload = useRef<{ runId: string; slot: ArtifactSlot } | null>(null);
+
+  const selectedRow = useMemo(() => rows.find((r) => r.runId === selectedRunId) ?? null, [rows, selectedRunId]);
+
+  // ── load manifest + DB state ──────────────────────────────────────────────
+
+  const loadRuns = useCallback(async () => {
     setLoadingManifest(true);
     setError(null);
     try {
-      const res = await fetch("/__dev__/playwright-runs/manifest", { cache: "no-store" });
-      if (!res.ok) throw new Error(`Failed to fetch manifest (${res.status})`);
-      const data = (await res.json()) as ManifestDebug;
-      const runs = Array.isArray(data.runs) ? data.runs : [];
-      setManifest({ updatedAt: data.updatedAt || "", runs });
-      setSelectedRunId((prev) => (prev && runs.some((r) => r.runId === prev) ? prev : (runs[0]?.runId || "")));
+      const manifestRuns = await fetchManifest();
+      const runIds = manifestRuns.map((r) => r.runId);
+      const dbMap = await fetchDbRecords(runIds);
+
+      const built: RunRow[] = manifestRuns.map((r) => {
+        const db = dbMap[r.runId];
+        // In dev the manifest already carries local /__dev__/ artifact URLs; in prod they're null until uploaded
+        const devUrls = r.artifactUrls ?? {};
+        return {
+          runId: r.runId,
+          flowId: r.flowId,
+          createdAt: r.createdAt,
+          ok: r.ok,
+          syncModel: r.syncModel,
+          debugFileName: r.debugFile,
+          videoFastUrl: db?.video_fast_url ?? (IS_DEV ? (devUrls.fast ?? null) : null),
+          videoFollowUrl: db?.video_follow_url ?? (IS_DEV ? (devUrls.follow ?? null) : null),
+          videoNarratedUrl: db?.video_narrated_url ?? (IS_DEV ? (devUrls.narrated ?? null) : null),
+        };
+      });
+
+      // Sort newest first
+      built.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setRows(built);
+      setSelectedRunId((prev) => (prev && built.some((r) => r.runId === prev) ? prev : (built[0]?.runId ?? "")));
+
+      // Auto-import new runs into DB (fire-and-forget; non-blocking)
+      const missingInDb = manifestRuns.filter((r) => !dbMap[r.runId]);
+      if (missingInDb.length > 0) {
+        Promise.allSettled(missingInDb.map((r) => fetchDebugJson(r.debugFile)))
+          .then((results) => {
+            const parsed = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+            return upsertRunMetadata(parsed);
+          })
+          .catch(() => { /* non-blocking; ignore import errors */ });
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load manifest");
+      setError(e instanceof Error ? e.message : "Failed to load runs");
     } finally {
       setLoadingManifest(false);
     }
   }, []);
 
-  const loadDetail = useCallback(async (run: ManifestRun | null) => {
-    if (!run?.debugFile) {
-      setDetail(null);
-      return;
-    }
+  // ── load detail for selected run ─────────────────────────────────────────
+
+  const loadDetail = useCallback(async (row: RunRow | null) => {
+    if (!row) { setDetail(null); return; }
     setLoadingDetail(true);
     setError(null);
     try {
-      const url = `/__dev__/playwright-runs/debug?file=${encodeURIComponent(run.debugFile)}`;
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`Failed to fetch debug record (${res.status})`);
-      const data = (await res.json()) as VideoRunDebugRecord;
+      const data = await fetchDebugJson(row.debugFileName);
       setDetail(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load debug record");
@@ -148,23 +265,122 @@ const ResearcherVideoRunDebug = () => {
     }
   }, []);
 
-  useEffect(() => {
-    void loadManifest();
-  }, [loadManifest]);
+  useEffect(() => { void loadRuns(); }, [loadRuns]);
+  useEffect(() => { void loadDetail(selectedRow); }, [loadDetail, selectedRow]);
 
-  useEffect(() => {
-    void loadDetail(selectedRun);
-  }, [loadDetail, selectedRun]);
+  // ── manual upload via file picker ─────────────────────────────────────────
 
-  if (!ENABLE_PLAYWRIGHT_DEBUG_PAGE || isGuestMode || !isSuperAdmin) {
+  const triggerManualUpload = (runId: string, slot: ArtifactSlot) => {
+    pendingUpload.current = { runId, slot };
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !pendingUpload.current) return;
+    const { runId, slot } = pendingUpload.current;
+    pendingUpload.current = null;
+    e.target.value = "";
+
+    const key = `${runId}:${slot}`;
+    setUploadState((s) => ({ ...s, [key]: "uploading" }));
+    try {
+      const url = await uploadVideoToStorage(runId, slot, file);
+      await saveVideoUrl(runId, slot, url);
+      setRows((prev) => prev.map((r) => {
+        if (r.runId !== runId) return r;
+        return {
+          ...r,
+          videoFastUrl: slot === "fast" ? url : r.videoFastUrl,
+          videoFollowUrl: slot === "follow" ? url : r.videoFollowUrl,
+          videoNarratedUrl: slot === "narrated" ? url : r.videoNarratedUrl,
+        };
+      }));
+      setUploadState((s) => ({ ...s, [key]: "done" }));
+    } catch (err) {
+      setUploadState((s) => ({ ...s, [key]: "error" }));
+      setError(err instanceof Error ? err.message : "Upload failed");
+    }
+  };
+
+  // ── auto-upload local artifacts (dev only) ────────────────────────────────
+
+  const autoUploadLocal = useCallback(async () => {
+    if (!IS_DEV) return;
+    setAutoUploadState("running");
+    setError(null);
+    try {
+      const slots: ArtifactSlot[] = ["fast", "follow", "narrated"];
+      const tasks: Promise<void>[] = [];
+
+      for (const row of rows) {
+        const urlMap: Record<ArtifactSlot, string | null> = {
+          fast: row.videoFastUrl,
+          follow: row.videoFollowUrl,
+          narrated: row.videoNarratedUrl,
+        };
+
+        for (const slot of slots) {
+          const existing = urlMap[slot];
+          // Only auto-upload if the current URL is a local /__dev__/ URL (not yet in cloud)
+          if (!existing || !existing.startsWith("/__dev__/")) continue;
+
+          const runId = row.runId;
+          const localUrl = existing;
+          const key = `${runId}:${slot}`;
+          setUploadState((s) => ({ ...s, [key]: "uploading" }));
+
+          tasks.push(
+            fetchLocalArtifactBlob(localUrl)
+              .then((blob) => uploadVideoToStorage(runId, slot, blob))
+              .then((cloudUrl) => saveVideoUrl(runId, slot, cloudUrl).then(() => cloudUrl))
+              .then((cloudUrl) => {
+                setRows((prev) => prev.map((r) => {
+                  if (r.runId !== runId) return r;
+                  return {
+                    ...r,
+                    videoFastUrl: slot === "fast" ? cloudUrl : r.videoFastUrl,
+                    videoFollowUrl: slot === "follow" ? cloudUrl : r.videoFollowUrl,
+                    videoNarratedUrl: slot === "narrated" ? cloudUrl : r.videoNarratedUrl,
+                  };
+                }));
+                setUploadState((s) => ({ ...s, [key]: "done" }));
+              })
+              .catch(() => {
+                setUploadState((s) => ({ ...s, [key]: "error" }));
+              })
+          );
+        }
+      }
+
+      await Promise.allSettled(tasks);
+      setAutoUploadState("done");
+    } catch {
+      setAutoUploadState("error");
+    }
+  }, [rows]);
+
+  // Count how many local-only videos exist (not yet in cloud)
+  const pendingLocalCount = useMemo(() => {
+    if (!IS_DEV) return 0;
+    let count = 0;
+    for (const row of rows) {
+      if (row.videoFastUrl?.startsWith("/__dev__/")) count++;
+      if (row.videoFollowUrl?.startsWith("/__dev__/")) count++;
+      if (row.videoNarratedUrl?.startsWith("/__dev__/")) count++;
+    }
+    return count;
+  }, [rows]);
+
+  // ── access gate ───────────────────────────────────────────────────────────
+
+  if (isGuestMode || !isSuperAdmin) {
     return (
       <div className="container mx-auto px-4 py-6">
         <Card>
           <CardHeader>
-            <CardTitle>Video Debug Disabled</CardTitle>
-            <CardDescription>
-              This page is only available for super admins in local dev when `VITE_ENABLE_PLAYWRIGHT_DEBUG=true`.
-            </CardDescription>
+            <CardTitle>Access Restricted</CardTitle>
+            <CardDescription>This page is only available to super admins.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" onClick={() => navigate("/researcher/dashboard")}>
@@ -177,8 +393,63 @@ const ResearcherVideoRunDebug = () => {
     );
   }
 
+  // ── render ────────────────────────────────────────────────────────────────
+
+  const VideoSlot = ({ label, url, slot }: { label: string; url: string | null; slot: ArtifactSlot }) => {
+    if (!selectedRow) return null;
+    const key = `${selectedRow.runId}:${slot}`;
+    const state = uploadState[key];
+    const isCloud = url && !url.startsWith("/__dev__/");
+
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">{label}</CardTitle>
+            <div className="flex items-center gap-2">
+              {isCloud && <Badge className="bg-emerald-100 text-emerald-800 text-xs">cloud</Badge>}
+              {url && !isCloud && <Badge className="bg-amber-100 text-amber-800 text-xs">local only</Badge>}
+              {state === "uploading" && <Badge variant="outline" className="text-xs animate-pulse">uploading…</Badge>}
+              {state === "done" && <Badge className="bg-emerald-100 text-emerald-800 text-xs">uploaded</Badge>}
+              {state === "error" && <Badge className="bg-red-100 text-red-800 text-xs">upload failed</Badge>}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                disabled={state === "uploading"}
+                onClick={() => triggerManualUpload(selectedRow.runId, slot)}
+              >
+                <Upload className="h-3 w-3 mr-1" />
+                {url ? "Replace" : "Upload"}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {url ? (
+            <video className="w-full rounded border" controls src={url} />
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              No {label.toLowerCase()} artifact{IS_DEV ? " — run playwright or upload manually" : " — upload via button above"}.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <div className="container mx-auto px-4 py-6 space-y-4">
+      {/* hidden file input shared across all upload slots */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*,.webm"
+        className="hidden"
+        onChange={(e) => void handleFileSelected(e)}
+      />
+
+      {/* header */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -189,14 +460,28 @@ const ResearcherVideoRunDebug = () => {
               </CardTitle>
               <CardDescription>
                 Inspect run telemetry, narration scheduling, and encoding stages.
+                {IS_DEV && " • Running in local dev mode."}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {IS_DEV && pendingLocalCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void autoUploadLocal()}
+                  disabled={autoUploadState === "running"}
+                >
+                  <CloudUpload className={`mr-2 h-4 w-4 ${autoUploadState === "running" ? "animate-pulse" : ""}`} />
+                  {autoUploadState === "running"
+                    ? "Uploading…"
+                    : `Upload ${pendingLocalCount} local video${pendingLocalCount !== 1 ? "s" : ""} to cloud`}
+                </Button>
+              )}
               <Button variant="outline" onClick={() => navigate("/researcher/dashboard")}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Dashboard
               </Button>
-              <Button variant="outline" onClick={() => void loadManifest()} disabled={loadingManifest}>
+              <Button variant="outline" onClick={() => void loadRuns()} disabled={loadingManifest}>
                 <RefreshCw className={`mr-2 h-4 w-4 ${loadingManifest ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
@@ -212,21 +497,17 @@ const ResearcherVideoRunDebug = () => {
                 value={selectedRunId}
                 onChange={(e) => setSelectedRunId(e.target.value)}
               >
-                {manifest.runs.length === 0 && <option value="">No runs found</option>}
-                {manifest.runs.map((run) => (
+                {rows.length === 0 && <option value="">No runs found</option>}
+                {rows.map((run) => (
                   <option key={run.runId} value={run.runId}>
-                    {run.flowId} • {new Date(run.createdAt).toLocaleString()}
+                    {run.flowId} • {new Date(run.createdAt).toLocaleString()} {run.ok ? "✓" : "✗"}
                   </option>
                 ))}
               </select>
             </label>
             <div className="space-y-1 text-sm">
-              <div className="text-muted-foreground">Manifest updated</div>
-              <div>{manifest.updatedAt ? new Date(manifest.updatedAt).toLocaleString() : "-"}</div>
-            </div>
-            <div className="space-y-1 text-sm">
               <div className="text-muted-foreground">Status</div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {detail?.ok ? (
                   <Badge className="bg-emerald-100 text-emerald-800">PASS</Badge>
                 ) : (
@@ -236,34 +517,29 @@ const ResearcherVideoRunDebug = () => {
                 {detail?.syncFallbackUsed ? <Badge className="bg-amber-100 text-amber-800">fallback</Badge> : null}
               </div>
             </div>
+            <div className="space-y-1 text-sm">
+              <div className="text-muted-foreground">Run ID</div>
+              <div className="text-xs truncate text-muted-foreground font-mono">{selectedRow?.runId || "-"}</div>
+            </div>
           </div>
           {error ? (
             <div className="text-sm text-red-600 flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 mt-0.5" />
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
               {error}
             </div>
           ) : null}
+          {loadingDetail && <div className="text-sm text-muted-foreground">Loading run details…</div>}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Narrated Video Preview</CardTitle>
-          <CardDescription>
-            Source: {detail?.artifactUrls?.narrated || selectedRun?.artifactUrls?.narrated || "-"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loadingDetail ? (
-            <div className="text-sm text-muted-foreground">Loading run details...</div>
-          ) : detail?.artifactUrls?.narrated ? (
-            <video className="w-full rounded border" controls src={detail.artifactUrls.narrated} />
-          ) : (
-            <div className="text-sm text-muted-foreground">No narrated artifact available for this run.</div>
-          )}
-        </CardContent>
-      </Card>
+      {/* video artifacts */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <VideoSlot label="Narrated" url={selectedRow?.videoNarratedUrl ?? null} slot="narrated" />
+        <VideoSlot label="Follow" url={selectedRow?.videoFollowUrl ?? null} slot="follow" />
+        <VideoSlot label="Fast" url={selectedRow?.videoFastUrl ?? null} slot="fast" />
+      </div>
 
+      {/* phase progress + encoding stages */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -307,12 +583,11 @@ const ResearcherVideoRunDebug = () => {
         </Card>
       </div>
 
+      {/* narration timeline */}
       <Card>
         <CardHeader>
           <CardTitle>Narration Timeline</CardTitle>
-          <CardDescription>
-            Source vs scheduled timings, including compressed silent gaps.
-          </CardDescription>
+          <CardDescription>Source vs scheduled timings, including compressed silent gaps.</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <div className="mb-3 text-xs text-muted-foreground">
@@ -340,15 +615,14 @@ const ResearcherVideoRunDebug = () => {
                   <td className="py-2 pr-2">{toSeconds(event.gapCompressedMs || 0)}</td>
                 </tr>
               )) : (
-                <tr>
-                  <td className="py-2 text-muted-foreground" colSpan={6}>No narration events found.</td>
-                </tr>
+                <tr><td className="py-2 text-muted-foreground" colSpan={6}>No narration events found.</td></tr>
               )}
             </tbody>
           </table>
         </CardContent>
       </Card>
 
+      {/* step timeline */}
       <Card>
         <CardHeader>
           <CardTitle>Recorded Step Timeline</CardTitle>
@@ -373,15 +647,14 @@ const ResearcherVideoRunDebug = () => {
                   <td className="py-2 pr-2">{toSeconds(row.narrationMs || 0)}</td>
                 </tr>
               )) : (
-                <tr>
-                  <td className="py-2 text-muted-foreground" colSpan={4}>No step timeline entries found.</td>
-                </tr>
+                <tr><td className="py-2 text-muted-foreground" colSpan={4}>No step timeline entries found.</td></tr>
               )}
             </tbody>
           </table>
         </CardContent>
       </Card>
 
+      {/* issues */}
       <Card>
         <CardHeader>
           <CardTitle>Issues and Notes</CardTitle>
