@@ -40,7 +40,6 @@ const SystemDesign = lazy(() => import('@/components/researcher/StudyMap'));
 
 const TAB_STORAGE_KEY = 'researcher-dashboard-active-tab';
 const SOURCE_FILTER_STORAGE_KEY = 'researcher-dashboard-source-filter';
-const ENABLE_PLAYWRIGHT_DEBUG_PAGE = import.meta.env.DEV && import.meta.env.VITE_ENABLE_PLAYWRIGHT_DEBUG === 'true';
 
 export type SourceFilterValue = 'all' | 'participant' | 'researcher';
 
@@ -144,7 +143,7 @@ const ResearcherDashboard = () => {
                 Backlog
               </Button>
             )}
-            {!isGuestMode && isSuperAdmin && ENABLE_PLAYWRIGHT_DEBUG_PAGE && (
+            {!isGuestMode && isSuperAdmin && (
               <Button
                 variant="outline"
                 onClick={() => navigate('/researcher/debug/video-runs')}
