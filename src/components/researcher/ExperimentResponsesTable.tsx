@@ -1043,15 +1043,15 @@ export const ExperimentResponsesTable = () => {
           </TableCell>
         ) : null;
 
-      case 'prolific_id':
-        const isParticipant = row.prolific_id.length === 24;
+      case 'prolific_id': {
         return (
           <TableCell className="font-mono text-sm" title={row.prolific_id}>
             {row.prolific_id.substring(0, 7)}...
           </TableCell>
         );
+      }
 
-      case 'source':
+      case 'source': {
         const isRealParticipant = row.prolific_id.length === 24;
         return (
           <TableCell>
@@ -1060,6 +1060,7 @@ export const ExperimentResponsesTable = () => {
             </Badge>
           </TableCell>
         );
+      }
 
       case 'created_at':
         return <TableCell>{new Date(row.created_at).toLocaleDateString()}</TableCell>;
@@ -1103,7 +1104,7 @@ export const ExperimentResponsesTable = () => {
       case 'formality':
         return <TableCell>{formatNumber(row.formality)}</TableCell>;
 
-      case 'ai_formality_score':
+      case 'ai_formality_score': {
         const calcId = formalityCalcMap.get(row.call_id);
         return (
           <TableCell onClick={(e) => e.stopPropagation()}>
@@ -1131,6 +1132,7 @@ export const ExperimentResponsesTable = () => {
             )}
           </TableCell>
         );
+      }
 
       case 'assistant_type':
         return (

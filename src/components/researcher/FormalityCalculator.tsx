@@ -117,7 +117,9 @@ export function FormalityCalculator() {
         if (Array.isArray(parsed) && parsed.length >= 2) {
           return parsed;
         }
-      } catch {}
+      } catch {
+        // Ignore malformed persisted compare texts.
+      }
     }
     return ['', ''];
   });
@@ -130,7 +132,9 @@ export function FormalityCalculator() {
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch {}
+      } catch {
+        // Ignore malformed compare history.
+      }
     }
     return [];
   });

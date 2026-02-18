@@ -185,7 +185,9 @@ export function PromptLab() {
         if (l) setLeftText(l);
         if (r) setRightText(r);
         if (m) setMergedText(m);
-      } catch {}
+      } catch {
+        // Ignore malformed local draft and continue with defaults.
+      }
     }
   }, []);
   

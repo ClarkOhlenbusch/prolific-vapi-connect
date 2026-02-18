@@ -682,7 +682,7 @@ const VoiceConversation = () => {
         <CardContent className="space-y-6">
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
             <p className="text-foreground">
-              ​<span className="font-bold">Scenario:</span> Your healthcare provider has introduced Cali, a new voice
+              <span className="font-bold">Scenario:</span> Your healthcare provider has introduced Cali, a new voice
               assistant powered by artificial intelligence (AI), to help conduct brief well-being check-ins. You will
               have a conversation with the assistant, and it will ask you some questions about how you've been feeling
               lately.

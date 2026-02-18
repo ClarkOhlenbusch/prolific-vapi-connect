@@ -1455,7 +1455,7 @@ const StudyMap = () => {
       const message = error instanceof Error ? error.message : "Could not generate System Design snapshot.";
       toast({
         title: "Generation failed",
-        description: `${message} If this is production, run: node scripts/generate-system-design-artifacts.mjs --release-status local_only --reason \"manual\" --force`,
+        description: `${message} If this is production, run: node scripts/generate-system-design-artifacts.mjs --release-status local_only --reason "manual" --force`,
         variant: "destructive",
       });
     } finally {

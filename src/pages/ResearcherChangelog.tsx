@@ -76,6 +76,7 @@ function getVisitedSet(): Set<string> {
     const raw = sessionStorage.getItem(VISITED_COMMITS_KEY);
     return raw ? new Set(JSON.parse(raw)) : new Set();
   } catch {
+    // Ignore malformed or unavailable visited-state cache.
     return new Set();
   }
 }
@@ -85,7 +86,9 @@ function markVisited(changeId: string) {
   set.add(changeId);
   try {
     sessionStorage.setItem(VISITED_COMMITS_KEY, JSON.stringify([...set]));
-  } catch {}
+  } catch {
+    // Ignore storage persistence failures.
+  }
 }
 
 function formatPushTimestamp(value: string) {
@@ -1356,7 +1359,9 @@ const ResearcherChangelog = () => {
     if (!lastId || !entryRefsMap.current[lastId]) return;
     const t = setTimeout(() => {
       entryRefsMap.current[lastId]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      try { sessionStorage.removeItem(LAST_ENTRY_KEY); } catch {}
+      try { sessionStorage.removeItem(LAST_ENTRY_KEY); } catch {
+        // Ignore storage cleanup failures.
+      }
     }, 100);
     return () => clearTimeout(t);
   }, [filteredAndSortedEntries.length]);
@@ -2101,7 +2106,9 @@ const ResearcherChangelog = () => {
                                     title={visitedCommitIds.has(change.id) ? 'Viewed · View commit' : 'View commit'}
                                     onClick={() => {
                                       markVisited(change.id);
-                                      try { sessionStorage.setItem(LAST_ENTRY_KEY, entry.id); } catch {}
+                                      try { sessionStorage.setItem(LAST_ENTRY_KEY, entry.id); } catch {
+                                        // Ignore storage write failures.
+                                      }
                                       setVisitedCommitIds(getVisitedSet());
                                     }}
                                   >

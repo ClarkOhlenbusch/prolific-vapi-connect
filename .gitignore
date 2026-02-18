@@ -68,3 +68,10 @@ responses-*.yml
 
 # Local Codex/Claude skill docs
 .claude/
+
+# Claude session handoff files (local only)
+claude-handoff.md
+claude.md
+
+# Vite config timestamp artifacts
+vite.config.ts.timestamp-*.mjs

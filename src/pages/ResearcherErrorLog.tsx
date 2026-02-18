@@ -378,7 +378,7 @@ const ResearcherErrorLog = () => {
 
   const handleDelete = (item: BacklogItem) => {
     if (!isSuperAdmin) return;
-    if (!window.confirm(`Delete \"${item.title}\"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
     deleteMutation.mutate(item.id);
   };
 

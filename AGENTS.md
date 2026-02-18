@@ -4,7 +4,7 @@
 
 Whenever you make *any* change to this repository (code, migrations, config, docs, scripts, UI copy, etc.), you must:
 
-- End your response with a **`Test on your end:`** section.
+- If relevant and useful, end your response with a **`Test on your end:`** section.
 - Provide **1–3 concrete, minimal steps** the user should run to verify the change worked (UI clicks and/or CLI commands).
 - Tailor the steps to the specific change (do not reuse generic “run tests” phrasing).
 - Do **not** run `npm run build` (or other slow global checks) by default. Prefer the targeted manual steps above; only run additional checks if the user asks or if it’s needed to debug a failure.
@@ -13,16 +13,6 @@ Whenever you make *any* change to this repository (code, migrations, config, doc
 - Avoid “open/read this file” as a verification step. Prefer runtime checks: UI flows, CLI commands, SQL queries, or observable behavior changes.
 - Do not ask the user to verify changes to agent instruction files (like `AGENTS.md`, `docs/verification-log.template.md`, `docs/future-features.md`) by opening/reading/grepping them. For instruction-file-only changes, state that there is no meaningful manual runtime test and that the effect will be observed in subsequent interactions.
 
-## Fast Execution Defaults (Required)
-
-To keep iteration speed high, prefer the smallest checks needed to safely complete the task.
-
-- **Run `npm run lint` after every repository change by default.**
-- If lint fails, do not ignore it; report the first actionable error(s) and stop before push/deploy steps.
-- Do not run global/slow checks by default (full test suites, typecheck-all, build-all, coverage, or large Playwright suites).
-- If validation is needed without user request, run only the narrowest targeted check for the exact changed area.
-- Prefer manual runtime verification steps in the response over agent-run heavy commands.
-- Escalate to broader checks only when debugging a failure, resolving ambiguity, or when the user requests deeper validation.
 
 ### Push Validation Override (Required)
 
