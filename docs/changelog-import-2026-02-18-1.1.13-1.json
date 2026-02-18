@@ -1,0 +1,32 @@
+{
+  "version": "1.1.13",
+  "release_date": "2026-02-18",
+  "description": "Playwright video debug page extended with cloud sync: metadata auto-imports from committed debug JSONs, videos upload to Supabase Storage via per-slot upload buttons and a bulk auto-upload action in dev.",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "feature",
+      "description": "Rewrite video debug page with cloud sync, auto-import, and upload UI",
+      "scope": "researcher",
+      "commit_hash": "edac71f",
+      "pushed_at": "2026-02-18",
+      "details": "Removed DEV-only gate — page works in production for super-admins. Auto-imports debug JSONs into DB on load. Per-slot upload buttons and bulk auto-upload (dev only) push videos to Supabase Storage."
+    },
+    {
+      "type": "chore",
+      "description": "Add playwright_run_artifacts table and playwright-recordings Storage bucket",
+      "scope": "researcher",
+      "commit_hash": "f920a54",
+      "pushed_at": "2026-02-18"
+    },
+    {
+      "type": "chore",
+      "description": "Add playwright-runs Vite plugin static-serve support and docs source directory",
+      "scope": "researcher",
+      "commit_hash": "2995140",
+      "pushed_at": "2026-02-18",
+      "details": "docs/playwright-runs/ is the committed source for debug JSONs; Vite copies them to public/playwright-runs/ at build time for production access."
+    }
+  ]
+}
