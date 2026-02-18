@@ -858,6 +858,59 @@ export type Database = {
         }
         Relationships: []
       }
+      error_log_items: {
+        Row: {
+          changelog_version_ref: string | null
+          created_at: string
+          created_by: string
+          details: string
+          display_order: number
+          id: string
+          priority: string
+          response_id: string | null
+          resolved_at: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          changelog_version_ref?: string | null
+          created_at?: string
+          created_by: string
+          details?: string
+          display_order?: number
+          id?: string
+          priority?: string
+          response_id?: string | null
+          resolved_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          changelog_version_ref?: string | null
+          created_at?: string
+          created_by?: string
+          details?: string
+          display_order?: number
+          id?: string
+          priority?: string
+          response_id?: string | null
+          resolved_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_log_items_response_id_fkey"
+            columns: ["response_id"]
+            isOneToOne: false
+            referencedRelation: "experiment_responses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feedback_responses: {
         Row: {
           call_id: string

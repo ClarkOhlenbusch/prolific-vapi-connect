@@ -17,6 +17,7 @@ import {
   Activity,
   Users,
   History,
+  Bug,
   Map,
   Cloud
 } from 'lucide-react';
@@ -132,6 +133,15 @@ const ResearcherDashboard = () => {
                 Changelog
               </Button>
             )}
+            {!isGuestMode && (
+              <Button
+                variant="outline"
+                onClick={() => navigate('/researcher/error-log')}
+              >
+                <Bug className="h-4 w-4 mr-2" />
+                Error Log
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => navigate('/researcher/statistics')}
@@ -215,60 +225,74 @@ const ResearcherDashboard = () => {
             )}
           </TabsList>
 
-          <TabsContent value="summary">
-            <DataSummary sourceFilter={sourceFilter} />
-          </TabsContent>
+          {activeTab === 'summary' && (
+            <TabsContent value="summary">
+              <DataSummary sourceFilter={sourceFilter} />
+            </TabsContent>
+          )}
 
-          <TabsContent value="responses">
-            <Card>
-              <CardHeader>
-                <CardTitle>All Responses</CardTitle>
-                <CardDescription>
-                  View all participant and researcher responses with completion status, experiment data, and journey timelines
-                </CardDescription>
-                <div className="mt-3 pt-3 border-t">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Prolific demographics</p>
-                  <ProlificDemographicsImport />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <UnifiedParticipantsTable sourceFilter={sourceFilter} />
-              </CardContent>
-            </Card>
-          </TabsContent>
+          {activeTab === 'responses' && (
+            <TabsContent value="responses">
+              <Card>
+                <CardHeader>
+                  <CardTitle>All Responses</CardTitle>
+                  <CardDescription>
+                    View all participant and researcher responses with completion status, experiment data, and journey timelines
+                  </CardDescription>
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-sm font-medium text-muted-foreground mb-1">Prolific demographics</p>
+                    <ProlificDemographicsImport />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <UnifiedParticipantsTable sourceFilter={sourceFilter} />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
-          <TabsContent value="time">
-            <TimeAnalysis sourceFilter={sourceFilter} />
-          </TabsContent>
+          {activeTab === 'time' && (
+            <TabsContent value="time">
+              <TimeAnalysis sourceFilter={sourceFilter} />
+            </TabsContent>
+          )}
 
-          <TabsContent value="formality">
-            <FormalityCalculator />
-          </TabsContent>
+          {activeTab === 'formality' && (
+            <TabsContent value="formality">
+              <FormalityCalculator />
+            </TabsContent>
+          )}
 
-          <TabsContent value="prompts">
-            <PromptLab />
-          </TabsContent>
+          {activeTab === 'prompts' && (
+            <TabsContent value="prompts">
+              <PromptLab />
+            </TabsContent>
+          )}
 
-          <TabsContent value="no-consent">
-            <NoConsentFeedbackTable sourceFilter={sourceFilter} />
-          </TabsContent>
+          {activeTab === 'no-consent' && (
+            <TabsContent value="no-consent">
+              <NoConsentFeedbackTable sourceFilter={sourceFilter} />
+            </TabsContent>
+          )}
 
-          <TabsContent value="study-map">
-            <Suspense
-              fallback={
-                <Card>
-                  <CardHeader>
-                    <CardTitle>System Design</CardTitle>
-                    <CardDescription>Loading interactive diagram…</CardDescription>
-                  </CardHeader>
-                </Card>
-              }
-            >
-              <SystemDesign />
-            </Suspense>
-          </TabsContent>
+          {activeTab === 'study-map' && (
+            <TabsContent value="study-map">
+              <Suspense
+                fallback={
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>System Design</CardTitle>
+                      <CardDescription>Loading interactive diagram…</CardDescription>
+                    </CardHeader>
+                  </Card>
+                }
+              >
+                <SystemDesign />
+              </Suspense>
+            </TabsContent>
+          )}
 
-          {isSuperAdmin && (
+          {isSuperAdmin && activeTab === 'activity' && (
             <TabsContent value="activity">
               <Card>
                 <CardHeader>
@@ -285,7 +309,7 @@ const ResearcherDashboard = () => {
             </TabsContent>
           )}
 
-          {isSuperAdmin && (
+          {isSuperAdmin && activeTab === 'archived' && (
             <TabsContent value="archived">
               <Card>
                 <CardHeader>
@@ -302,7 +326,7 @@ const ResearcherDashboard = () => {
             </TabsContent>
           )}
 
-          {isSuperAdmin && (
+          {isSuperAdmin && activeTab === 'settings' && (
             <TabsContent value="settings">
               <ExperimentSettings
                 sourceFilter={sourceFilter}
