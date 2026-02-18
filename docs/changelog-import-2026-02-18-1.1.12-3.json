@@ -1,0 +1,26 @@
+[
+  {
+    "version": "1.1.12",
+    "release_date": "2026-02-18",
+    "description": "Add researcher error log backlog management with drag-and-drop ordering, response linking, and a fix for badge tooltip ref warnings.",
+    "active_batch_label": "",
+    "release_status": "pushed",
+    "auto_mark_release_on_push": false,
+    "changes": [
+      {
+        "type": "added",
+        "description": "added researcher error log page, dashboard route/button, schema migrations, and optional links from error items to response details",
+        "scope": "researcher",
+        "commit_hash": "4dc9668",
+        "pushed_at": "2026-02-18T10:58:15-08:00"
+      },
+      {
+        "type": "fixed",
+        "description": "fixed React ref warnings by making Badge forward refs for Radix asChild tooltip triggers",
+        "scope": "researcher",
+        "commit_hash": "4861dc4",
+        "pushed_at": "2026-02-18T10:58:15-08:00"
+      }
+    ]
+  }
+]
