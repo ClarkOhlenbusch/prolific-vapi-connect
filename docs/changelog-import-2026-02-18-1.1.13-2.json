@@ -1,0 +1,17 @@
+{
+  "version": "1.1.13",
+  "release_date": "2026-02-18",
+  "description": "Fix video debug page not accessible in production: route and nav button were gated behind a DEV-only flag that was missed during the page rewrite.",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "fix",
+      "description": "Ungate video debug route and nav button for production super-admins",
+      "scope": "researcher",
+      "commit_hash": "f603ce8",
+      "pushed_at": "2026-02-18",
+      "details": "App.tsx and ResearcherDashboard.tsx both had ENABLE_PLAYWRIGHT_DEBUG_PAGE (DEV-only) guards that prevented the route from registering and the nav button from rendering in production. Removed both; the page itself enforces the super-admin access check."
+    }
+  ]
+}
