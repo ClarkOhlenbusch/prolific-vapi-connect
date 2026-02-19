@@ -76,3 +76,8 @@ claude.md
 
 # Vite config timestamp artifacts
 vite.config.ts.timestamp-*.mjs
+
+# Screenshot / image artifacts
+*.png
+*.jpg
+*.jpeg
