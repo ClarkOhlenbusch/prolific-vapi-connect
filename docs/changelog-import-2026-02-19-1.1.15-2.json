@@ -1,0 +1,23 @@
+{
+  "version": "1.1.15",
+  "release_date": "2026-02-19",
+  "description": "Backlog tooling: query script + JSON patch import system for updating backlog items via committed files",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "tooling",
+      "description": "Add scripts/query-backlog.mjs — dumps researcher backlog (items, comments, linked responses) as formatted text or JSON; supports --open-only flag",
+      "scope": "researcher",
+      "commit_hash": "d87ed69",
+      "pushed_at": "2026-02-19"
+    },
+    {
+      "type": "feature",
+      "description": "Add useBacklogPatchImport hook: auto-applies docs/backlog-patch-*.json files on backlog page load; first patch marks 6 v1.1.15 features as shipped",
+      "scope": "researcher",
+      "commit_hash": "e827c9b",
+      "pushed_at": "2026-02-19"
+    }
+  ]
+}
