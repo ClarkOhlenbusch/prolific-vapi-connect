@@ -137,7 +137,7 @@ const ResearcherDashboard = () => {
             {!isGuestMode && (
               <Button
                 variant="outline"
-                onClick={() => navigate('/researcher/error-log')}
+                onClick={() => navigate('/researcher/backlog')}
               >
                 <Bug className="h-4 w-4 mr-2" />
                 Backlog

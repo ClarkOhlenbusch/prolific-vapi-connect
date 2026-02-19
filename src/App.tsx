@@ -106,7 +106,7 @@ const App = () => (
                 <Route path="/researcher/statistics" element={<ResearcherProtectedRoute><StatisticalAnalysis /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/response/:id" element={<ResearcherProtectedRoute><ResponseDetails /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/changelog" element={<ResearcherProtectedRoute><ResearcherChangelog /></ResearcherProtectedRoute>} />
-                <Route path="/researcher/error-log" element={<ResearcherProtectedRoute><ResearcherErrorLog /></ResearcherProtectedRoute>} />
+                <Route path="/researcher/backlog" element={<ResearcherProtectedRoute><ResearcherErrorLog /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/backups" element={<ResearcherProtectedRoute><ResearcherBackups /></ResearcherProtectedRoute>} />
                 <Route
                   path="/researcher/debug/video-runs"
