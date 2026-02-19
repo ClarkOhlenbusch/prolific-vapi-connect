@@ -1,0 +1,25 @@
+{
+  "version": "1.1.13",
+  "release_date": "2026-02-18",
+  "description": "Video debug page opened to all non-guest researchers; silent DB save failure fixed by switching from upsert to update in saveVideoUrl.",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "fix",
+      "description": "Open video debug page to all non-guest researchers (was super-admin only)",
+      "scope": "researcher",
+      "commit_hash": "27b10d8",
+      "pushed_at": "2026-02-18",
+      "details": "Removed requireSuperAdmin from App.tsx route and isSuperAdmin guard from ResearcherDashboard.tsx nav button. Any authenticated non-guest researcher can now access the page."
+    },
+    {
+      "type": "fix",
+      "description": "Fix saveVideoUrl silent failure — switch upsert to update to avoid NOT NULL constraint",
+      "scope": "researcher",
+      "commit_hash": "bcaffb2",
+      "pushed_at": "2026-02-18",
+      "details": "saveVideoUrl called .upsert({run_id, video_url}) without required NOT NULL fields (flow_id, run_created_at). PostgreSQL evaluates NOT NULL before ON CONFLICT so the upsert silently failed even when the row existed. Switched to .update().eq('run_id', ...) and added error throw so failures surface in the UI. Videos uploaded to Storage will now have their URLs saved to the DB."
+    }
+  ]
+}
