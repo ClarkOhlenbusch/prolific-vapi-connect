@@ -292,6 +292,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [conditionFilter, setConditionFilter] = useState<string>('all');
   const [batchFilter, setBatchFilter] = useState<string>('all');
+  const [flagFilter, setFlagFilter] = useState<'all' | 'flagged' | 'not_flagged'>('all');
+  const [reviewedFilter, setReviewedFilter] = useState<'all' | 'reviewed' | 'not_reviewed'>('all');
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [archiveMode, setArchiveMode] = useState<'single' | 'bulk'>('single');
   const [singleArchiveId, setSingleArchiveId] = useState<string | null>(null);
@@ -815,8 +817,22 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       }
     }
 
+    // Flag filter
+    if (flagFilter === 'flagged') {
+      result = result.filter(p => p.flagged);
+    } else if (flagFilter === 'not_flagged') {
+      result = result.filter(p => !p.flagged);
+    }
+
+    // Reviewed filter
+    if (reviewedFilter === 'reviewed') {
+      result = result.filter(p => p.reviewed_by_researcher);
+    } else if (reviewedFilter === 'not_reviewed') {
+      result = result.filter(p => !p.reviewed_by_researcher);
+    }
+
     return result;
-  }, [data, searchTerm, statusFilter, conditionFilter, batchFilter, globalSourceFilter]);
+  }, [data, searchTerm, statusFilter, conditionFilter, batchFilter, flagFilter, reviewedFilter, globalSourceFilter]);
 
   const paginatedData = useMemo(() => {
     const start = currentPage * pageSize;
@@ -1515,6 +1531,28 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
               {availableBatches.map(batch => (
                 <SelectItem key={batch} value={batch}>{batch}</SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={flagFilter} onValueChange={(v) => setFlagFilter(v as typeof flagFilter)}>
+            <SelectTrigger className="w-full sm:w-[130px]">
+              <SelectValue placeholder="Flag" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Flags</SelectItem>
+              <SelectItem value="flagged">Flagged</SelectItem>
+              <SelectItem value="not_flagged">Not Flagged</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={reviewedFilter} onValueChange={(v) => setReviewedFilter(v as typeof reviewedFilter)}>
+            <SelectTrigger className="w-full sm:w-[140px]">
+              <SelectValue placeholder="Reviewed" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Reviewed</SelectItem>
+              <SelectItem value="reviewed">Reviewed</SelectItem>
+              <SelectItem value="not_reviewed">Not Reviewed</SelectItem>
             </SelectContent>
           </Select>
         </div>
