@@ -142,7 +142,7 @@ export const ResearcherModeToggle = () => {
   return (
     <>
       {isResearcherMode && !location.pathname.startsWith('/researcher') && (
-        <div className="fixed left-4 top-4 z-50 rounded-lg border bg-background/95 px-3 py-2 text-sm shadow-lg backdrop-blur">
+        <div className="fixed left-12 top-2 z-50 rounded-lg border bg-background/95 px-3 py-2 text-sm shadow-lg backdrop-blur">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Researcher ID</p>
           <p className="font-mono font-semibold">{displayedResearcherId || 'initializing...'}</p>
         </div>
