@@ -143,7 +143,7 @@ const ResearcherDashboard = () => {
                 Backlog
               </Button>
             )}
-            {!isGuestMode && isSuperAdmin && (
+            {!isGuestMode && (
               <Button
                 variant="outline"
                 onClick={() => navigate('/researcher/debug/video-runs')}

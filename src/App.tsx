@@ -107,7 +107,7 @@ const App = () => (
                 <Route
                   path="/researcher/debug/video-runs"
                   element={
-                    <ResearcherProtectedRoute requireSuperAdmin>
+                    <ResearcherProtectedRoute>
                       <ResearcherVideoRunDebug />
                     </ResearcherProtectedRoute>
                   }
