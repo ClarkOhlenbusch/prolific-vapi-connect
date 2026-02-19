@@ -1,0 +1,30 @@
+{
+  "version": "1.1.14",
+  "release_date": "2026-02-19",
+  "description": "Dark mode for researcher surfaces; image files untracked from git",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "tooling",
+      "description": "Untrack PNG and image files from git via .gitignore",
+      "scope": "researcher",
+      "commit_hash": "401322f",
+      "pushed_at": "2026-02-19"
+    },
+    {
+      "type": "feature",
+      "description": "Add dark mode toggle for researcher and researcher pages only. Uses next-themes (class-based). Toggle appears when researcher mode is active or on /researcher/* routes; resets to light on exit.",
+      "scope": "researcher",
+      "commit_hash": "6f2eaca",
+      "pushed_at": "2026-02-19"
+    },
+    {
+      "type": "fix",
+      "description": "Shift Researcher ID badge right (left-12 top-2) to avoid overlap with the new dark mode toggle button",
+      "scope": "researcher",
+      "commit_hash": "91734b9",
+      "pushed_at": "2026-02-19"
+    }
+  ]
+}
