@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useBacklogPatchImport } from '@/hooks/useBacklogPatchImport';
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -838,6 +839,9 @@ const ResearcherErrorLog = () => {
   );};
 
   const isReadOnly = isGuestMode;
+
+  // Auto-apply any pending backlog patch files from docs/backlog-patch-*.json
+  useBacklogPatchImport(!isReadOnly);
   const lanes =
     typeFilter === 'all'
       ? ([['error', errors], ['feature', features]] as const)

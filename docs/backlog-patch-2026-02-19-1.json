@@ -1,0 +1,11 @@
+{
+  "description": "Mark 6 features as shipped — all implemented in v1.1.15",
+  "operations": [
+    { "op": "update_status", "id": "b6ec4521-71fb-4e97-8000-dd0df3476ed2", "status": "shipped" },
+    { "op": "update_status", "id": "af8d27f3-7d35-4acf-88f0-ecd2c28aa73d", "status": "shipped" },
+    { "op": "update_status", "id": "bbfc2341-4d4e-4fd9-a8ca-3daa4650994c", "status": "shipped" },
+    { "op": "update_status", "id": "90df8371-b28b-4f9c-9590-30a86ca5c22d", "status": "shipped" },
+    { "op": "update_status", "id": "e9b729ac-9cc9-47dc-afee-5c05f899ce75", "status": "shipped" },
+    { "op": "update_status", "id": "312c8f22-ceab-4bf6-a840-a4f52ccbca8c", "status": "shipped" }
+  ]
+}
