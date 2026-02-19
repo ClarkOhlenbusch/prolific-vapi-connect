@@ -1565,7 +1565,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                 <CollapsibleContent>
                   <div className="mt-2 flex gap-2 flex-wrap">
                     <Button
-                      onClick={processQueueNow}
+                      onClick={() => processQueueNow()}
                       disabled={processQueueLoading || isGuestMode || !activeMetricId}
                       variant="outline"
                       size="sm"

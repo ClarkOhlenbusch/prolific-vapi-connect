@@ -2628,7 +2628,7 @@ const ResponseDetails = () => {
       itemType === 'error'
         ? (['open', 'in_progress', 'resolved'] as const)
         : (['idea', 'planned', 'in_progress', 'shipped'] as const);
-    if (!allowedStatuses.includes(status as (typeof allowedStatuses)[number])) {
+    if (!(allowedStatuses as readonly string[]).includes(status)) {
       toast.error('Selected status is not valid for this item type.');
       return;
     }
