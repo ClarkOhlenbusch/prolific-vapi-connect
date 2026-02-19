@@ -167,7 +167,11 @@ async function uploadVideoToStorage(runId: string, slot: ArtifactSlot, blob: Blo
 /** Persist a video URL to the DB for a given run + slot. */
 async function saveVideoUrl(runId: string, slot: ArtifactSlot, url: string) {
   const col = slot === "fast" ? "video_fast_url" : slot === "follow" ? "video_follow_url" : "video_narrated_url";
-  await supabase.from("playwright_run_artifacts").upsert({ run_id: runId, [col]: url } as never, { onConflict: "run_id" });
+  const { error } = await supabase
+    .from("playwright_run_artifacts")
+    .update({ [col]: url } as never)
+    .eq("run_id", runId);
+  if (error) throw new Error(error.message);
 }
 
 /** In dev: fetch a local artifact blob via the /__dev__/ endpoint. */
@@ -374,13 +378,13 @@ const ResearcherVideoRunDebug = () => {
 
   // ── access gate ───────────────────────────────────────────────────────────
 
-  if (isGuestMode || !isSuperAdmin) {
+  if (isGuestMode) {
     return (
       <div className="container mx-auto px-4 py-6">
         <Card>
           <CardHeader>
             <CardTitle>Access Restricted</CardTitle>
-            <CardDescription>This page is only available to super admins.</CardDescription>
+            <CardDescription>This page is only available to researchers.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" onClick={() => navigate("/researcher/dashboard")}>
