@@ -109,6 +109,74 @@ export type Database = {
         }
         Relationships: []
       }
+      backlog_item_comments: {
+        Row: {
+          backlog_item_id: string
+          created_at: string | null
+          created_by: string
+          id: string
+          text: string
+        }
+        Insert: {
+          backlog_item_id: string
+          created_at?: string | null
+          created_by: string
+          id?: string
+          text: string
+        }
+        Update: {
+          backlog_item_id?: string
+          created_at?: string | null
+          created_by?: string
+          id?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "backlog_item_comments_backlog_item_id_fkey"
+            columns: ["backlog_item_id"]
+            isOneToOne: false
+            referencedRelation: "researcher_backlog_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      backlog_item_responses: {
+        Row: {
+          backlog_item_id: string
+          created_at: string | null
+          id: string
+          response_id: string
+        }
+        Insert: {
+          backlog_item_id: string
+          created_at?: string | null
+          id?: string
+          response_id: string
+        }
+        Update: {
+          backlog_item_id?: string
+          created_at?: string | null
+          id?: string
+          response_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "backlog_item_responses_backlog_item_id_fkey"
+            columns: ["backlog_item_id"]
+            isOneToOne: false
+            referencedRelation: "researcher_backlog_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "backlog_item_responses_response_id_fkey"
+            columns: ["response_id"]
+            isOneToOne: false
+            referencedRelation: "experiment_responses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       changelog_changes: {
         Row: {
           change_type: string
@@ -347,6 +415,59 @@ export type Database = {
           storage_path?: string
         }
         Relationships: []
+      }
+      error_log_items: {
+        Row: {
+          changelog_version_ref: string | null
+          created_at: string
+          created_by: string
+          details: string
+          display_order: number
+          id: string
+          priority: string
+          resolved_at: string | null
+          response_id: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          changelog_version_ref?: string | null
+          created_at?: string
+          created_by: string
+          details?: string
+          display_order?: number
+          id?: string
+          priority?: string
+          resolved_at?: string | null
+          response_id?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          changelog_version_ref?: string | null
+          created_at?: string
+          created_by?: string
+          details?: string
+          display_order?: number
+          id?: string
+          priority?: string
+          resolved_at?: string | null
+          response_id?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_log_items_response_id_fkey"
+            columns: ["response_id"]
+            isOneToOne: false
+            referencedRelation: "experiment_responses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       experiment_batches: {
         Row: {
@@ -858,104 +979,6 @@ export type Database = {
         }
         Relationships: []
       }
-      playwright_run_artifacts: {
-        Row: {
-          id: string
-          run_id: string
-          flow_id: string
-          run_created_at: string
-          ok: boolean
-          sync_model: string | null
-          debug_data: Json | null
-          video_fast_url: string | null
-          video_follow_url: string | null
-          video_narrated_url: string | null
-          imported_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          run_id: string
-          flow_id: string
-          run_created_at: string
-          ok: boolean
-          sync_model?: string | null
-          debug_data?: Json | null
-          video_fast_url?: string | null
-          video_follow_url?: string | null
-          video_narrated_url?: string | null
-          imported_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          run_id?: string
-          flow_id?: string
-          run_created_at?: string
-          ok?: boolean
-          sync_model?: string | null
-          debug_data?: Json | null
-          video_fast_url?: string | null
-          video_follow_url?: string | null
-          video_narrated_url?: string | null
-          imported_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      error_log_items: {
-        Row: {
-          changelog_version_ref: string | null
-          created_at: string
-          created_by: string
-          details: string
-          display_order: number
-          id: string
-          priority: string
-          response_id: string | null
-          resolved_at: string | null
-          status: string
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          changelog_version_ref?: string | null
-          created_at?: string
-          created_by: string
-          details?: string
-          display_order?: number
-          id?: string
-          priority?: string
-          response_id?: string | null
-          resolved_at?: string | null
-          status?: string
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          changelog_version_ref?: string | null
-          created_at?: string
-          created_by?: string
-          details?: string
-          display_order?: number
-          id?: string
-          priority?: string
-          response_id?: string | null
-          resolved_at?: string | null
-          status?: string
-          title?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "error_log_items_response_id_fkey"
-            columns: ["response_id"]
-            isOneToOne: false
-            referencedRelation: "experiment_responses"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       feedback_responses: {
         Row: {
           call_id: string
@@ -985,59 +1008,6 @@ export type Database = {
           voice_assistant_feedback?: string
         }
         Relationships: []
-      }
-      researcher_backlog_items: {
-        Row: {
-          completed_at: string | null
-          created_at: string
-          created_by: string
-          details: string
-          display_order: number
-          id: string
-          item_type: string
-          linked_response_id: string | null
-          priority: string
-          status: string
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          completed_at?: string | null
-          created_at?: string
-          created_by: string
-          details?: string
-          display_order?: number
-          id?: string
-          item_type: string
-          linked_response_id?: string | null
-          priority?: string
-          status: string
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          completed_at?: string | null
-          created_at?: string
-          created_by?: string
-          details?: string
-          display_order?: number
-          id?: string
-          item_type?: string
-          linked_response_id?: string | null
-          priority?: string
-          status?: string
-          title?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "researcher_backlog_items_linked_response_id_fkey"
-            columns: ["linked_response_id"]
-            isOneToOne: false
-            referencedRelation: "experiment_responses"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       formality_calculations: {
         Row: {
@@ -1360,6 +1330,51 @@ export type Database = {
         }
         Relationships: []
       }
+      playwright_run_artifacts: {
+        Row: {
+          debug_data: Json | null
+          flow_id: string
+          id: string
+          imported_at: string
+          ok: boolean
+          run_created_at: string
+          run_id: string
+          sync_model: string | null
+          updated_at: string
+          video_fast_url: string | null
+          video_follow_url: string | null
+          video_narrated_url: string | null
+        }
+        Insert: {
+          debug_data?: Json | null
+          flow_id: string
+          id?: string
+          imported_at?: string
+          ok?: boolean
+          run_created_at: string
+          run_id: string
+          sync_model?: string | null
+          updated_at?: string
+          video_fast_url?: string | null
+          video_follow_url?: string | null
+          video_narrated_url?: string | null
+        }
+        Update: {
+          debug_data?: Json | null
+          flow_id?: string
+          id?: string
+          imported_at?: string
+          ok?: boolean
+          run_created_at?: string
+          run_id?: string
+          sync_model?: string | null
+          updated_at?: string
+          video_fast_url?: string | null
+          video_follow_url?: string | null
+          video_narrated_url?: string | null
+        }
+        Relationships: []
+      }
       prolific_export_demographics: {
         Row: {
           age: number | null
@@ -1425,6 +1440,59 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      researcher_backlog_items: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          details: string
+          display_order: number
+          id: string
+          item_type: string
+          linked_response_id: string | null
+          priority: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          details?: string
+          display_order?: number
+          id?: string
+          item_type: string
+          linked_response_id?: string | null
+          priority?: string
+          status: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          details?: string
+          display_order?: number
+          id?: string
+          item_type?: string
+          linked_response_id?: string | null
+          priority?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "researcher_backlog_items_linked_response_id_fkey"
+            columns: ["linked_response_id"]
+            isOneToOne: false
+            referencedRelation: "experiment_responses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       researcher_roles: {
         Row: {

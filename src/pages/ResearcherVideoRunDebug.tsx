@@ -144,7 +144,7 @@ async function upsertRunMetadata(runs: VideoRunDebugRecord[]) {
     run_created_at: r.createdAt,
     ok: r.ok,
     sync_model: r.syncModel,
-    debug_data: r as unknown as Record<string, unknown>,
+    debug_data: r as unknown as import("@/integrations/supabase/types").Json,
   }));
   await supabase.from("playwright_run_artifacts").upsert(rows, { onConflict: "run_id", ignoreDuplicates: true });
 }
