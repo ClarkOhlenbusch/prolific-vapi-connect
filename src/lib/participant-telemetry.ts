@@ -35,6 +35,17 @@ export interface ClientTelemetryContext {
   online?: boolean;
   connection?: ConnectionInfo;
   inputDeviceCount?: number;
+  // Parsed / enriched fields
+  browserName?: string;
+  browserVersion?: string;
+  osName?: string;
+  screenWidth?: number;
+  screenHeight?: number;
+  devicePixelRatio?: number;
+  deviceMemory?: number;
+  hardwareConcurrency?: number;
+  timezone?: string;
+  colorDepth?: number;
 }
 
 export interface TroubleshootingGuidance {
@@ -67,6 +78,38 @@ interface LogNavigationEventParams {
   metadata?: Json;
   timeOnPageSeconds?: number | null;
 }
+
+const parseBrowserName = (ua: string): string => {
+  if (/edg\//i.test(ua)) return "Edge";
+  if (/opr\//i.test(ua) || /opera/i.test(ua)) return "Opera";
+  if (/chrome|chromium/i.test(ua) && !/edg/i.test(ua)) return "Chrome";
+  if (/firefox/i.test(ua)) return "Firefox";
+  if (/safari/i.test(ua) && !/chrome/i.test(ua)) return "Safari";
+  return "Unknown";
+};
+
+const parseBrowserVersion = (ua: string, name: string): string => {
+  const patterns: Record<string, RegExp> = {
+    Edge: /edg\/(\d+)/i,
+    Opera: /(?:opr|opera)\/(\d+)/i,
+    Chrome: /chrome\/(\d+)/i,
+    Firefox: /firefox\/(\d+)/i,
+    Safari: /version\/(\d+)/i,
+  };
+  const pattern = patterns[name];
+  if (!pattern) return "";
+  const match = ua.match(pattern);
+  return match ? match[1] : "";
+};
+
+const parseOsName = (ua: string, platform: string): string => {
+  if (/android/i.test(ua)) return "Android";
+  if (/iphone|ipad|ipod/i.test(ua)) return "iOS";
+  if (/win/i.test(platform)) return "Windows";
+  if (/mac/i.test(platform)) return "macOS";
+  if (/linux/i.test(platform)) return "Linux";
+  return "Unknown";
+};
 
 const toErrorDetails = (error: unknown): { name?: string; message?: string } | null => {
   if (!error) return null;
@@ -113,15 +156,34 @@ const countInputDevices = async (): Promise<number | undefined> => {
   }
 };
 
-export const collectClientContext = async (): Promise<ClientTelemetryContext> => ({
-  userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
-  platform: typeof navigator !== "undefined" ? navigator.platform : undefined,
-  language: typeof navigator !== "undefined" ? navigator.language : undefined,
-  isSecureContext: typeof window !== "undefined" ? window.isSecureContext : false,
-  online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
-  connection: getConnectionInfo(),
-  inputDeviceCount: await countInputDevices(),
-});
+export const collectClientContext = async (): Promise<ClientTelemetryContext> => {
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : undefined;
+  const platform = typeof navigator !== "undefined" ? navigator.platform : undefined;
+  const browserName = ua ? parseBrowserName(ua) : undefined;
+  const browserVersion = ua && browserName ? parseBrowserVersion(ua, browserName) : undefined;
+  const osName = (ua || platform) ? parseOsName(ua ?? "", platform ?? "") : undefined;
+  return {
+    userAgent: ua,
+    platform,
+    language: typeof navigator !== "undefined" ? navigator.language : undefined,
+    isSecureContext: typeof window !== "undefined" ? window.isSecureContext : false,
+    online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
+    connection: getConnectionInfo(),
+    inputDeviceCount: await countInputDevices(),
+    browserName,
+    browserVersion,
+    osName,
+    screenWidth: typeof screen !== "undefined" ? screen.width : undefined,
+    screenHeight: typeof screen !== "undefined" ? screen.height : undefined,
+    devicePixelRatio: typeof window !== "undefined" ? window.devicePixelRatio : undefined,
+    deviceMemory: typeof navigator !== "undefined"
+      ? (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+      : undefined,
+    hardwareConcurrency: typeof navigator !== "undefined" ? navigator.hardwareConcurrency : undefined,
+    timezone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined,
+    colorDepth: typeof screen !== "undefined" ? screen.colorDepth : undefined,
+  };
+};
 
 export const generateCallAttemptId = (): string => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {

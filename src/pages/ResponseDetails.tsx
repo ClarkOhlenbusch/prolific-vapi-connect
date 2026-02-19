@@ -34,7 +34,8 @@ import {
   AlertTriangle,
   StickyNote,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  Monitor
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import ffmpegCoreURL from '@ffmpeg/core?url';
@@ -1000,6 +1001,7 @@ const SECTIONS = [
   { id: 'tipi', label: 'TIPI', icon: User },
   { id: 'intention', label: 'Intention', icon: Target },
   { id: 'feedback', label: 'Feedback', icon: MessageSquare },
+  { id: 'diagnostics', label: 'Diagnostics', icon: Monitor },
 ];
 
 const ResponseDetails = () => {
@@ -1056,6 +1058,8 @@ const ResponseDetails = () => {
   });
   const [runEvaluationLoading, setRunEvaluationLoading] = useState(false);
   const [checkResultsLoading, setCheckResultsLoading] = useState(false);
+  const [sessionDeviceInfo, setSessionDeviceInfo] = useState<Record<string, unknown> | null>(null);
+  const [feedbackPageContext, setFeedbackPageContext] = useState<Record<string, unknown> | null>(null);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
   const setMergedFieldState = useCallback((field: FeedbackFieldKey, next: MergedDictationAudioState) => {
@@ -1413,6 +1417,8 @@ const ResponseDetails = () => {
               'dictation_transcript_appended',
               'feedback_input_mode',
               'feedback_draft_autosave',
+              'device_info',
+              'feedback_page_context',
             ])
             .order('created_at', { ascending: true }),
         ]);
@@ -1653,6 +1659,8 @@ const ResponseDetails = () => {
           const nextDictationDiagnosticsByField = createEmptyDictationDiagnosticsByField();
           const nextDictationTranscriptSegmentsByField = createEmptyDictationTranscriptSegmentsByField();
           const markers: ReplayMarker[] = [];
+          let capturedDeviceInfo: Record<string, unknown> | null = null;
+          let capturedFeedbackPageContext: Record<string, unknown> | null = null;
 
           const pageLabel = (pageName: string) => {
             if (pageName === 'practice-conversation') return 'Practice';
@@ -1767,6 +1775,14 @@ const ResponseDetails = () => {
               }
             }
 
+            if (event.event_type === 'device_info') {
+              capturedDeviceInfo = metadata;
+            }
+
+            if (event.event_type === 'feedback_page_context') {
+              capturedFeedbackPageContext = metadata;
+            }
+
             if (event.event_type === 'feedback_input_mode') {
               const mode = metadata.mode;
               const field = metadata.field;
@@ -1828,6 +1844,8 @@ const ResponseDetails = () => {
           setDictationDiagnosticsByField(nextDictationDiagnosticsByField);
           setDictationTranscriptSegmentsByField(nextDictationTranscriptSegmentsByField);
           setFeedbackDraftSavedAt(latestFeedbackDraftSavedAt);
+          setSessionDeviceInfo(capturedDeviceInfo);
+          setFeedbackPageContext(capturedFeedbackPageContext);
         }
 
         try {
@@ -4361,6 +4379,123 @@ const ResponseDetails = () => {
                     : data.early_access_notes?.trim() || "No notes provided."}
                 </p>
               </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Session Diagnostics Section */}
+        <section ref={el => sectionRefs.current['diagnostics'] = el} id="diagnostics" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Monitor className="h-5 w-5 text-slate-500" />
+                Session Diagnostics
+              </CardTitle>
+              <CardDescription>
+                Device, browser, and microphone diagnostic data logged by the participant's browser.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Device / Browser */}
+              {(sessionDeviceInfo || feedbackPageContext) && (() => {
+                const ctx = (feedbackPageContext ?? sessionDeviceInfo) as Record<string, unknown>;
+                return (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Device &amp; Browser</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      {[
+                        { label: 'Browser', value: ctx.browserName && ctx.browserVersion ? `${ctx.browserName} ${ctx.browserVersion}` : (ctx.browserName as string) ?? null },
+                        { label: 'OS', value: ctx.osName as string ?? null },
+                        { label: 'Language', value: ctx.language as string ?? null },
+                        { label: 'Timezone', value: ctx.timezone as string ?? null },
+                        { label: 'Screen', value: ctx.screenWidth && ctx.screenHeight ? `${ctx.screenWidth}×${ctx.screenHeight}` : null },
+                        { label: 'Pixel ratio', value: ctx.devicePixelRatio != null ? String(ctx.devicePixelRatio) : null },
+                        { label: 'RAM (GB)', value: ctx.deviceMemory != null ? String(ctx.deviceMemory) : null },
+                        { label: 'CPU cores', value: ctx.hardwareConcurrency != null ? String(ctx.hardwareConcurrency) : null },
+                        { label: 'Network', value: (ctx.connection as Record<string, unknown>)?.effectiveType as string ?? null },
+                        { label: 'Secure context', value: ctx.isSecureContext != null ? (ctx.isSecureContext ? 'Yes' : 'No') : null },
+                        { label: 'Mic inputs', value: ctx.inputDeviceCount != null ? String(ctx.inputDeviceCount) : null },
+                      ].filter(item => item.value != null).map(item => (
+                        <div key={item.label}>
+                          <label className="text-xs text-muted-foreground">{item.label}</label>
+                          <p className="font-mono text-xs truncate">{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <details className="mt-2">
+                      <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">Full user agent</summary>
+                      <p className="mt-1 font-mono text-xs break-all text-muted-foreground">{ctx.userAgent as string ?? '—'}</p>
+                    </details>
+                  </div>
+                );
+              })()}
+
+              {/* Feedback page — MediaRecorder / SpeechRecognition */}
+              {feedbackPageContext && (() => {
+                const ctx = feedbackPageContext as Record<string, unknown>;
+                const mimeSupport = (ctx.mimeTypeSupport ?? {}) as Record<string, boolean>;
+                return (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Feedback Page — Audio Support</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <label className="text-xs text-muted-foreground">SpeechRecognition API</label>
+                        <p className={`text-xs font-medium ${ctx.speechRecognitionSupported ? 'text-green-600' : 'text-red-600'}`}>
+                          {ctx.speechRecognitionSupported ? 'Supported' : 'Not supported'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">MediaRecorder API</label>
+                        <p className={`text-xs font-medium ${ctx.mediaRecorderSupported ? 'text-green-600' : 'text-red-600'}`}>
+                          {ctx.mediaRecorderSupported ? 'Supported' : 'Not supported'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Selected MIME type</label>
+                        <p className="font-mono text-xs">{ctx.selectedMimeType as string || '—'}</p>
+                      </div>
+                    </div>
+                    {Object.keys(mimeSupport).length > 0 && (
+                      <div className="mt-3">
+                        <label className="text-xs text-muted-foreground">MIME type support</label>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {Object.entries(mimeSupport).map(([mime, supported]) => (
+                            <span key={mime} className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono ${supported ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {supported ? '✓' : '✗'} {mime}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Mic diagnostics by stage */}
+              {journeyDiagnostics && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Mic Diagnostics by Stage</h3>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    {(['practice', 'main', 'feedback'] as const).map(stage => (
+                      <div key={stage} className="rounded border p-3 space-y-1">
+                        <p className="text-xs font-semibold capitalize text-muted-foreground">{stage === 'main' ? 'Main call' : stage}</p>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Permission</label>
+                          <p className="text-xs">{journeyDiagnostics[stage]?.micPermission ?? '—'}</p>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Audio detected</label>
+                          <p className="text-xs">{journeyDiagnostics[stage]?.micAudio ?? '—'}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!sessionDeviceInfo && !feedbackPageContext && !journeyDiagnostics && (
+                <p className="text-sm text-muted-foreground">No diagnostic data logged for this participant.</p>
+              )}
             </CardContent>
           </Card>
         </section>

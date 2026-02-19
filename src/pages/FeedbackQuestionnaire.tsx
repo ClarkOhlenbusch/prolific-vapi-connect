@@ -16,7 +16,7 @@ import { FeedbackProgressBar } from "@/components/FeedbackProgressBar";
 import { RecordingProgressBar } from "@/components/RecordingProgressBar";
 import { ExperimentProgress } from "@/components/ExperimentProgress";
 import { VoiceDictation, VoiceDictationRef } from "@/components/VoiceDictation";
-import { getMicIssueGuidance, logNavigationEvent, runMicDiagnostics } from "@/lib/participant-telemetry";
+import { collectClientContext, getMicIssueGuidance, logNavigationEvent, runMicDiagnostics } from "@/lib/participant-telemetry";
 
 type FeedbackField = "voice_assistant_feedback" | "communication_style_feedback" | "experiment_feedback";
 type FeedbackInputMode = "typed" | "dictated";
@@ -318,6 +318,36 @@ const FeedbackQuestionnaire = () => {
       if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
     };
   }, []);
+
+  // Log device/browser context and MediaRecorder/SpeechRecognition support on page load.
+  useEffect(() => {
+    if (!prolificId) return;
+    const logPageContext = async () => {
+      const context = await collectClientContext();
+      const speechRecognitionSupported = typeof window !== "undefined"
+        && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+      const mediaRecorderSupported = typeof MediaRecorder !== "undefined";
+      const candidateMimeTypes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+      const mimeTypeSupport: Record<string, boolean> = {};
+      let selectedMimeType: string | null = null;
+      if (mediaRecorderSupported && typeof MediaRecorder.isTypeSupported === "function") {
+        for (const mime of candidateMimeTypes) {
+          mimeTypeSupport[mime] = MediaRecorder.isTypeSupported(mime);
+        }
+        selectedMimeType = candidateMimeTypes.find((m) => MediaRecorder.isTypeSupported(m)) ?? null;
+      }
+      logFeedbackEvent("feedback_page_context", {
+        ...context,
+        speechRecognitionSupported,
+        mediaRecorderSupported,
+        selectedMimeType,
+        mimeTypeSupport,
+      });
+    };
+    void logPageContext();
+  // logFeedbackEvent is stable (useCallback); prolificId triggers if it arrives late
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prolificId]);
 
   const closeDictationMicIssueModal = useCallback((options: { submitReport?: boolean } = {}) => {
     const field = dictationMicIssueField;
@@ -684,7 +714,9 @@ const FeedbackQuestionnaire = () => {
         field,
         fieldLabel: FEEDBACK_FIELD_LABELS[field],
         errorCode: "media_recorder_setup_failed",
+        errorName: error instanceof Error ? error.name : null,
         message: error instanceof Error ? error.message : String(error),
+        attemptedMimeType: getSupportedAudioMimeType() || null,
       });
       return null;
     }
