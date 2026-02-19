@@ -13,6 +13,8 @@ import { useSessionValidation } from "@/hooks/useSessionValidation";
 import { useRoutePreload } from "@/hooks/useRoutePreload";
 import { useSessionReplayTracking } from "@/hooks/useSessionReplayTracking";
 import { BuildVersionBadge } from "@/components/BuildVersionBadge";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { DarkModeToggle } from "@/components/DarkModeToggle";
 
 // Lazy load route components for code splitting
 const ProlificId = lazy(() => import("./pages/ProlificId"));
@@ -66,6 +68,7 @@ const SessionReplayTracker = () => {
 };
 
 const App = () => (
+  <ThemeProvider>
   <QueryClientProvider client={queryClient}>
     <ResearcherModeProvider>
       <ResearcherAuthProvider>
@@ -74,6 +77,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <SessionReplayTracker />
+            <DarkModeToggle />
             <ResearcherModeToggle />
             <BuildVersionBadge />
             <Suspense fallback={<PageSkeleton />}>
@@ -120,6 +124,7 @@ const App = () => (
       </ResearcherAuthProvider>
     </ResearcherModeProvider>
   </QueryClientProvider>
+  </ThemeProvider>
 );
 
 export default App;
