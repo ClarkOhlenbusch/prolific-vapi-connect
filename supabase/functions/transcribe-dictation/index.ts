@@ -5,11 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const FEEDBACK_FIELDS = [
-  "voice_assistant_feedback",
-  "communication_style_feedback",
-  "experiment_feedback",
-] as const;
+const FEEDBACK_FIELDS = ["voice_assistant_feedback", "communication_style_feedback", "experiment_feedback"] as const;
 
 type FeedbackField = (typeof FEEDBACK_FIELDS)[number];
 
@@ -73,9 +69,27 @@ Deno.serve(async (req: Request) => {
       }
 
       const totalDurationMs = recordings.reduce((sum, r) => sum + (r.duration_ms ?? 0), 0);
-      console.info(`[transcribe-dictation] ${recordings.length} clip(s) for ${field}, total ${Math.round(totalDurationMs / 1000)}s`);
+      console.info(
+        `[transcribe-dictation] ${recordings.length} clip(s) for ${field}, total ${Math.round(totalDurationMs / 1000)}s`,
+      );
 
-      // 2. Check if the text column is already populated — don't overwrite typed text
+      // 2. Idempotency check — skip if we already logged a transcript_appended event for this field
+      const { data: existingEvent } = await supabase
+        .from("navigation_events")
+        .select("id")
+        .eq("prolific_id", prolificId)
+        .eq("event_type", "dictation_transcript_appended")
+        .eq("page_name", "feedback")
+        .contains("metadata", { field })
+        .maybeSingle();
+
+      if (existingEvent) {
+        console.info(`[transcribe-dictation] ${field} already transcribed (event found), skipping`);
+        results[field] = { status: "skipped_already_transcribed" };
+        continue;
+      }
+
+      // 3. Fetch existing typed text — if present we will append, not replace
       const { data: existing, error: existErr } = await supabase
         .from("experiment_responses")
         .select(field)
@@ -89,11 +103,11 @@ Deno.serve(async (req: Request) => {
       }
 
       const existingText = (existing as Record<string, unknown> | null)?.[field];
-      if (existingText && typeof existingText === "string" && existingText.trim() && existingText.trim() !== "Not provided") {
-        console.info(`[transcribe-dictation] ${field} already has text, skipping transcription`);
-        results[field] = { status: "skipped_has_text" };
-        continue;
-      }
+      const hasExistingText =
+        existingText &&
+        typeof existingText === "string" &&
+        existingText.trim() &&
+        existingText.trim() !== "Not provided";
 
       // 3. Download and transcribe each clip, accumulate transcript
       const transcriptParts: string[] = [];
@@ -142,12 +156,13 @@ Deno.serve(async (req: Request) => {
 
       const fullTranscript = transcriptParts.join(" ").trim();
 
-      // 5. Write transcript to experiment_responses (only if column is still empty)
+      // 5. Write transcript — append to typed text if present, otherwise replace
+      const newFieldValue = hasExistingText ? `${(existingText as string).trim()} ${fullTranscript}` : fullTranscript;
+
       const { error: updateErr } = await supabase
         .from("experiment_responses")
-        .update({ [field]: fullTranscript })
-        .eq("prolific_id", prolificId)
-        .or(`${field}.is.null,${field}.eq.Not provided,${field}.eq.`);
+        .update({ [field]: newFieldValue })
+        .eq("prolific_id", prolificId);
 
       if (updateErr) {
         console.error(`[transcribe-dictation] Failed to update ${field}:`, updateErr.message);
@@ -155,7 +170,18 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      console.info(`[transcribe-dictation] ${field} transcribed: ${fullTranscript.length} chars`);
+      // 6. Log dictation_transcript_appended so the Researcher UI can highlight dictated text in blue
+      await supabase.from("navigation_events").insert({
+        prolific_id: prolificId,
+        call_id: callId,
+        page_name: "feedback",
+        event_type: "dictation_transcript_appended",
+        metadata: { context: "dictation", field, text: fullTranscript },
+      });
+
+      console.info(
+        `[transcribe-dictation] ${field} transcribed: ${fullTranscript.length} chars (appended: ${!!hasExistingText})`,
+      );
       results[field] = { status: "transcribed", chars: fullTranscript.length };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
