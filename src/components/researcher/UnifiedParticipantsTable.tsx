@@ -296,6 +296,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [reviewedFilter, setReviewedFilter] = useState<'all' | 'reviewed' | 'not_reviewed'>('all');
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [archiveMode, setArchiveMode] = useState<'single' | 'bulk'>('single');
+  const [archiveReason, setArchiveReason] = useState('');
   const [singleArchiveId, setSingleArchiveId] = useState<string | null>(null);
   const [showExportColumnDialog, setShowExportColumnDialog] = useState(false);
   const [exportSelectedColumns, setExportSelectedColumns] = useState<Set<string>>(() => new Set(EXPORT_COLUMNS.map(c => c.id)));
@@ -906,11 +907,13 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const handleArchiveSingle = (id: string) => {
     setSingleArchiveId(id);
     setArchiveMode('single');
+    setArchiveReason('');
     setShowArchiveDialog(true);
   };
 
   const handleArchiveBulk = () => {
     setArchiveMode('bulk');
+    setArchiveReason('');
     setShowArchiveDialog(true);
   };
 
@@ -931,7 +934,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         original_id: item.id,
         archived_data: JSON.parse(JSON.stringify(item)),
         archived_by: user.id,
-        archive_reason: archiveMode === 'bulk' ? 'Bulk archived by researcher' : 'Archived by researcher',
+        archive_reason: archiveReason.trim() || (archiveMode === 'bulk' ? 'Bulk archived by researcher' : 'Archived by researcher'),
       }));
 
       const { error: archiveError } = await supabase
@@ -940,12 +943,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
       if (archiveError) throw archiveError;
 
-      const { error: deleteError } = await supabase
-        .from('participant_calls')
-        .delete()
-        .in('id', idsToArchive);
-
-      if (deleteError) throw deleteError;
+      // We do NOT delete from participant_calls — a trigger prevents it for research data integrity.
+      // The archived_responses filter already excludes these records from all researcher views.
 
       toast.success(`${idsToArchive.length} participant(s) archived successfully`);
       setShowArchiveDialog(false);
@@ -1790,18 +1789,27 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         </div>
       </div>
 
-      <AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
+      <AlertDialog open={showArchiveDialog} onOpenChange={(open) => { setShowArchiveDialog(open); if (!open) setArchiveReason(''); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {archiveMode === 'bulk' 
-                ? `Archive ${selectedIds.size} participant(s)?` 
+              {archiveMode === 'bulk'
+                ? `Archive ${selectedIds.size} participant(s)?`
                 : 'Archive this participant?'}
             </AlertDialogTitle>
             <AlertDialogDescription>
               This will move the participant record(s) to the archive. They won't be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="px-1 pb-2">
+            <Input
+              placeholder="Reason for archiving (optional)"
+              value={archiveReason}
+              onChange={(e) => setArchiveReason(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleArchiveConfirm()}
+              autoFocus
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleArchiveConfirm}>Archive</AlertDialogAction>

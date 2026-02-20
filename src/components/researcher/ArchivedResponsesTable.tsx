@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useResearcherAuth } from '@/contexts/ResearcherAuthContext';
 import {
@@ -12,12 +13,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import { 
-  Search, 
+import {
+  Search,
   ChevronLeft,
   ChevronRight,
-  Eye,
+  ExternalLink,
   RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,13 +31,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { GUEST_ARCHIVED_RESPONSES } from '@/lib/guest-dummy-data';
 
 interface ArchivedResponse {
@@ -59,8 +52,8 @@ export const ArchivedResponsesTable = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [restoreId, setRestoreId] = useState<string | null>(null);
-  const [viewItem, setViewItem] = useState<ArchivedResponse | null>(null);
   const { isGuestMode } = useResearcherAuth();
+  const navigate = useNavigate();
 
   const fetchData = async () => {
     // Use dummy data for guest mode
@@ -68,7 +61,10 @@ export const ArchivedResponsesTable = () => {
       let filtered = GUEST_ARCHIVED_RESPONSES as ArchivedResponse[];
       if (searchTerm) {
         const query = searchTerm.toLowerCase();
-        filtered = filtered.filter(item => item.original_table.toLowerCase().includes(query));
+        filtered = filtered.filter(item => {
+          const pid = (item.archived_data?.prolific_id as string | undefined) ?? '';
+          return pid.toLowerCase().includes(query);
+        });
       }
       const from = currentPage * PAGE_SIZE;
       const to = from + PAGE_SIZE;
@@ -87,7 +83,7 @@ export const ArchivedResponsesTable = () => {
         .range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
 
       if (searchTerm) {
-        query = query.ilike('original_table', `%${searchTerm}%`);
+        query = query.ilike('archived_data->>prolific_id', `%${searchTerm}%`);
       }
 
       const { data: archived, count, error } = await query;
@@ -124,14 +120,8 @@ export const ArchivedResponsesTable = () => {
       const itemToRestore = data.find(item => item.id === restoreId);
       if (!itemToRestore) return;
 
-      // Re-insert into original table
-      const { error: insertError } = await supabase
-        .from(itemToRestore.original_table as 'experiment_responses')
-        .insert(itemToRestore.archived_data as never);
-
-      if (insertError) throw insertError;
-
-      // Delete from archive
+      // The original record was never deleted from participant_calls (deletion is blocked by trigger).
+      // Restore simply removes the archived_responses entry, which makes it visible again.
       const { error: deleteError } = await supabase
         .from('archived_responses')
         .delete()
@@ -150,21 +140,6 @@ export const ArchivedResponsesTable = () => {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  const getTableColor = (table: string) => {
-    switch (table) {
-      case 'experiment_responses':
-        return 'bg-blue-100 text-blue-800';
-      case 'demographics':
-        return 'bg-green-100 text-green-800';
-      case 'participant_calls':
-        return 'bg-purple-100 text-purple-800';
-      case 'no_consent_feedback':
-        return 'bg-amber-100 text-amber-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
   if (isLoading && data.length === 0) {
     return (
       <div className="space-y-4">
@@ -181,7 +156,7 @@ export const ArchivedResponsesTable = () => {
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by table name..."
+            placeholder="Search by Prolific ID..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -196,8 +171,7 @@ export const ArchivedResponsesTable = () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Original Table</TableHead>
-              <TableHead>Original ID</TableHead>
+              <TableHead>Prolific ID</TableHead>
               <TableHead>Archived At</TableHead>
               <TableHead>Reason</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -206,44 +180,46 @@ export const ArchivedResponsesTable = () => {
           <TableBody>
             {data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                   No archived responses
                 </TableCell>
               </TableRow>
             ) : (
-              data.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    <Badge className={getTableColor(row.original_table)} variant="outline">
-                      {row.original_table.replace('_', ' ')}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{row.original_id}</TableCell>
-                  <TableCell>{new Date(row.archived_at).toLocaleString()}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">
-                    {row.archive_reason || 'No reason provided'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setViewItem(row)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setRestoreId(row.id)}
-                        className="text-green-600 hover:text-green-700"
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+              data.map((row) => {
+                const prolificId = (row.archived_data?.prolific_id as string | undefined) || '—';
+                return (
+                  <TableRow key={row.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/researcher/response/${row.original_id}`)}>
+                    <TableCell className="font-mono text-sm font-medium text-primary">
+                      {prolificId}
+                    </TableCell>
+                    <TableCell>{new Date(row.archived_at).toLocaleString()}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">
+                      {row.archive_reason || 'No reason provided'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/researcher/response/${row.original_id}`); }}
+                          title="View response details"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); setRestoreId(row.id); }}
+                          className="text-green-600 hover:text-green-700"
+                          title="Restore participant"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -281,7 +257,7 @@ export const ArchivedResponsesTable = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Restore this response?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will restore the response back to its original table and remove it from the archive.
+              This will unarchive the participant and make them visible again in the participants table.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -291,40 +267,6 @@ export const ArchivedResponsesTable = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={!!viewItem} onOpenChange={() => setViewItem(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Archived Data</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="max-h-[60vh]">
-            {viewItem && (
-              <div className="space-y-4 p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Original Table</label>
-                    <p>{viewItem.original_table}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Archived At</label>
-                    <p>{new Date(viewItem.archived_at).toLocaleString()}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-sm font-medium text-muted-foreground">Archive Reason</label>
-                    <p>{viewItem.archive_reason || 'No reason provided'}</p>
-                  </div>
-                </div>
-                
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">Original Data</h4>
-                  <pre className="bg-muted p-4 rounded-md text-xs overflow-x-auto">
-                    {JSON.stringify(viewItem.archived_data, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            )}
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
