@@ -1,0 +1,30 @@
+{
+  "version": "1.1.17",
+  "release_date": "2026-02-20",
+  "description": "Archive flow fixes and UX improvements",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "fixed",
+      "description": "Archiving a participant no longer fails with a database integrity error. The archive action now correctly stores a snapshot in the archive table without attempting to delete the original record, which was blocked by a research-data-integrity trigger.",
+      "scope": "researcher",
+      "commit_hash": "TBD",
+      "pushed_at": "2026-02-20"
+    },
+    {
+      "type": "changed",
+      "description": "The Archived Responses table now shows the participant's Prolific ID as the primary identifier instead of raw table names and UUIDs. Clicking a row navigates directly to the response details page, and search now filters by Prolific ID.",
+      "scope": "researcher",
+      "commit_hash": "TBD",
+      "pushed_at": "2026-02-20"
+    },
+    {
+      "type": "added",
+      "description": "Researchers are now prompted to enter an optional reason when archiving a participant. The reason is stored with the archive record and visible in the Archived Responses table.",
+      "scope": "researcher",
+      "commit_hash": "TBD",
+      "pushed_at": "2026-02-20"
+    }
+  ]
+}
