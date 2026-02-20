@@ -1,0 +1,17 @@
+{
+  "version": "1.1.17",
+  "release_date": "2026-02-19",
+  "description": "Fix dictation transcription appending typed and dictated text, and remove crash in feedback submission.",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "fixed",
+      "scope": "both",
+      "description": "When a participant both typed text and recorded audio feedback, the dictated transcript is now correctly appended to the typed text instead of being silently dropped. The Researcher UI now also highlights the dictated portion in blue as before. Implemented by removing the early-exit guard in the transcribe-dictation Edge Function that skipped transcription when typed text existed, appending the Groq transcript to the existing value, and logging a dictation_transcript_appended navigation event for Researcher highlight rendering.",
+      "details": "Added idempotency guard via navigation_events lookup to prevent double-append on retry. Also fixed a ReferenceError on segmentText in a debug log inside FeedbackQuestionnaire that was causing feedback submission to crash when a mic issue occurred.",
+      "commit_hash": "9f15bb1",
+      "pushed_at": "2026-02-19"
+    }
+  ]
+}
