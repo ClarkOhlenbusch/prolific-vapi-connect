@@ -1,0 +1,16 @@
+{
+  "version": "1.1.16",
+  "release_date": "2026-02-19",
+  "description": "Fix changelog import files: correct type values and details format so change items render in the UI",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "fixed",
+      "scope": "researcher",
+      "description": "Changelog entries for v1.1.14–1.1.16 now show their individual change items correctly in the Changelog UI. Fixed by correcting invalid type values (feature/fix/tooling → added/fixed/changed) and converting details fields from objects to plain strings, which the importer requires.",
+      "commit_hash": "",
+      "pushed_at": "2026-02-19"
+    }
+  ]
+}
