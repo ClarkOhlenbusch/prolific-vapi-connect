@@ -651,7 +651,7 @@ const SessionReplayPanel = ({
     const rawHeight = wrapper.offsetHeight;
     if (!viewportRect.width || !viewportRect.height || !rawWidth || !rawHeight) return;
 
-    const padding = 12;
+    const padding = 0;
     const availableWidth = Math.max(1, viewportRect.width - padding * 2);
     const availableHeight = Math.max(1, viewportRect.height - padding * 2);
     const scale = Math.max(0.1, Math.min(availableWidth / rawWidth, availableHeight / rawHeight));
@@ -1000,7 +1000,7 @@ const SessionReplayPanel = ({
       <div
         ref={viewportRef}
         className={cn(
-          "relative w-full rounded-md border bg-black overflow-hidden",
+          "relative w-full rounded-md border bg-muted overflow-hidden",
           isFullscreen ? "h-[calc(100vh-230px)]" : "h-[420px] md:h-[560px]"
         )}
       >
