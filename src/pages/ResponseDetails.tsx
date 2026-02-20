@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   ArrowLeft, 
@@ -31,6 +32,7 @@ import {
   Minimize2,
   Check,
   Flag,
+  Archive,
   AlertTriangle,
   StickyNote,
   BarChart3,
@@ -1071,9 +1073,12 @@ const ResponseDetails = () => {
   const [dictationDownloadId, setDictationDownloadId] = useState<string | null>(null);
   const [futureFeaturesDialogOpen, setFutureFeaturesDialogOpen] = useState(false);
   const [futureFeaturesSaving, setFutureFeaturesSaving] = useState(false);
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [archiveReason, setArchiveReason] = useState('');
+  const [archiveSaving, setArchiveSaving] = useState(false);
   const [futureFeaturesDraft, setFutureFeaturesDraft] = useState<BacklogDraft>({
-    itemType: 'feature',
-    status: 'idea',
+    itemType: 'error',
+    status: 'open',
     priority: 'medium',
     title: '',
     goal: '',
@@ -2357,6 +2362,40 @@ const ResponseDetails = () => {
     }
   };
 
+  const handleArchiveFromDetails = async () => {
+    if (!data?.call_id || !user || isGuestMode || archiveSaving) return;
+    setArchiveSaving(true);
+    try {
+      const { data: callRecord, error: callError } = await supabase
+        .from('participant_calls')
+        .select('*')
+        .eq('call_id', data.call_id)
+        .maybeSingle();
+      if (callError) throw callError;
+      if (!callRecord) throw new Error('Could not find participant record to archive');
+
+      const { error: archiveError } = await supabase
+        .from('archived_responses')
+        .insert({
+          original_table: 'participant_calls',
+          original_id: callRecord.id,
+          archived_data: callRecord,
+          archived_by: user.id,
+          archive_reason: archiveReason.trim() || 'Archived from response details',
+        });
+      if (archiveError) throw archiveError;
+
+      toast.success('Participant archived');
+      setShowArchiveDialog(false);
+      setArchiveReason('');
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Failed to archive participant');
+    } finally {
+      setArchiveSaving(false);
+    }
+  };
+
   useEffect(() => {
     if (data?.researcher_notes !== undefined) setResearcherNotesDraft(data.researcher_notes ?? '');
   }, [data?.id, data?.researcher_notes]);
@@ -2711,8 +2750,8 @@ const ResponseDetails = () => {
       });
       setFutureFeaturesDialogOpen(false);
       setFutureFeaturesDraft({
-        itemType: 'feature',
-        status: 'idea',
+        itemType: 'error',
+        status: 'open',
         priority: 'medium',
         title: '',
         goal: '',
@@ -3102,6 +3141,16 @@ const ResponseDetails = () => {
                   >
                     <Flag className="h-4 w-4" />
                   </button>
+                  {!isGuestMode && (
+                    <button
+                      type="button"
+                      onClick={() => { setArchiveReason(''); setShowArchiveDialog(true); }}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded border transition-colors border-muted-foreground/30 hover:bg-amber-50 hover:border-amber-400 hover:text-amber-700"
+                      title="Archive participant"
+                    >
+                      <Archive className="h-4 w-4" />
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -4541,6 +4590,32 @@ const ResponseDetails = () => {
               }}
             >
               Create new batch
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showArchiveDialog} onOpenChange={(open) => { setShowArchiveDialog(open); if (!open) setArchiveReason(''); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive this participant?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will hide the participant from the main table and statistics. It won't be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="px-1 pb-2">
+            <Input
+              placeholder="Reason for archiving (optional)"
+              value={archiveReason}
+              onChange={(e) => setArchiveReason(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleArchiveFromDetails()}
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={archiveSaving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleArchiveFromDetails} disabled={archiveSaving}>
+              {archiveSaving ? 'Archiving…' : 'Archive'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
