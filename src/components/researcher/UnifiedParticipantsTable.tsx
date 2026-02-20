@@ -65,6 +65,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Tables } from '@/integrations/supabase/types';
 import { GUEST_PARTICIPANTS } from '@/lib/guest-dummy-data';
 import { fetchArchivedFilters } from '@/lib/archived-responses';
@@ -165,6 +172,10 @@ interface UnifiedParticipant {
   demographics_mismatch_reasons?: ('age' | 'gender')[];
   // Derived
   status: 'Completed' | 'Pending' | 'Abandoned';
+  /** Computed client-side: true when any auto-flag condition is met */
+  auto_flagged?: boolean;
+  /** Reasons why auto_flagged is true */
+  auto_flag_reasons?: string[];
 
   // Vapi evaluation (lightweight dashboard fields)
   vapi_total_score?: number | null;
@@ -292,8 +303,9 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [conditionFilter, setConditionFilter] = useState<string>('all');
   const [batchFilter, setBatchFilter] = useState<string>('all');
-  const [flagFilter, setFlagFilter] = useState<'all' | 'flagged' | 'not_flagged'>('all');
+  const [flagFilter, setFlagFilter] = useState<'all' | 'flagged' | 'auto_flagged' | 'any_flagged' | 'not_flagged'>('all');
   const [reviewedFilter, setReviewedFilter] = useState<'all' | 'reviewed' | 'not_reviewed'>('all');
+  const [prolificIdExpanded, setProlificIdExpanded] = useState(false);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [archiveMode, setArchiveMode] = useState<'single' | 'bulk'>('single');
   const [archiveReason, setArchiveReason] = useState('');
@@ -608,7 +620,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       // Fetch experiment_responses
       const responsesQuery = supabase
         .from('experiment_responses')
-        .select('id, call_id, prolific_id, session_token, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged, vapi_total_score, vapi_structured_output_at, vapi_evaluation_metric_id');
+        .select('id, call_id, prolific_id, session_token, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged, vapi_total_score, vapi_structured_output_at, vapi_evaluation_metric_id, attention_check_1, attention_check_1_expected, godspeed_attention_check_1, godspeed_attention_check_1_expected, tias_attention_check_1, tias_attention_check_1_expected, tipi_attention_check_1, tipi_attention_check_1_expected');
 
       const { data: responses, error: responsesError } = await responsesQuery;
 
@@ -698,6 +710,35 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           }
         }
 
+        // Auto-flag computation (client-side, no DB write)
+        const auto_flag_reasons: string[] = [];
+        if (demographics_mismatch) {
+          auto_flag_reasons.push('Demographics mismatch');
+        }
+        const attnPairs: [keyof typeof response, keyof typeof response][] = [
+          ['attention_check_1', 'attention_check_1_expected'],
+          ['godspeed_attention_check_1', 'godspeed_attention_check_1_expected'],
+          ['tias_attention_check_1', 'tias_attention_check_1_expected'],
+          ['tipi_attention_check_1', 'tipi_attention_check_1_expected'],
+        ];
+        if (response) {
+          for (const [valKey, expKey] of attnPairs) {
+            const val = response[valKey];
+            const exp = response[expKey];
+            if (val != null && exp != null && val !== exp) {
+              auto_flag_reasons.push('Failed attention check');
+              break;
+            }
+          }
+          if (response.vapi_total_score != null && response.vapi_total_score < 21) {
+            auto_flag_reasons.push('Eval score < 21');
+          }
+          if (response.submission_status === 'submitted' && (response.pets_total == null || response.tias_total == null)) {
+            auto_flag_reasons.push('Missing questionnaire data');
+          }
+        }
+        const auto_flagged = auto_flag_reasons.length > 0;
+
         return {
           id: call.id,
           prolific_id: call.prolific_id,
@@ -716,6 +757,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           vapi_evaluation_metric_id: response?.vapi_evaluation_metric_id ?? null,
           reviewed_by_researcher: response?.reviewed_by_researcher ?? false,
           flagged: response?.flagged ?? false,
+          auto_flagged,
+          auto_flag_reasons: auto_flag_reasons.length > 0 ? auto_flag_reasons : undefined,
           age: age ?? null,
           gender: gender ?? null,
           ethnicity_simplified: pDemo?.ethnicity_simplified ?? null,
@@ -821,8 +864,12 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     // Flag filter
     if (flagFilter === 'flagged') {
       result = result.filter(p => p.flagged);
+    } else if (flagFilter === 'auto_flagged') {
+      result = result.filter(p => p.auto_flagged);
+    } else if (flagFilter === 'any_flagged') {
+      result = result.filter(p => p.flagged || p.auto_flagged);
     } else if (flagFilter === 'not_flagged') {
-      result = result.filter(p => !p.flagged);
+      result = result.filter(p => !p.flagged && !p.auto_flagged);
     }
 
     // Reviewed filter
@@ -1147,6 +1194,39 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     setMovableColumnOrder(DEFAULT_MOVABLE_COLUMN_ORDER);
   };
 
+  // Renders a filterable column header with an Excel-style dropdown
+  const filterHeader = (
+    label: string,
+    filterValue: string,
+    options: { value: string; label: string }[],
+    onChangeFilter: (v: string) => void,
+  ) => {
+    const isActive = filterValue !== 'all';
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={`inline-flex items-center gap-0.5 text-xs font-medium hover:text-foreground transition-colors select-none ${isActive ? 'text-primary' : ''}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {label}
+            <ChevronDown className={`h-3 w-3 shrink-0 ${isActive ? 'opacity-100' : 'opacity-40'}`} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-[140px]">
+          <DropdownMenuRadioGroup value={filterValue} onValueChange={onChangeFilter}>
+            {options.map(opt => (
+              <DropdownMenuRadioItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
+
   const renderHeaderCell = (id: ColumnId, sortable: boolean) => {
     if (id === 'select') {
       return (
@@ -1177,47 +1257,105 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       );
     }
 
-    if (id === 'reviewed') {
-      const content = (
-        <span title="Reviewed by researcher" className="inline-flex items-center justify-center w-full">
-          Reviewed
-        </span>
-      );
+    if (id === 'status') {
+      const content = filterHeader('Status', statusFilter, [
+        { value: 'all', label: 'All' },
+        { value: 'completed', label: 'Completed' },
+        { value: 'pending', label: 'Pending' },
+        { value: 'abandoned', label: 'Abandoned' },
+      ], setStatusFilter);
       return sortable ? (
-        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled} className="w-[80px] text-center">
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled}>{content}</SortableHeaderCell>
+      ) : (
+        <TableHead key={id} data-testid={`all-responses-col-${id}`}>{content}</TableHead>
+      );
+    }
+
+    if (id === 'condition') {
+      const content = filterHeader('Condition', conditionFilter, [
+        { value: 'all', label: 'All' },
+        { value: 'formal', label: 'Formal' },
+        { value: 'informal', label: 'Informal' },
+      ], setConditionFilter);
+      return sortable ? (
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled}>{content}</SortableHeaderCell>
+      ) : (
+        <TableHead key={id} data-testid={`all-responses-col-${id}`}>{content}</TableHead>
+      );
+    }
+
+    if (id === 'batch') {
+      const batchOptions = [
+        { value: 'all', label: 'All batches' },
+        { value: 'none', label: 'No batch' },
+        ...availableBatches.map(b => ({ value: b, label: b })),
+      ];
+      const content = filterHeader('Batch', batchFilter, batchOptions, setBatchFilter);
+      return sortable ? (
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled}>{content}</SortableHeaderCell>
+      ) : (
+        <TableHead key={id} data-testid={`all-responses-col-${id}`}>{content}</TableHead>
+      );
+    }
+
+    if (id === 'reviewed') {
+      const content = filterHeader('Reviewed', reviewedFilter, [
+        { value: 'all', label: 'All' },
+        { value: 'reviewed', label: 'Reviewed' },
+        { value: 'not_reviewed', label: 'Not reviewed' },
+      ], (v) => setReviewedFilter(v as typeof reviewedFilter));
+      return sortable ? (
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled} className="w-[90px] text-center">
           {content}
         </SortableHeaderCell>
       ) : (
-        <TableHead key={id} data-testid={`all-responses-col-${id}`} className="w-[80px] text-center" title="Reviewed by researcher">
-          Reviewed
+        <TableHead key={id} data-testid={`all-responses-col-${id}`} className="w-[90px] text-center">
+          {content}
         </TableHead>
       );
     }
 
     if (id === 'flag') {
-      const content = (
-        <span title="Flagged" className="inline-flex items-center justify-center w-full">
-          Flag
-        </span>
-      );
+      const content = filterHeader('Flags', flagFilter, [
+        { value: 'all', label: 'All' },
+        { value: 'any_flagged', label: 'Any flag' },
+        { value: 'flagged', label: 'Manual flag' },
+        { value: 'auto_flagged', label: 'Auto-flagged' },
+        { value: 'not_flagged', label: 'Not flagged' },
+      ], (v) => setFlagFilter(v as typeof flagFilter));
       return sortable ? (
-        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled} className="w-[80px] text-center">
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled} className="w-[100px] text-center">
           {content}
         </SortableHeaderCell>
       ) : (
-        <TableHead key={id} data-testid={`all-responses-col-${id}`} className="w-[80px] text-center" title="Flagged">
-          Flag
+        <TableHead key={id} data-testid={`all-responses-col-${id}`} className="w-[100px] text-center">
+          {content}
         </TableHead>
       );
     }
 
-    const label: Record<Exclude<ColumnId, 'select' | 'demo' | 'reviewed' | 'flag'>, string> = {
-      prolific_id: 'Prolific ID',
-      status: 'Status',
+    if (id === 'prolific_id') {
+      const content = (
+        <button
+          type="button"
+          className="inline-flex items-center gap-0.5 text-xs font-medium hover:text-foreground transition-colors select-none"
+          onClick={(e) => { e.stopPropagation(); setProlificIdExpanded(v => !v); }}
+          title={prolificIdExpanded ? 'Collapse Prolific IDs' : 'Expand Prolific IDs'}
+        >
+          Prolific ID
+          <ChevronDown className={`h-3 w-3 shrink-0 opacity-40 transition-transform ${prolificIdExpanded ? 'rotate-180' : ''}`} />
+        </button>
+      );
+      return sortable ? (
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled}>{content}</SortableHeaderCell>
+      ) : (
+        <TableHead key={id} data-testid={`all-responses-col-${id}`}>{content}</TableHead>
+      );
+    }
+
+    const label: Record<Exclude<ColumnId, 'select' | 'demo' | 'reviewed' | 'flag' | 'status' | 'condition' | 'batch' | 'prolific_id'>, string> = {
       call: 'Call',
       created_at: 'Created At',
-      condition: 'Condition',
-      batch: 'Batch',
       age: 'Age',
       gender: 'Gender',
       ethnicity: 'Ethnicity',
@@ -1259,7 +1397,10 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       case 'prolific_id':
         return (
           <TableCell key={id} className="font-mono text-sm">
-            {row.prolific_id}
+            {prolificIdExpanded
+              ? row.prolific_id
+              : <span title={row.prolific_id}>{row.prolific_id.slice(0, 5)}…</span>
+            }
           </TableCell>
         );
       case 'status':
@@ -1375,20 +1516,37 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       case 'flag':
         return (
           <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
-            {row.response_id ? (
-              <button
-                type="button"
-                onClick={(e) => handleToggleFlagged(row, e)}
-                className={`inline-flex items-center justify-center w-8 h-8 rounded border transition-colors ${
-                  row.flagged ? 'bg-destructive/15 text-destructive border-destructive/50' : 'border-muted-foreground/30 hover:bg-muted'
-                }`}
-                title={row.flagged ? 'Flagged' : 'Flag'}
-              >
-                <Flag className="h-4 w-4" />
-              </button>
-            ) : (
-              <span className="text-muted-foreground">-</span>
-            )}
+            <div className="inline-flex items-center justify-center gap-1">
+              {row.auto_flagged && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded border border-amber-400 bg-amber-50 text-amber-600 cursor-default">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[200px]">
+                    <p className="font-semibold mb-1">Auto-flagged:</p>
+                    <ul className="space-y-0.5">
+                      {row.auto_flag_reasons?.map(r => <li key={r}>• {r}</li>)}
+                    </ul>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {row.response_id ? (
+                <button
+                  type="button"
+                  onClick={(e) => handleToggleFlagged(row, e)}
+                  className={`inline-flex items-center justify-center w-7 h-7 rounded border transition-colors ${
+                    row.flagged ? 'bg-destructive/15 text-destructive border-destructive/50' : 'border-muted-foreground/30 hover:bg-muted'
+                  }`}
+                  title={row.flagged ? 'Flagged (click to unflag)' : 'Click to manually flag'}
+                >
+                  <Flag className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                !row.auto_flagged && <span className="text-muted-foreground text-xs">-</span>
+              )}
+            </div>
           </TableCell>
         );
       case 'pets':
@@ -1497,63 +1655,6 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
             />
           </div>
           
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-[140px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="abandoned">Abandoned</SelectItem>
-          </SelectContent>
-          </Select>
-
-          <Select value={conditionFilter} onValueChange={setConditionFilter}>
-            <SelectTrigger className="w-full sm:w-[140px]">
-              <SelectValue placeholder="Condition" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Conditions</SelectItem>
-              <SelectItem value="formal">Formal</SelectItem>
-              <SelectItem value="informal">Informal</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={batchFilter} onValueChange={setBatchFilter}>
-            <SelectTrigger className="w-full sm:w-[140px]">
-              <SelectValue placeholder="Batch" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Batches</SelectItem>
-              <SelectItem value="none">No Batch</SelectItem>
-              {availableBatches.map(batch => (
-                <SelectItem key={batch} value={batch}>{batch}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={flagFilter} onValueChange={(v) => setFlagFilter(v as typeof flagFilter)}>
-            <SelectTrigger className="w-full sm:w-[130px]">
-              <SelectValue placeholder="Flag" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Flags</SelectItem>
-              <SelectItem value="flagged">Flagged</SelectItem>
-              <SelectItem value="not_flagged">Not Flagged</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={reviewedFilter} onValueChange={(v) => setReviewedFilter(v as typeof reviewedFilter)}>
-            <SelectTrigger className="w-full sm:w-[140px]">
-              <SelectValue placeholder="Reviewed" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Reviewed</SelectItem>
-              <SelectItem value="reviewed">Reviewed</SelectItem>
-              <SelectItem value="not_reviewed">Not Reviewed</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
         
         <div className="flex gap-2 flex-wrap">
