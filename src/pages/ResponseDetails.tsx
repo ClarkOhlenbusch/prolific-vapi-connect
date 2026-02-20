@@ -108,7 +108,6 @@ type BacklogDraft = {
   title: string;
   goal: string;
   proposed: string;
-  impact: string;
 };
 
 interface DictationRecording {
@@ -711,11 +710,36 @@ const SessionReplayPanel = ({
       setCurrentTimeMs(endTime);
       setIsPlaying(false);
     };
+    const injectCssIntoReplayer = () => {
+      const iframe = (replayer as any).iframe as HTMLIFrameElement | undefined;
+      const doc = iframe?.contentDocument;
+      if (!doc || doc.getElementById('rrweb-injected-css')) return;
+      // Read CSS rules from the parent page's already-loaded same-origin stylesheets.
+      // This avoids any CORS issue (recordings made on prod have <link> tags pointing
+      // to prod assets which are blocked when replaying on localhost).
+      let cssText = '';
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          const rules = Array.from(sheet.cssRules || []);
+          cssText += rules.map(r => r.cssText).join('\n');
+        } catch {
+          // Cross-origin sheet — skip silently
+        }
+      }
+      if (cssText) {
+        const style = doc.createElement('style');
+        style.id = 'rrweb-injected-css';
+        style.textContent = cssText;
+        doc.head?.appendChild(style);
+      }
+    };
     const handleSnapshotRebuild = () => {
+      injectCssIntoReplayer();
       fitReplayToViewport();
     };
     replayer.on(ReplayerEvents.Finish, handleFinish);
     replayer.on(ReplayerEvents.FullsnapshotRebuilded, handleSnapshotRebuild);
+    window.setTimeout(injectCssIntoReplayer, 100);
 
     const rafId = window.requestAnimationFrame(() => {
       fitReplayToViewport();
@@ -1054,7 +1078,6 @@ const ResponseDetails = () => {
     title: '',
     goal: '',
     proposed: '',
-    impact: '',
   });
   const [runEvaluationLoading, setRunEvaluationLoading] = useState(false);
   const [checkResultsLoading, setCheckResultsLoading] = useState(false);
@@ -2609,15 +2632,14 @@ const ResponseDetails = () => {
 
   const openFutureFeaturesDialog = () => {
     if (!data) return;
-    const callLabel = data.call_id ? `Call ${data.call_id}` : `Response ${data.id}`;
+    const firstLine = researcherNotesDraft.trim().split('\n')[0].slice(0, 120);
     setFutureFeaturesDraft((prev) => ({
       itemType: prev.itemType || 'feature',
       status: prev.itemType === 'error' ? 'open' : 'idea',
       priority: prev.priority || 'medium',
-      title: prev.title || `${callLabel}: `,
-      goal: prev.goal || researcherNotesDraft.trim(),
+      title: firstLine,
+      goal: '',
       proposed: prev.proposed,
-      impact: prev.impact || 'src/pages/ResponseDetails.tsx, src/pages/VoiceConversation.tsx, src/components/researcher/ParticipantJourneyModal.tsx',
     }));
     setFutureFeaturesDialogOpen(true);
   };
@@ -2632,10 +2654,9 @@ const ResponseDetails = () => {
     const title = futureFeaturesDraft.title.trim();
     const goal = futureFeaturesDraft.goal.trim();
     const proposed = futureFeaturesDraft.proposed.trim();
-    const impact = futureFeaturesDraft.impact.trim();
 
-    if (!title || !goal) {
-      toast.error('Title and Goal are required.');
+    if (!title) {
+      toast.error('Title is required.');
       return;
     }
 
@@ -2654,9 +2675,8 @@ const ResponseDetails = () => {
     setFutureFeaturesSaving(true);
     try {
       const details = [
-        `Goal: ${goal}`,
+        goal ? `Goal: ${goal}` : null,
         proposed ? `Proposed UI/behavior: ${proposed}` : null,
-        impact ? `Likely impact: ${impact}` : null,
       ].filter(Boolean).join('\n\n');
 
       const { data: orderRow, error: orderError } = await supabase
@@ -2683,7 +2703,12 @@ const ResponseDetails = () => {
       });
       if (insertError) throw insertError;
 
-      toast.success('Saved to backlog');
+      toast.success('Saved to backlog', {
+        action: {
+          label: 'View in backlog',
+          onClick: () => navigate('/researcher/backlog'),
+        },
+      });
       setFutureFeaturesDialogOpen(false);
       setFutureFeaturesDraft({
         itemType: 'feature',
@@ -2692,7 +2717,6 @@ const ResponseDetails = () => {
         title: '',
         goal: '',
         proposed: '',
-        impact: '',
       });
     } catch (e) {
       console.error(e);
@@ -3344,16 +3368,6 @@ const ResponseDetails = () => {
                   placeholder="How it should work…"
                   value={futureFeaturesDraft.proposed}
                   onChange={(e) => setFutureFeaturesDraft((p) => ({ ...p, proposed: e.target.value }))}
-                  disabled={futureFeaturesSaving}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Likely impact</label>
-                <Textarea
-                  className="min-h-[70px] resize-y"
-                  placeholder="Key files/areas likely impacted…"
-                  value={futureFeaturesDraft.impact}
-                  onChange={(e) => setFutureFeaturesDraft((p) => ({ ...p, impact: e.target.value }))}
                   disabled={futureFeaturesSaving}
                 />
               </div>
