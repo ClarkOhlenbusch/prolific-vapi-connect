@@ -6,14 +6,12 @@
   "auto_mark_release_on_push": false,
   "changes": [
     {
-      "type": "fix",
-      "description": "Remove black background and fix replay scaling to fill container edge-to-edge",
+      "type": "fixed",
       "scope": "researcher",
+      "description": "Remove black background and fix replay scaling to fill container edge-to-edge",
       "commit_hash": "9c01470",
       "pushed_at": "2026-02-19",
-      "details": {
-        "summary": "Replaced bg-black with bg-muted on the replay viewport container and set padding=0 in fitReplayToViewport so the replayed page fills the full frame without black bars."
-      }
+      "details": "Replaced bg-black with bg-muted on the replay viewport container and set padding=0 in fitReplayToViewport so the replayed page fills the full frame without black bars."
     }
   ]
 }

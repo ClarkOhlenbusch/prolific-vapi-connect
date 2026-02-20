@@ -6,14 +6,14 @@
   "auto_mark_release_on_push": false,
   "changes": [
     {
-      "type": "tooling",
+      "type": "added",
       "description": "Add scripts/query-backlog.mjs — dumps researcher backlog (items, comments, linked responses) as formatted text or JSON; supports --open-only flag",
       "scope": "researcher",
       "commit_hash": "d87ed69",
       "pushed_at": "2026-02-19"
     },
     {
-      "type": "feature",
+      "type": "added",
       "description": "Add useBacklogPatchImport hook: auto-applies docs/backlog-patch-*.json files on backlog page load; first patch marks 6 v1.1.15 features as shipped",
       "scope": "researcher",
       "commit_hash": "e827c9b",

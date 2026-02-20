@@ -6,19 +6,12 @@
   "auto_mark_release_on_push": false,
   "changes": [
     {
-      "type": "feature",
+      "type": "added",
       "scope": "both",
       "description": "Enrich participant telemetry with browser name/version, OS, screen size, device memory, CPU cores, timezone, and color depth — logged automatically during practice/main calls and feedback page load.",
       "commit_hash": "",
       "pushed_at": "2026-02-19",
-      "details": {
-        "files": [
-          "src/lib/participant-telemetry.ts",
-          "src/pages/FeedbackQuestionnaire.tsx",
-          "src/pages/ResponseDetails.tsx"
-        ],
-        "summary": "participant-telemetry.ts: added parseBrowserName/Version/OsName helpers and expanded ClientTelemetryContext. FeedbackQuestionnaire: logs feedback_page_context event on load (SpeechRecognition support, MediaRecorder support, MIME type support map, full device context). ResponseDetails: new Diagnostics nav section showing device/browser info, feedback-page audio support (MIME chips), and mic diagnostics by stage (practice/main/feedback)."
-      }
+      "details": "Added parseBrowserName/Version/OsName helpers to participant-telemetry.ts. FeedbackQuestionnaire logs feedback_page_context on load. ResponseDetails gains a Diagnostics nav section showing device/browser info, audio support chips, and mic diagnostics by stage."
     }
   ]
 }

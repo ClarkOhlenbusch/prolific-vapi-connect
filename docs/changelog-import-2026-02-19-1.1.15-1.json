@@ -6,22 +6,22 @@
   "auto_mark_release_on_push": false,
   "changes": [
     {
-      "type": "feature",
+      "type": "changed",
       "description": "Rename /researcher/error-log route to /researcher/backlog; update nav link in ResearcherDashboard",
       "scope": "researcher",
       "commit_hash": "",
       "pushed_at": "2026-02-19"
     },
     {
-      "type": "feature",
+      "type": "added",
       "description": "Add flag and reviewed filter dropdowns to UnifiedParticipantsTable responses view",
       "scope": "researcher",
       "commit_hash": "",
       "pushed_at": "2026-02-19"
     },
     {
-      "type": "feature",
-      "description": "Backlog page: AlertDialog delete confirmation, per-column Add Error/Feature buttons, Show resolved toggle, collapsible Dev Changes Summary panel, inline Comments & Extra Linked Responses section per card (using backlog_item_comments + backlog_item_responses tables)",
+      "type": "added",
+      "description": "Backlog page: AlertDialog delete confirmation, per-column Add Error/Feature buttons, Show resolved toggle, collapsible Dev Changes Summary panel, inline Comments & Extra Linked Responses section per card",
       "scope": "researcher",
       "commit_hash": "",
       "pushed_at": "2026-02-19"
