@@ -1,0 +1,38 @@
+{
+  "version": "1.1.16",
+  "release_date": "2026-02-19",
+  "description": "Dictation refactor: replace SpeechRecognition with cross-browser RecordButton + async Groq Whisper transcription; fix session replay CSS rendering.",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "fix",
+      "scope": "researcher",
+      "description": "Fix session replay CSS rendering by injecting parent-page styles into the rrweb iframe, and enable inlineStylesheet in rrweb config so recordings capture styles inline.",
+      "commit_hash": "a014a27",
+      "pushed_at": "2026-02-19",
+      "details": {
+        "files": [
+          "src/hooks/useSessionReplayTracking.ts",
+          "src/pages/ResponseDetails.tsx"
+        ],
+        "summary": "inlineStylesheet set to true in rrweb config. ResponseDetails SessionReplayPanel now injects all parent-page CSS rules into the replay iframe on FullsnapshotRebuilded, fixing styled rendering when replaying prod recordings on localhost."
+      }
+    },
+    {
+      "type": "feature",
+      "scope": "participant",
+      "description": "Replace SpeechRecognition-based VoiceDictation with a cross-browser RecordButton (pure MediaRecorder) and async server-side transcription via Groq Whisper. Fixes missing microphone button on Firefox.",
+      "commit_hash": "b0db1f8",
+      "pushed_at": "2026-02-19",
+      "details": {
+        "files": [
+          "src/pages/FeedbackQuestionnaire.tsx",
+          "src/components/RecordButton.tsx",
+          "supabase/functions/transcribe-dictation/index.ts"
+        ],
+        "summary": "FeedbackQuestionnaire: removed VoiceDictation (SpeechRecognition, Firefox-incompatible), wired three RecordButton components to existing MediaRecorder pipeline. After successful submit, invokes new transcribe-dictation edge function (fire-and-forget). Edge function downloads dictation_recordings audio from storage, sends to Groq whisper-large-v3-turbo, writes transcript to experiment_responses only if column is empty. Requires GROQ_API_KEY Supabase secret."
+      }
+    }
+  ]
+}
