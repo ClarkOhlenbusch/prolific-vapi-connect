@@ -15,7 +15,7 @@ import { usePageTracking } from "@/hooks/usePageTracking";
 import { FeedbackProgressBar } from "@/components/FeedbackProgressBar";
 import { RecordingProgressBar } from "@/components/RecordingProgressBar";
 import { ExperimentProgress } from "@/components/ExperimentProgress";
-import { VoiceDictation, VoiceDictationRef } from "@/components/VoiceDictation";
+import { RecordButton } from "@/components/RecordButton";
 import { collectClientContext, getMicIssueGuidance, logNavigationEvent, runMicDiagnostics } from "@/lib/participant-telemetry";
 
 type FeedbackField = "voice_assistant_feedback" | "communication_style_feedback" | "experiment_feedback";
@@ -185,9 +185,6 @@ const FeedbackQuestionnaire = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
-  const [interimExperience, setInterimExperience] = useState("");
-  const [interimStyle, setInterimStyle] = useState("");
-  const [interimExperiment, setInterimExperiment] = useState("");
   const [dictationDebug, setDictationDebug] = useState<Record<FeedbackField, DictationDebugInfo>>(createDictationDebugInfoMap());
   const loggedInputModesRef = useRef<Set<string>>(new Set());
   const feedbackInputModesRef = useRef<Record<FeedbackField, { typed: boolean; dictated: boolean }>>({
@@ -201,11 +198,6 @@ const FeedbackQuestionnaire = () => {
   const dictationRecordersRef = useRef<Record<FeedbackField, DictationRecorderState>>(createDictationRecorderStateMap());
   const submitInFlightRef = useRef(false);
   const micPermissionDeniedCountRef = useRef(0);
-  
-  // Refs to stop dictation when clicking on another field
-  const experienceDictationRef = useRef<VoiceDictationRef>(null);
-  const styleDictationRef = useRef<VoiceDictationRef>(null);
-  const experimentDictationRef = useRef<VoiceDictationRef>(null);
   
   // Refs for scrolling to questions
   const experienceQuestionRef = useRef<HTMLDivElement>(null);
@@ -223,10 +215,6 @@ const FeedbackQuestionnaire = () => {
   const MIN_RECORDING_SECONDS = Math.floor(MIN_RECORDING_DURATION_MS / 1000);
   // If a clip is extremely short, we assume a mic capture issue and nudge the user to the text box.
   const DICTATION_MIC_ISSUE_DURATION_MS = 3_000;
-  // Keep dictation running while participants think/speak; SpeechRecognition silence heuristics can be aggressive.
-  // Increased by 100% from 240s to 480s to reduce premature auto-stop.
-  const FEEDBACK_DICTATION_SILENCE_TIMEOUT_MS = 480_000;
-
   const [highlightedTextField, setHighlightedTextField] = useState<FeedbackField | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -245,20 +233,6 @@ const FeedbackQuestionnaire = () => {
   /** Ticks every second while any field is recording so timer UI updates */
   const [recordingTick, setRecordingTick] = useState(0);
 
-  // Hidden dictated text that counts for validation/submission but is not shown to participants
-  const [dictatedFeedbackByField, setDictatedFeedbackByField] = useState<Record<FeedbackField, string>>({
-    voice_assistant_feedback: "",
-    communication_style_feedback: "",
-    experiment_feedback: "",
-  });
-
-  // Transcript accumulated for the currently active recording segment per field
-  const dictationSegmentTextRef = useRef<Record<FeedbackField, string>>({
-    voice_assistant_feedback: "",
-    communication_style_feedback: "",
-    experiment_feedback: "",
-  });
-
   /** Saved recordings for playback (including under-20s); URLs revoked on unmount/reset */
   const [savedRecordingsByField, setSavedRecordingsByField] = useState<
     Record<FeedbackField, { url: string; durationMs: number }[]>
@@ -271,20 +245,6 @@ const FeedbackQuestionnaire = () => {
   savedRecordingsByFieldRef.current = savedRecordingsByField;
   const MAX_SAVED_RECORDINGS_PER_FIELD = 10;
   
-  // Stop all dictation sessions
-  const stopAllDictation = useCallback(() => {
-    experienceDictationRef.current?.stopListening();
-    styleDictationRef.current?.stopListening();
-    experimentDictationRef.current?.stopListening();
-  }, []);
-
-  // Stop dictation for all fields except the given one (used when switching to another dictate button)
-  const stopOtherDictationSessions = useCallback((activeField: FeedbackField) => {
-    if (activeField !== "voice_assistant_feedback") experienceDictationRef.current?.stopListening();
-    if (activeField !== "communication_style_feedback") styleDictationRef.current?.stopListening();
-    if (activeField !== "experiment_feedback") experimentDictationRef.current?.stopListening();
-  }, []);
-
   const logFeedbackEvent = useCallback((eventType: string, metadata: Record<string, unknown> = {}) => {
     if (!prolificId) return;
     void logNavigationEvent({
@@ -476,14 +436,10 @@ const FeedbackQuestionnaire = () => {
   }, []);
 
   const buildFeedbackDraftMetadata = useCallback(() => {
-    const mergeFeedback = (typed: string, field: FeedbackField) => {
-      const dictated = dictatedFeedbackByField[field] || "";
-      return [typed, dictated].filter(Boolean).join(" ");
-    };
     const responses = {
-      voice_assistant_feedback: mergeFeedback(voiceAssistantExperience, "voice_assistant_feedback"),
-      communication_style_feedback: mergeFeedback(communicationStyleFeedback, "communication_style_feedback"),
-      experiment_feedback: mergeFeedback(experimentFeedback, "experiment_feedback"),
+      voice_assistant_feedback: voiceAssistantExperience,
+      communication_style_feedback: communicationStyleFeedback,
+      experiment_feedback: experimentFeedback,
     };
     const wordCounts = {
       voice_assistant_feedback: countWords(responses.voice_assistant_feedback),
@@ -500,7 +456,7 @@ const FeedbackQuestionnaire = () => {
       wordCounts,
       inputModes,
     };
-  }, [communicationStyleFeedback, dictatedFeedbackByField, experimentFeedback, voiceAssistantExperience]);
+  }, [communicationStyleFeedback, experimentFeedback, voiceAssistantExperience]);
 
   const persistFeedbackDraft = useCallback(async (reason: string, force = false) => {
     if (!prolificId) return;
@@ -935,15 +891,11 @@ const FeedbackQuestionnaire = () => {
     const mimeType = recorderState.mimeType || "audio/webm";
     const chunkCount = recorderState.chunks.length;
     const durationMs = Math.max(0, Math.round(recorderState.activeDurationMs));
-    const segmentText = (dictationSegmentTextRef.current[field] || "").trim();
     const shouldTreatAsMicIssue =
-      !segmentText
-      && (
-        // Most common: we got a tiny clip but no transcript.
-        (durationMs > 0 && durationMs <= DICTATION_MIC_ISSUE_DURATION_MS)
-        // Edge case: very fast stop/error paths can produce duration=0 and no chunks.
-        || (durationMs === 0 && chunkCount === 0 && recorderState.attemptCount > 0)
-      );
+      // Most common: we got a tiny clip with no real audio.
+      (durationMs > 0 && durationMs <= DICTATION_MIC_ISSUE_DURATION_MS)
+      // Edge case: very fast stop/error paths can produce duration=0 and no chunks.
+      || (durationMs === 0 && chunkCount === 0 && recorderState.attemptCount > 0);
 
     if (shouldLogDictationMicIssue) {
       console.info("[DictationMicIssue] segment_persist_check", {
@@ -951,7 +903,6 @@ const FeedbackQuestionnaire = () => {
         fieldLabel: FEEDBACK_FIELD_LABELS[field],
         durationMs,
         chunkCount,
-        segmentTextLength: segmentText.length,
         shouldTreatAsMicIssue,
         thresholdMs: DICTATION_MIC_ISSUE_DURATION_MS,
         recorderMimeType: mimeType,
@@ -1023,7 +974,6 @@ const FeedbackQuestionnaire = () => {
         console.info("[DictationMicIssue] short_clip_trigger", {
           field,
           durationMs,
-          segmentTextLength: segmentText.length,
           totalDurationMsAfter,
           totalMeetsMinimum,
         });
@@ -1046,19 +996,6 @@ const FeedbackQuestionnaire = () => {
         shortRecordingToastTimeoutRef.current = null;
       }, 15000);
     }
-
-    if (segmentText) {
-      setDictatedFeedbackByField((prev) => {
-        const previous = prev[field] || "";
-        const merged = [previous, segmentText].filter(Boolean).join(" ");
-        return {
-          ...prev,
-          [field]: merged,
-        };
-      });
-    }
-    // Always clear the in-memory segment text after upload (short or long).
-    dictationSegmentTextRef.current[field] = "";
 
     resetDictationSegmentState(recorderState);
     updateDictationDebug(field, {
@@ -1178,8 +1115,7 @@ const FeedbackQuestionnaire = () => {
     return true;
   }, [handleMicPermissionDenied, logFeedbackEvent, toast, updateDictationDebug]);
 
-  // Before starting dictation for a field: stop any other active dictation, dismiss short-recording toast if open, then run mic precheck
-  const getDictationBeforeStart = useCallback((field: FeedbackField) => async () => {
+  const handleRecordStart = useCallback((field: FeedbackField) => async (): Promise<boolean> => {
     if (shortRecordingToastIdRef.current) {
       dismissToast(shortRecordingToastIdRef.current);
       shortRecordingToastIdRef.current = null;
@@ -1188,55 +1124,19 @@ const FeedbackQuestionnaire = () => {
       clearTimeout(shortRecordingToastTimeoutRef.current);
       shortRecordingToastTimeoutRef.current = null;
     }
-    stopOtherDictationSessions(field);
-    return runDictationMicPrecheck(field);
-  }, [dismissToast, stopOtherDictationSessions, runDictationMicPrecheck]);
+    pauseOtherDictationRecordings(field);
+    const allowed = await runDictationMicPrecheck(field);
+    if (!allowed) return false;
+    markFeedbackInputMode(field, "dictated");
+    logFeedbackEvent("dictation_started", { field, fieldLabel: FEEDBACK_FIELD_LABELS[field] });
+    void startOrResumeDictationRecording(field);
+    return true;
+  }, [dismissToast, logFeedbackEvent, markFeedbackInputMode, pauseOtherDictationRecordings, runDictationMicPrecheck, startOrResumeDictationRecording]);
 
-  const handleDictationListeningChange = useCallback((field: FeedbackField, isListeningNow: boolean, reason?: string) => {
-    logFeedbackEvent(isListeningNow ? "dictation_started" : "dictation_stopped", {
-      field,
-      fieldLabel: FEEDBACK_FIELD_LABELS[field],
-      reason: reason || null,
-    });
-    updateDictationDebug(field, {
-      lastReason: reason || null,
-      recorderState: isListeningNow ? "recording" : "paused",
-    });
-    if (isListeningNow) {
-      markFeedbackInputMode(field, "dictated");
-      pauseOtherDictationRecordings(field);
-      void startOrResumeDictationRecording(field);
-      return;
-    }
+  const handleRecordStop = useCallback((field: FeedbackField) => () => {
+    logFeedbackEvent("dictation_stopped", { field, fieldLabel: FEEDBACK_FIELD_LABELS[field] });
     void persistDictationSegment(field);
-  }, [
-    logFeedbackEvent,
-    markFeedbackInputMode,
-    pauseOtherDictationRecordings,
-    persistDictationSegment,
-    startOrResumeDictationRecording,
-    updateDictationDebug,
-  ]);
-
-  const handleDictationError = useCallback((field: FeedbackField, errorCode: string, message?: string) => {
-    if (errorCode === "no-speech") {
-      return;
-    }
-    logFeedbackEvent("dictation_error", {
-      field,
-      fieldLabel: FEEDBACK_FIELD_LABELS[field],
-      errorCode,
-      message: message || null,
-    });
-    updateDictationDebug(field, {
-      lastUploadStatus: "error",
-      lastError: `${errorCode}${message ? `: ${message}` : ""}`,
-    });
-    // Skip persist for "aborted" – we already persisted in onListeningChange(false, "external_stop") when switching dictation
-    if (errorCode !== "aborted") {
-      void persistDictationSegment(field);
-    }
-  }, [logFeedbackEvent, persistDictationSegment, updateDictationDebug]);
+  }, [logFeedbackEvent, persistDictationSegment]);
 
   const { trackBackButtonClick } = usePageTracking({
     pageName: "feedback",
@@ -1535,7 +1435,6 @@ const FeedbackQuestionnaire = () => {
 
   const handleBackClick = async () => {
     await persistFeedbackDraft("back_click", true);
-    stopAllDictation();
     await persistDictationRecordings();
     await trackBackButtonClick({
       voiceAssistantExperienceWordCount: countWords(voiceAssistantExperience),
@@ -1551,10 +1450,8 @@ const FeedbackQuestionnaire = () => {
   };
 
   const handleSubmit = async () => {
-    // Stop all dictation when submitting
     await persistFeedbackDraft("submit_click", true);
-    stopAllDictation();
-    
+
     const experienceStatus = getFeedbackRequirementStatus(voiceAssistantExperience, "voice_assistant_feedback");
     const styleStatus = getFeedbackRequirementStatus(communicationStyleFeedback, "communication_style_feedback");
     const experimentStatus = getFeedbackRequirementStatus(experimentFeedback, "experiment_feedback");
@@ -1743,18 +1640,9 @@ const FeedbackQuestionnaire = () => {
 
       const feedbackPayload = {
         formality: formalityData.formality,
-        voice_assistant_feedback: (
-          [voiceAssistantExperience, dictatedFeedbackByField.voice_assistant_feedback].filter(Boolean).join(" ") ||
-          "Not provided"
-        ),
-        communication_style_feedback: (
-          [communicationStyleFeedback, dictatedFeedbackByField.communication_style_feedback].filter(Boolean).join(" ") ||
-          "Not provided"
-        ),
-        experiment_feedback: (
-          [experimentFeedback, dictatedFeedbackByField.experiment_feedback].filter(Boolean).join(" ") ||
-          "Not provided"
-        ),
+        voice_assistant_feedback: voiceAssistantExperience.trim() || "Not provided",
+        communication_style_feedback: communicationStyleFeedback.trim() || "Not provided",
+        experiment_feedback: experimentFeedback.trim() || "Not provided",
       };
 
       // Get assistant type from session storage (set during VoiceConversation)
@@ -1858,6 +1746,12 @@ const FeedbackQuestionnaire = () => {
       } catch (dictationPersistError) {
         console.error("Dictation persistence failed after questionnaire submit:", dictationPersistError);
       }
+
+      // Fire-and-forget: transcribe audio recordings server-side via Groq Whisper.
+      // Non-blocking — failures are logged in the edge function; participant is already done.
+      void supabase.functions.invoke("transcribe-dictation", {
+        body: { prolificId, callId },
+      }).catch(() => { /* ignore */ });
 
       sessionStorage.removeItem("petsData");
       sessionStorage.removeItem("tiasData");
@@ -2066,28 +1960,12 @@ const FeedbackQuestionnaire = () => {
                 Record your feedback (at least {MIN_RECORDING_SECONDS} seconds)
               </p>
               <div className="flex items-start gap-3">
-                <VoiceDictation
-                  ref={experienceDictationRef}
-                  onTranscript={(text) => {
-                    markFeedbackInputMode("voice_assistant_feedback", "dictated");
-                    const prevSegment = dictationSegmentTextRef.current.voice_assistant_feedback;
-                    const prefix = prevSegment && !prevSegment.endsWith(" ") ? " " : "";
-                    dictationSegmentTextRef.current.voice_assistant_feedback = `${prevSegment}${prefix}${text}`;
-                    logFeedbackEvent("dictation_transcript_appended", {
-                      field: "voice_assistant_feedback",
-                      fieldLabel: FEEDBACK_FIELD_LABELS.voice_assistant_feedback,
-                      text,
-                      length: text.length,
-                    });
-                  }}
-                  onInterimTranscript={undefined}
-                  onBeforeStart={getDictationBeforeStart("voice_assistant_feedback")}
-                  onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("voice_assistant_feedback", isListeningNow, reason)}
-                  onDictationError={(errorCode, message) => handleDictationError("voice_assistant_feedback", errorCode, message)}
+                <RecordButton
+                  isRecording={dictationDebug.voice_assistant_feedback.recorderState === "recording"}
+                  onStart={handleRecordStart("voice_assistant_feedback")}
+                  onStop={handleRecordStop("voice_assistant_feedback")}
                   disabled={isSubmitting}
                   startLabel="Click to record"
-                  prominentWhenIdle
-                  silenceTimeoutMs={FEEDBACK_DICTATION_SILENCE_TIMEOUT_MS}
                   className="shrink-0"
                 />
                 <div className="flex-1 min-w-0">
@@ -2141,14 +2019,10 @@ const FeedbackQuestionnaire = () => {
                 ref={experienceTextareaRef}
                 value={voiceAssistantExperience}
                 onChange={(e) => {
-                  if (!interimExperience && e.target.value.length <= MAX_CHARS) {
+                  if (e.target.value.length <= MAX_CHARS) {
                     setVoiceAssistantExperience(e.target.value);
                     markFeedbackInputMode("voice_assistant_feedback", "typed");
                   }
-                }}
-                onFocus={() => {
-                  styleDictationRef.current?.stopListening();
-                  experimentDictationRef.current?.stopListening();
                 }}
                 onKeyDown={(e) => {
                   if (e.key === " ") e.stopPropagation();
@@ -2195,28 +2069,12 @@ const FeedbackQuestionnaire = () => {
                 Record your feedback (at least {MIN_RECORDING_SECONDS} seconds)
               </p>
               <div className="flex items-start gap-3">
-                <VoiceDictation
-                  ref={styleDictationRef}
-                  onTranscript={(text) => {
-                    markFeedbackInputMode("communication_style_feedback", "dictated");
-                    const prevSegment = dictationSegmentTextRef.current.communication_style_feedback;
-                    const prefix = prevSegment && !prevSegment.endsWith(" ") ? " " : "";
-                    dictationSegmentTextRef.current.communication_style_feedback = `${prevSegment}${prefix}${text}`;
-                    logFeedbackEvent("dictation_transcript_appended", {
-                      field: "communication_style_feedback",
-                      fieldLabel: FEEDBACK_FIELD_LABELS.communication_style_feedback,
-                      text,
-                      length: text.length,
-                    });
-                  }}
-                  onInterimTranscript={undefined}
-                  onBeforeStart={getDictationBeforeStart("communication_style_feedback")}
-                  onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("communication_style_feedback", isListeningNow, reason)}
-                  onDictationError={(errorCode, message) => handleDictationError("communication_style_feedback", errorCode, message)}
+                <RecordButton
+                  isRecording={dictationDebug.communication_style_feedback.recorderState === "recording"}
+                  onStart={handleRecordStart("communication_style_feedback")}
+                  onStop={handleRecordStop("communication_style_feedback")}
                   disabled={isSubmitting}
                   startLabel="Click to record"
-                  prominentWhenIdle
-                  silenceTimeoutMs={FEEDBACK_DICTATION_SILENCE_TIMEOUT_MS}
                   className="shrink-0"
                 />
                 <div className="flex-1 min-w-0">
@@ -2269,14 +2127,10 @@ const FeedbackQuestionnaire = () => {
                 ref={styleTextareaRef}
                 value={communicationStyleFeedback}
                 onChange={(e) => {
-                  if (!interimStyle && e.target.value.length <= MAX_CHARS) {
+                  if (e.target.value.length <= MAX_CHARS) {
                     setCommunicationStyleFeedback(e.target.value);
                     markFeedbackInputMode("communication_style_feedback", "typed");
                   }
-                }}
-                onFocus={() => {
-                  experienceDictationRef.current?.stopListening();
-                  experimentDictationRef.current?.stopListening();
                 }}
                 onKeyDown={(e) => { if (e.key === " ") e.stopPropagation(); }}
                 className={`min-h-[120px] resize-none bg-background ${
@@ -2322,28 +2176,12 @@ const FeedbackQuestionnaire = () => {
                 Record your feedback (at least {MIN_RECORDING_SECONDS} seconds)
               </p>
               <div className="flex items-start gap-3">
-                <VoiceDictation
-                  ref={experimentDictationRef}
-                  onTranscript={(text) => {
-                    markFeedbackInputMode("experiment_feedback", "dictated");
-                    const prevSegment = dictationSegmentTextRef.current.experiment_feedback;
-                    const prefix = prevSegment && !prevSegment.endsWith(" ") ? " " : "";
-                    dictationSegmentTextRef.current.experiment_feedback = `${prevSegment}${prefix}${text}`;
-                    logFeedbackEvent("dictation_transcript_appended", {
-                      field: "experiment_feedback",
-                      fieldLabel: FEEDBACK_FIELD_LABELS.experiment_feedback,
-                      text,
-                      length: text.length,
-                    });
-                  }}
-                  onInterimTranscript={undefined}
-                  onBeforeStart={getDictationBeforeStart("experiment_feedback")}
-                  onListeningChange={(isListeningNow, reason) => handleDictationListeningChange("experiment_feedback", isListeningNow, reason)}
-                  onDictationError={(errorCode, message) => handleDictationError("experiment_feedback", errorCode, message)}
+                <RecordButton
+                  isRecording={dictationDebug.experiment_feedback.recorderState === "recording"}
+                  onStart={handleRecordStart("experiment_feedback")}
+                  onStop={handleRecordStop("experiment_feedback")}
                   disabled={isSubmitting}
                   startLabel="Click to record"
-                  prominentWhenIdle
-                  silenceTimeoutMs={FEEDBACK_DICTATION_SILENCE_TIMEOUT_MS}
                   className="shrink-0"
                 />
                 <div className="flex-1 min-w-0">
@@ -2396,14 +2234,10 @@ const FeedbackQuestionnaire = () => {
                 ref={experimentTextareaRef}
                 value={experimentFeedback}
                 onChange={(e) => {
-                  if (!interimExperiment && e.target.value.length <= MAX_CHARS) {
+                  if (e.target.value.length <= MAX_CHARS) {
                     setExperimentFeedback(e.target.value);
                     markFeedbackInputMode("experiment_feedback", "typed");
                   }
-                }}
-                onFocus={() => {
-                  experienceDictationRef.current?.stopListening();
-                  styleDictationRef.current?.stopListening();
                 }}
                 onKeyDown={(e) => { if (e.key === " ") e.stopPropagation(); }}
                 placeholder="Type additional feedback if you like..."
