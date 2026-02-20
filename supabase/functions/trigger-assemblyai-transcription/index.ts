@@ -40,27 +40,34 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // ── Auth: require logged-in researcher ────────────────────────────────────
-  const authHeader = req.headers.get("authorization") ?? "";
-  const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { authorization: authHeader } },
-  });
-  const {
-    data: { user },
-  } = await supabaseUser.auth.getUser();
-  if (!user) {
+  // ── Auth: require logged-in researcher (same pattern as worker-vapi-evaluations) ──
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data, error: authError } = await supabaseUser.auth.getUser();
+  if (authError || !data?.user) {
+    return new Response(JSON.stringify({ error: "Invalid user session" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   const { data: roleData } = await supabaseAdmin
     .from("researcher_roles")
     .select("role")
-    .eq("user_id", user.id)
+    .eq("user_id", data.user.id)
     .maybeSingle();
 
   if (!roleData) {
