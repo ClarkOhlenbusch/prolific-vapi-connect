@@ -35,6 +35,9 @@ public/playwright-runs
 docs/verification-log.local.md
 docs/verification-log.md
 
+# Local-only research planning docs (do not commit)
+docs/qualitative-research-plan.md
+
 # Ralph Wiggum loop artifacts (local-only)
 IMPLEMENTATION_PLAN.md
 PROMPT_build.md
