@@ -925,7 +925,7 @@ const FeedbackQuestionnaire = () => {
           console.info("[DictationMicIssue] no_chunks_trigger", {
             field,
             durationMs,
-            segmentTextLength: segmentText.length,
+            chunkCount,
           });
         }
         void openDictationMicIssueModal(field, durationMs, "no_audio_chunks_captured");
