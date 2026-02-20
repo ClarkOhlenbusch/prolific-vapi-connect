@@ -65,3 +65,9 @@ verify_jwt = false
 
 [functions.transcribe-dictation]
 verify_jwt = false
+
+[functions.trigger-assemblyai-transcription]
+verify_jwt = false
+
+[functions.assemblyai-webhook]
+verify_jwt = false
