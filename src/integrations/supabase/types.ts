@@ -177,6 +177,48 @@ export type Database = {
           },
         ]
       }
+      call_transcriptions_assemblyai: {
+        Row: {
+          assemblyai_id: string | null
+          audio_duration_ms: number | null
+          call_id: string
+          created_at: string
+          error_message: string | null
+          sentiment_results: Json | null
+          status: string
+          transcript_text: string | null
+          updated_at: string
+          utterances: Json | null
+          words: Json | null
+        }
+        Insert: {
+          assemblyai_id?: string | null
+          audio_duration_ms?: number | null
+          call_id: string
+          created_at?: string
+          error_message?: string | null
+          sentiment_results?: Json | null
+          status?: string
+          transcript_text?: string | null
+          updated_at?: string
+          utterances?: Json | null
+          words?: Json | null
+        }
+        Update: {
+          assemblyai_id?: string | null
+          audio_duration_ms?: number | null
+          call_id?: string
+          created_at?: string
+          error_message?: string | null
+          sentiment_results?: Json | null
+          status?: string
+          transcript_text?: string | null
+          updated_at?: string
+          utterances?: Json | null
+          words?: Json | null
+        }
+        Relationships: []
+      }
       changelog_changes: {
         Row: {
           change_type: string
