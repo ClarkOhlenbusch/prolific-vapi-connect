@@ -1,0 +1,31 @@
+{
+  "version": "1.1.19",
+  "release_date": "2026-02-20",
+  "description": "Qualitative analysis charts, compute-metrics edge function UI, and thematic coding infrastructure",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "added",
+      "scope": "researcher",
+      "description": "Researchers can now view live sentiment arc and engagement charts on the Qualitative Analysis page, showing formal vs informal comparisons for mean sentiment, sentiment arc (early/mid/late), words per turn, turn counts, and speaking time ratio. Implemented by fetching call_qualitative_metrics in QualitativeAnalysis.tsx and replacing placeholder cards with Recharts bar charts grouped by condition.",
+      "commit_hash": "9d02f55",
+      "pushed_at": "2026-02-20"
+    },
+    {
+      "type": "added",
+      "scope": "researcher",
+      "description": "Researchers can trigger qualitative metrics computation directly from the Researcher Dashboard via a new 'Compute metrics' button in the Responses → Advanced section, with a 45-second timeout, batch progress toasts, and a 'Hard recompute all' option. Implemented by adding handleComputeMetrics with Promise.race timeout to UnifiedParticipantsTable, fetching pending counts on load, and surfacing errors in the toast.",
+      "commit_hash": "db478e2",
+      "pushed_at": "2026-02-20",
+      "details": "The edge function is invoked via supabase.functions.invoke in batches of 25; a Promise.race timeout fires a clear error toast if the function is not deployed."
+    },
+    {
+      "type": "added",
+      "scope": "researcher",
+      "description": "Researcher tooling now includes a Node.js script and two Supabase edge functions for computing qualitative metrics and running LLM-based thematic coding from AssemblyAI utterances. Added scripts/compute-qualitative-metrics.mjs, scripts/run-llm-thematic-coding.mjs, and supabase/functions/compute-qualitative-metrics + run-thematic-coding edge functions.",
+      "commit_hash": "9740c3b",
+      "pushed_at": "2026-02-20"
+    }
+  ]
+}
