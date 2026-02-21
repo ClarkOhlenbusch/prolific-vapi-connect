@@ -164,7 +164,7 @@ Deno.serve(async (req: Request) => {
         headers: { authorization: assemblyaiApiKey, "content-type": "application/json" },
         body: JSON.stringify({
           audio_url: recordingUrl,
-          speech_model: "universal-3-pro",
+          speech_models: ["universal-3-pro"],
           sentiment_analysis: true,
           speaker_labels: true,
           webhook_url: webhookUrl,
