@@ -49,7 +49,7 @@
  *   If your setup differs, set FIRST_SPEAKER_IS_USER=true below.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "@supabase/supabase-js";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -163,8 +163,8 @@ function computeMetrics(utterances, sentimentResults, audioDurationMs) {
   const late = userSentimentScores.slice(third * 2);
 
   const sentimentArcEarly = mean(early);
-  const sentimentArcMid = mean(mid.length ? mid : null);
-  const sentimentArcLate = mean(late.length ? late : null);
+  const sentimentArcMid = mean(mid); // mean([]) returns null safely
+  const sentimentArcLate = mean(late); // mean([]) returns null safely
 
   // ── Engagement metrics ──────────────────────────────────────────────────────
 
