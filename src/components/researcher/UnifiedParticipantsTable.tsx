@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { 
-  Search, 
+  Search,
   Download,
   ChevronDown,
   ChevronLeft,
@@ -40,7 +40,8 @@ import {
   AlertTriangle,
   BarChart3,
   RefreshCw,
-  GripVertical
+  GripVertical,
+  FileAudio,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -109,6 +110,7 @@ type ColumnId =
   | 'pets'
   | 'tias'
   | 'eval'
+  | 'early_access'
   | 'actions';
 
 const ALL_RESPONSES_COLUMN_ORDER_STORAGE_KEY = 'researcher-all-responses-column-order-v1';
@@ -128,6 +130,7 @@ const DEFAULT_MOVABLE_COLUMN_ORDER: ColumnId[] = [
   'pets',
   'tias',
   'eval',
+  'early_access',
 ];
 
 const isSubmissionStatus = (v: unknown): v is 'pending' | 'submitted' | 'abandoned' => {
@@ -181,6 +184,9 @@ interface UnifiedParticipant {
   vapi_total_score?: number | null;
   vapi_structured_output_at?: string | null;
   vapi_evaluation_metric_id?: string | null;
+  // Early access opt-in
+  early_access_notify?: boolean | null;
+  early_access_notes?: string | null;
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -283,6 +289,8 @@ const EXPORT_COLUMNS: { id: string; label: string; getValue: (row: UnifiedPartic
   { id: 'tias_total', label: 'TIAS Total', getValue: (r) => r.tias_total ?? '' },
   { id: 'formality', label: 'Formality', getValue: (r) => r.formality ?? '' },
   { id: 'vapi_total_score', label: 'Vapi Eval Total Score', getValue: (r) => r.vapi_total_score ?? '' },
+  { id: 'early_access_notify', label: 'Early Access Opt-In', getValue: (r) => r.early_access_notify === null || r.early_access_notify === undefined ? '' : r.early_access_notify ? 'Yes' : 'No' },
+  { id: 'early_access_notes', label: 'Early Access Notes', getValue: (r) => r.early_access_notes ?? '' },
 ];
 
 import { SourceFilterValue } from './GlobalSourceFilter';
@@ -305,6 +313,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [batchFilter, setBatchFilter] = useState<string>('all');
   const [flagFilter, setFlagFilter] = useState<'all' | 'flagged' | 'auto_flagged' | 'any_flagged' | 'not_flagged'>('all');
   const [reviewedFilter, setReviewedFilter] = useState<'all' | 'reviewed' | 'not_reviewed'>('all');
+  const [earlyAccessFilter, setEarlyAccessFilter] = useState<'all' | 'opted_in' | 'opted_out' | 'with_notes'>('all');
   const [prolificIdExpanded, setProlificIdExpanded] = useState(false);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [archiveMode, setArchiveMode] = useState<'single' | 'bulk'>('single');
@@ -322,6 +331,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [lastStructuredOutputRunId, setLastStructuredOutputRunId] = useState<string | null>(null);
   const [runEvaluationLoading, setRunEvaluationLoading] = useState(false);
   const [checkResultsLoading, setCheckResultsLoading] = useState(false);
+  const [transcribeLoading, setTranscribeLoading] = useState(false);
 
   // Evaluation metric context (for stale detection + button-driven worker)
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
@@ -505,6 +515,29 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     }
   };
 
+  const handleTranscribeCalls = async (retry = false) => {
+    if (isGuestMode) return;
+    setTranscribeLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("trigger-assemblyai-transcription", {
+        body: { limit: 25, retry },
+      });
+      if (error) throw error;
+      const submitted = data?.submitted ?? 0;
+      const total = data?.total ?? 0;
+      if (submitted === 0 && total === 0) {
+        toast.success("All calls already transcribed — nothing to submit.");
+      } else {
+        toast.success(`Submitted ${submitted}/${total} calls to AssemblyAI. Results will appear automatically when transcription completes.`);
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : "Failed to trigger transcription");
+    } finally {
+      setTranscribeLoading(false);
+    }
+  };
+
   const runEvalRefresh = async (opts: { callIds: string[]; label: string; confirmLarge?: boolean }) => {
     const callIds = uniqStrings(opts.callIds);
     if (callIds.length === 0 || isGuestMode) return;
@@ -620,7 +653,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       // Fetch experiment_responses
       const responsesQuery = supabase
         .from('experiment_responses')
-        .select('id, call_id, prolific_id, session_token, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged, vapi_total_score, vapi_structured_output_at, vapi_evaluation_metric_id, attention_check_1, attention_check_1_expected, godspeed_attention_check_1, godspeed_attention_check_1_expected, tias_attention_check_1, tias_attention_check_1_expected, tipi_attention_check_1, tipi_attention_check_1_expected');
+        .select('id, call_id, prolific_id, session_token, submission_status, assistant_type, batch_label, pets_total, tias_total, formality, reviewed_by_researcher, flagged, vapi_total_score, vapi_structured_output_at, vapi_evaluation_metric_id, attention_check_1, attention_check_1_expected, godspeed_attention_check_1, godspeed_attention_check_1_expected, tias_attention_check_1, tias_attention_check_1_expected, tipi_attention_check_1, tipi_attention_check_1_expected, early_access_notify, early_access_notes');
 
       const { data: responses, error: responsesError } = await responsesQuery;
 
@@ -757,6 +790,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
           vapi_evaluation_metric_id: response?.vapi_evaluation_metric_id ?? null,
           reviewed_by_researcher: response?.reviewed_by_researcher ?? false,
           flagged: response?.flagged ?? false,
+          early_access_notify: response?.early_access_notify ?? null,
+          early_access_notes: response?.early_access_notes ?? null,
           auto_flagged,
           auto_flag_reasons: auto_flag_reasons.length > 0 ? auto_flag_reasons : undefined,
           age: age ?? null,
@@ -879,8 +914,17 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       result = result.filter(p => !p.reviewed_by_researcher);
     }
 
+    // Early access filter
+    if (earlyAccessFilter === 'opted_in') {
+      result = result.filter(p => p.early_access_notify === true);
+    } else if (earlyAccessFilter === 'opted_out') {
+      result = result.filter(p => p.early_access_notify === false);
+    } else if (earlyAccessFilter === 'with_notes') {
+      result = result.filter(p => !!p.early_access_notes?.trim());
+    }
+
     return result;
-  }, [data, searchTerm, statusFilter, conditionFilter, batchFilter, flagFilter, reviewedFilter, globalSourceFilter]);
+  }, [data, searchTerm, statusFilter, conditionFilter, batchFilter, flagFilter, reviewedFilter, earlyAccessFilter, globalSourceFilter]);
 
   const paginatedData = useMemo(() => {
     const start = currentPage * pageSize;
@@ -931,7 +975,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchTerm, statusFilter, conditionFilter, batchFilter, globalSourceFilter]);
+  }, [searchTerm, statusFilter, conditionFilter, batchFilter, earlyAccessFilter, globalSourceFilter]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -1353,7 +1397,25 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       );
     }
 
-    const label: Record<Exclude<ColumnId, 'select' | 'demo' | 'reviewed' | 'flag' | 'status' | 'condition' | 'batch' | 'prolific_id'>, string> = {
+    if (id === 'early_access') {
+      const content = filterHeader('Early Access', earlyAccessFilter, [
+        { value: 'all', label: 'All' },
+        { value: 'opted_in', label: 'Opted in' },
+        { value: 'opted_out', label: 'Opted out' },
+        { value: 'with_notes', label: 'With notes' },
+      ], (v) => setEarlyAccessFilter(v as typeof earlyAccessFilter));
+      return sortable ? (
+        <SortableHeaderCell key={id} id={id} enabled={reorderColumnsEnabled} className="w-[110px] text-center">
+          {content}
+        </SortableHeaderCell>
+      ) : (
+        <TableHead key={id} data-testid={`all-responses-col-${id}`} className="w-[110px] text-center">
+          {content}
+        </TableHead>
+      );
+    }
+
+    const label: Record<Exclude<ColumnId, 'select' | 'demo' | 'reviewed' | 'flag' | 'status' | 'condition' | 'batch' | 'prolific_id' | 'early_access'>, string> = {
       call: 'Call',
       created_at: 'Created At',
       age: 'Age',
@@ -1600,6 +1662,37 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
             )}
           </TableCell>
         );
+      case 'early_access': {
+        const opted = row.early_access_notify;
+        const hasNotes = !!row.early_access_notes?.trim();
+        return (
+          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+            {opted === null || opted === undefined ? (
+              <span className="text-muted-foreground text-xs">–</span>
+            ) : opted ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1 justify-center">
+                    <Badge variant="default" className="text-xs px-1.5 py-0">Yes</Badge>
+                    {hasNotes && (
+                      <span className="text-xs text-muted-foreground" title="Has notes">✎</span>
+                    )}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[260px]">
+                  {hasNotes ? (
+                    <p className="text-xs">{row.early_access_notes}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Opted in — no notes left</p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Badge variant="secondary" className="text-xs px-1.5 py-0">No</Badge>
+            )}
+          </TableCell>
+        );
+      }
       case 'actions':
         return (
           <TableCell key={id} onClick={(e) => e.stopPropagation()}>
@@ -1715,6 +1808,26 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                     >
                       <RefreshCw className={`h-4 w-4 mr-2 ${processQueueLoading ? "animate-spin" : ""}`} />
                       Process queue now
+                    </Button>
+                    <Button
+                      onClick={() => handleTranscribeCalls(false)}
+                      disabled={transcribeLoading || isGuestMode}
+                      variant="outline"
+                      size="sm"
+                      title="Submits up to 25 pending calls to AssemblyAI for high-quality re-transcription with sentiment analysis. Results arrive automatically via webhook."
+                    >
+                      <FileAudio className={`h-4 w-4 mr-2 ${transcribeLoading ? "animate-pulse" : ""}`} />
+                      Transcribe calls (AssemblyAI)
+                    </Button>
+                    <Button
+                      onClick={() => handleTranscribeCalls(true)}
+                      disabled={transcribeLoading || isGuestMode}
+                      variant="outline"
+                      size="sm"
+                      title="Re-submits up to 25 calls that previously errored during AssemblyAI transcription."
+                    >
+                      <FileAudio className={`h-4 w-4 mr-2 ${transcribeLoading ? "animate-pulse" : ""}`} />
+                      Retry errors (AssemblyAI)
                     </Button>
                   </div>
                 </CollapsibleContent>
