@@ -40,6 +40,7 @@ const ResearcherDashboard = lazy(() => import("./pages/ResearcherDashboard"));
 const ResearcherUserManagement = lazy(() => import("./pages/ResearcherUserManagement"));
 const FormalityBreakdown = lazy(() => import("./pages/FormalityBreakdown"));
 const StatisticalAnalysis = lazy(() => import("./pages/StatisticalAnalysis"));
+const QualitativeAnalysis = lazy(() => import("./pages/QualitativeAnalysis"));
 const ResponseDetails = lazy(() => import("./pages/ResponseDetails"));
 const ResearcherChangelog = lazy(() => import("./pages/ResearcherChangelog"));
 const ResearcherErrorLog = lazy(() => import("./pages/ResearcherErrorLog"));
@@ -104,6 +105,7 @@ const App = () => (
                 <Route path="/researcher/users" element={<ResearcherProtectedRoute><ResearcherUserManagement /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/formality/:id" element={<ResearcherProtectedRoute><FormalityBreakdown /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/statistics" element={<ResearcherProtectedRoute><StatisticalAnalysis /></ResearcherProtectedRoute>} />
+                <Route path="/researcher/qualitative" element={<ResearcherProtectedRoute><QualitativeAnalysis /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/response/:id" element={<ResearcherProtectedRoute><ResponseDetails /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/changelog" element={<ResearcherProtectedRoute><ResearcherChangelog /></ResearcherProtectedRoute>} />
                 <Route path="/researcher/backlog" element={<ResearcherProtectedRoute><ResearcherErrorLog /></ResearcherProtectedRoute>} />

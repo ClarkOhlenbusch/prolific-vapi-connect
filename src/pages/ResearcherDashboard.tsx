@@ -8,6 +8,7 @@ import {
   FlaskConical,
   LogOut,
   BarChart3,
+  MessageSquareText,
   Archive,
   Settings,
   Calculator,
@@ -158,6 +159,13 @@ const ResearcherDashboard = () => {
             >
               <BarChart3 className="h-4 w-4 mr-2" />
               Statistical Analysis
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate('/researcher/qualitative')}
+            >
+              <MessageSquareText className="h-4 w-4 mr-2" />
+              Qualitative Analysis
             </Button>
             {!isGuestMode && isSuperAdmin && (
               <Button
