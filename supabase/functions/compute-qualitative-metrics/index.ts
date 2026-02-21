@@ -1,199 +1,129 @@
 /**
- * Qualitative Metrics Computation Script
- * =======================================
- * Reads completed AssemblyAI transcriptions and computes per-call engagement
- * and sentiment features. Writes results to `call_qualitative_metrics`.
+ * compute-qualitative-metrics
+ * ────────────────────────────
+ * Reads completed AssemblyAI utterances and derives per-call engagement +
+ * sentiment features. Writes to call_qualitative_metrics. No external API
+ * calls — pure computation from existing data.
  *
- * SETUP — run this SQL in Lovable's SQL editor FIRST:
- * ─────────────────────────────────────────────────────
+ * SQL to run in Lovable FIRST:
+ * ────────────────────────────────────────────────────────────────────────────
  *   CREATE TABLE IF NOT EXISTS call_qualitative_metrics (
  *     call_id                  text PRIMARY KEY,
  *     assistant_type           text,
- *     user_sentiment_mean      float,
- *     user_sentiment_std       float,
- *     sentiment_arc_early      float,
- *     sentiment_arc_mid        float,
- *     sentiment_arc_late       float,
- *     sentiment_positive_pct   float,
- *     sentiment_negative_pct   float,
- *     sentiment_neutral_pct    float,
- *     user_word_count          integer,
- *     user_turn_count          integer,
- *     user_words_per_turn      float,
- *     user_speaking_time_ms    integer,
- *     speaking_time_ratio      float,
- *     ai_word_count            integer,
- *     ai_turn_count            integer,
- *     total_duration_ms        integer,
+ *     user_sentiment_mean      float, user_sentiment_std float,
+ *     sentiment_arc_early      float, sentiment_arc_mid float, sentiment_arc_late float,
+ *     sentiment_positive_pct   float, sentiment_negative_pct float, sentiment_neutral_pct float,
+ *     user_word_count          integer, user_turn_count integer, user_words_per_turn float,
+ *     user_speaking_time_ms    integer, speaking_time_ratio float,
+ *     ai_word_count            integer, ai_turn_count integer, total_duration_ms integer,
  *     created_at               timestamptz NOT NULL DEFAULT now()
  *   );
- * ─────────────────────────────────────────────────────
+ * ────────────────────────────────────────────────────────────────────────────
  *
- * USAGE:
- *   node --env-file=.env --env-file=.env.local scripts/compute-qualitative-metrics.mjs
- *
- * REQUIRED ENV VARS:
- *   VITE_SUPABASE_URL         — in .env
- *   SUPABASE_SERVICE_ROLE_KEY — in .env.local
- *
- * OPTIONS:
- *   --dry-run     Print computed metrics without writing to DB
- *   --recompute   Recompute calls already in call_qualitative_metrics
- *   --limit N     Process at most N calls this run
+ * Called from Researcher UI. Processes up to `limit` calls per invocation.
  *
  * SPEAKER ASSUMPTION:
- *   AssemblyAI labels speakers in order of first appearance.
- *   In Vapi calls the AI assistant speaks first (greeting), so:
- *     Speaker A = AI assistant
- *     Speaker B = User
- *   If your setup differs, set FIRST_SPEAKER_IS_USER=true below.
+ *   In Vapi calls the AI greets first → Speaker A = AI, Speaker B = User.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// ─── Config ──────────────────────────────────────────────────────────────────
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PlainObj = Record<string, any>;
 
-// Set to true if the user (not AI) speaks first in your recordings
-const FIRST_SPEAKER_IS_USER = false;
+// ─── Math helpers ─────────────────────────────────────────────────────────────
 
-const args = process.argv.slice(2);
-const DRY_RUN = args.includes("--dry-run");
-const RECOMPUTE = args.includes("--recompute");
-const LIMIT = (() => {
-  const i = args.indexOf("--limit");
-  return i !== -1 ? parseInt(args[i + 1], 10) : Infinity;
-})();
-
-// ─── Validation ───────────────────────────────────────────────────────────────
-
-const missing = [
-  ["VITE_SUPABASE_URL", SUPABASE_URL],
-  ["SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_KEY],
-]
-  .filter(([, v]) => !v)
-  .map(([k]) => k);
-
-if (missing.length) {
-  console.error("Missing required env vars:", missing.join(", "));
-  process.exit(1);
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-
-// ─── Sentiment helpers ────────────────────────────────────────────────────────
-
-/** Maps AssemblyAI sentiment string to numeric score (-1, 0, +1) */
-function sentimentToScore(sentiment) {
-  if (sentiment === "POSITIVE") return 1;
-  if (sentiment === "NEGATIVE") return -1;
-  return 0; // NEUTRAL or unknown
-}
-
-function mean(arr) {
+function mean(arr: number[]): number | null {
   if (!arr.length) return null;
   return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
 
-function std(arr) {
+function std(arr: number[]): number | null {
   if (arr.length < 2) return null;
-  const m = mean(arr);
-  const variance = arr.reduce((acc, v) => acc + (v - m) ** 2, 0) / arr.length;
-  return Math.sqrt(variance);
+  const m = mean(arr)!;
+  return Math.sqrt(arr.reduce((acc, v) => acc + (v - m) ** 2, 0) / arr.length);
 }
 
-/** Count words in a string (split on whitespace) */
-function wordCount(text) {
+function wordCount(text: string): number {
   return (text ?? "").trim().split(/\s+/).filter(Boolean).length;
+}
+
+function sentimentToScore(s: string): number {
+  if (s === "POSITIVE") return 1;
+  if (s === "NEGATIVE") return -1;
+  return 0;
 }
 
 // ─── Core computation ─────────────────────────────────────────────────────────
 
-/**
- * Given utterances array from AssemblyAI, compute all qualitative metrics.
- * Utterances format: { speaker, text, start, end, words, sentiment?, confidence? }
- *
- * Note: AssemblyAI sentiment_analysis_results is per-sentence; we use per-utterance
- * sentiment from the utterances array (each utterance has a sentiment field when
- * sentiment_analysis is enabled).
- */
-function computeMetrics(utterances, sentimentResults, audioDurationMs) {
-  if (!utterances || utterances.length === 0) return null;
+function computeMetrics(
+  utterances: PlainObj[],
+  sentimentResults: PlainObj[] | null,
+  audioDurationMs: number | null,
+): PlainObj | null {
+  if (!utterances.length) return null;
 
-  // Determine which speaker label is the user
-  const firstSpeaker = utterances[0].speaker; // A if AI speaks first
-  const userSpeaker = FIRST_SPEAKER_IS_USER ? firstSpeaker : firstSpeaker === "A" ? "B" : "A";
-  const aiSpeaker = FIRST_SPEAKER_IS_USER ? (firstSpeaker === "A" ? "B" : "A") : firstSpeaker;
+  // AI speaks first → Speaker A = AI, Speaker B = User
+  const firstSpeaker = utterances[0].speaker as string;
+  const userSpeaker = firstSpeaker === "A" ? "B" : "A";
+  const aiSpeaker = firstSpeaker;
 
-  const userUtterances = utterances.filter((u) => u.speaker === userSpeaker);
-  const aiUtterances = utterances.filter((u) => u.speaker === aiSpeaker);
+  const userUtts = utterances.filter((u) => u.speaker === userSpeaker);
+  const aiUtts = utterances.filter((u) => u.speaker === aiSpeaker);
 
-  // ── Sentiment (from per-utterance sentiment if available, else from sentiment_results) ──
+  // Sentiment scores — try utterance-level first, fall back to sentence-level
+  let userScores: number[] = userUtts.filter((u) => u.sentiment).map((u) => sentimentToScore(u.sentiment as string));
 
-  // Try utterance-level sentiment first
-  let userSentimentScores = userUtterances.filter((u) => u.sentiment).map((u) => sentimentToScore(u.sentiment));
-
-  // Fallback: use sentiment_results (per-sentence, may include both speakers)
-  // sentiment_results items: { text, start, end, sentiment, confidence, speaker }
-  if (userSentimentScores.length === 0 && sentimentResults?.length) {
-    userSentimentScores = sentimentResults
+  if (!userScores.length && sentimentResults?.length) {
+    userScores = (sentimentResults as PlainObj[])
       .filter((r) => r.speaker === userSpeaker)
-      .map((r) => sentimentToScore(r.sentiment));
+      .map((r) => sentimentToScore(r.sentiment as string));
   }
 
-  const sentimentMean = mean(userSentimentScores);
-  const sentimentStd = std(userSentimentScores);
+  const sentMean = mean(userScores);
+  const sentStd = std(userScores);
 
-  // Sentiment percentages
-  const total = userSentimentScores.length;
-  const posCount = userSentimentScores.filter((s) => s === 1).length;
-  const negCount = userSentimentScores.filter((s) => s === -1).length;
-  const neutCount = userSentimentScores.filter((s) => s === 0).length;
+  const total = userScores.length;
+  const posCount = userScores.filter((s) => s === 1).length;
+  const negCount = userScores.filter((s) => s === -1).length;
+  const neutCount = userScores.filter((s) => s === 0).length;
 
-  const sentimentPositivePct = total ? posCount / total : null;
-  const sentimentNegativePct = total ? negCount / total : null;
-  const sentimentNeutralPct = total ? neutCount / total : null;
+  // Sentiment arc — early / mid / late thirds
+  const third = Math.max(1, Math.ceil(userScores.length / 3));
+  const arcEarly = mean(userScores.slice(0, third));
+  const arcMid = mean(userScores.slice(third, third * 2));
+  const arcLate = mean(userScores.slice(third * 2));
 
-  // Sentiment arc — split user turns into thirds
-  const third = Math.ceil(userSentimentScores.length / 3) || 1;
-  const early = userSentimentScores.slice(0, third);
-  const mid = userSentimentScores.slice(third, third * 2);
-  const late = userSentimentScores.slice(third * 2);
-
-  const sentimentArcEarly = mean(early);
-  const sentimentArcMid = mean(mid); // mean([]) returns null safely
-  const sentimentArcLate = mean(late); // mean([]) returns null safely
-
-  // ── Engagement metrics ──────────────────────────────────────────────────────
-
-  const userWordCount = userUtterances.reduce((acc, u) => acc + wordCount(u.text), 0);
-  const aiWordCount = aiUtterances.reduce((acc, u) => acc + wordCount(u.text), 0);
+  // Engagement
+  const userWordCount = userUtts.reduce((acc, u) => acc + wordCount(u.text as string), 0);
+  const aiWordCount = aiUtts.reduce((acc, u) => acc + wordCount(u.text as string), 0);
   const totalWords = userWordCount + aiWordCount;
 
-  const userTurnCount = userUtterances.length;
-  const aiTurnCount = aiUtterances.length;
-
+  const userTurnCount = userUtts.length;
+  const aiTurnCount = aiUtts.length;
   const userWordsPerTurn = userTurnCount > 0 ? userWordCount / userTurnCount : null;
 
-  // Speaking time in ms
-  const userSpeakingTimeMs = userUtterances.reduce((acc, u) => {
-    const duration = (u.end ?? 0) - (u.start ?? 0);
-    return acc + (duration > 0 ? duration : 0);
+  const userSpeakingTimeMs = userUtts.reduce((acc, u) => {
+    const dur = (u.end ?? 0) - (u.start ?? 0);
+    return acc + (dur > 0 ? dur : 0);
   }, 0);
 
   const speakingTimeRatio = totalWords > 0 ? userWordCount / totalWords : null;
 
   return {
-    user_sentiment_mean: sentimentMean,
-    user_sentiment_std: sentimentStd,
-    sentiment_arc_early: sentimentArcEarly,
-    sentiment_arc_mid: sentimentArcMid,
-    sentiment_arc_late: sentimentArcLate,
-    sentiment_positive_pct: sentimentPositivePct,
-    sentiment_negative_pct: sentimentNegativePct,
-    sentiment_neutral_pct: sentimentNeutralPct,
+    user_sentiment_mean: sentMean,
+    user_sentiment_std: sentStd,
+    sentiment_arc_early: arcEarly,
+    sentiment_arc_mid: arcMid,
+    sentiment_arc_late: arcLate,
+    sentiment_positive_pct: total ? posCount / total : null,
+    sentiment_negative_pct: total ? negCount / total : null,
+    sentiment_neutral_pct: total ? neutCount / total : null,
     user_word_count: userWordCount,
     user_turn_count: userTurnCount,
     user_words_per_turn: userWordsPerTurn,
@@ -205,110 +135,155 @@ function computeMetrics(utterances, sentimentResults, audioDurationMs) {
   };
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Main handler ─────────────────────────────────────────────────────────────
 
-async function main() {
-  console.log("Qualitative Metrics Computation");
-  console.log("================================");
-  if (DRY_RUN) console.log("DRY RUN — metrics will be printed but not saved\n");
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Fetch completed transcriptions
-  const { data: transcriptions, error: tErr } = await supabase
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+  // ── Auth: require researcher role ─────────────────────────────────────────
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { data: userData, error: authError } = await supabaseUser.auth.getUser();
+  if (authError || !userData?.user) {
+    return new Response(JSON.stringify({ error: "Invalid user session" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: roleData } = await supabaseAdmin
+    .from("researcher_roles")
+    .select("role")
+    .eq("user_id", userData.user.id)
+    .maybeSingle();
+
+  if (!roleData) {
+    return new Response(JSON.stringify({ error: "Forbidden: researcher role required" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // ── Parse request ─────────────────────────────────────────────────────────
+  const body: PlainObj = await req.json().catch(() => ({}));
+  const limit: number = typeof body.limit === "number" ? Math.min(body.limit, 50) : 25;
+  const recompute: boolean = body.recompute === true;
+
+  // ── Fetch completed transcriptions ────────────────────────────────────────
+  const { data: transcriptions, error: tErr } = await supabaseAdmin
     .from("call_transcriptions_assemblyai")
     .select("call_id, utterances, sentiment_results, audio_duration_ms")
     .eq("status", "completed")
     .not("utterances", "is", null);
 
   if (tErr) {
-    console.error("Failed to fetch transcriptions:", tErr.message);
-    process.exit(1);
+    return new Response(JSON.stringify({ error: tErr.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
-  console.log(`Completed transcriptions: ${transcriptions.length}`);
-
-  // Fetch already-computed call_ids (unless --recompute)
-  let alreadyDone = new Set();
-  if (!RECOMPUTE) {
-    const { data: existing } = await supabase.from("call_qualitative_metrics").select("call_id");
-    alreadyDone = new Set(existing?.map((r) => r.call_id) ?? []);
-    console.log(`Already computed: ${alreadyDone.size}`);
+  // ── Find already-computed call_ids ────────────────────────────────────────
+  let alreadyDone = new Set<string>();
+  if (!recompute) {
+    const { data: existing } = await supabaseAdmin.from("call_qualitative_metrics").select("call_id");
+    alreadyDone = new Set((existing ?? []).map((r: PlainObj) => r.call_id as string));
   }
 
-  // Fetch assistant_type from experiment_responses
-  const { data: responses } = await supabase
+  // ── Fetch assistant_type from experiment_responses ────────────────────────
+  const { data: responses } = await supabaseAdmin
     .from("experiment_responses")
     .select("call_id, ai_formality_score, assistant_type");
+  const responseMap = new Map<string, PlainObj>((responses ?? []).map((r: PlainObj) => [r.call_id as string, r]));
 
-  const responseMap = new Map(responses?.map((r) => [r.call_id, r]) ?? []);
+  const toProcess = (transcriptions ?? [])
+    .filter((t: PlainObj) => recompute || !alreadyDone.has(t.call_id as string))
+    .slice(0, limit);
 
-  // Filter to what we need to process
-  const toProcess = transcriptions.filter((t) => RECOMPUTE || !alreadyDone.has(t.call_id)).slice(0, LIMIT);
-
-  console.log(`To compute this run: ${toProcess.length}\n`);
+  console.info(
+    `[compute-qualitative-metrics] total=${(transcriptions ?? []).length} alreadyDone=${alreadyDone.size} toProcess=${toProcess.length} recompute=${recompute}`,
+  );
 
   if (toProcess.length === 0) {
-    console.log("Nothing to do.");
-    return;
+    return new Response(JSON.stringify({ computed: 0, errors: 0, total: 0, message: "All calls already computed" }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
-  let succeeded = 0;
-  let failed = 0;
+  // ── Process each call ─────────────────────────────────────────────────────
+  let computed = 0;
+  let errors = 0;
 
-  for (const t of toProcess) {
-    const { call_id, utterances, sentiment_results, audio_duration_ms } = t;
-    process.stdout.write(`[${call_id}] Computing... `);
+  for (let i = 0; i < toProcess.length; i++) {
+    const t = toProcess[i] as PlainObj;
+    const callId = t.call_id as string;
+
+    console.info(`[compute-qualitative-metrics] [${i + 1}/${toProcess.length}] ${callId}`);
 
     try {
-      const metrics = computeMetrics(utterances, sentiment_results, audio_duration_ms);
+      const metrics = computeMetrics(
+        (t.utterances as PlainObj[]) ?? [],
+        (t.sentiment_results as PlainObj[] | null) ?? null,
+        typeof t.audio_duration_ms === "number" ? t.audio_duration_ms : null,
+      );
 
       if (!metrics) {
-        console.log("skip (no utterances)");
+        console.info(`[compute-qualitative-metrics] ${callId}: skip (empty utterances)`);
         continue;
       }
 
       // Determine assistant_type
-      const resp = responseMap.get(call_id);
-      let assistantType = resp?.assistant_type ?? null;
+      const resp = responseMap.get(callId);
+      let assistantType: string | null = resp?.assistant_type ?? null;
       if (!assistantType && resp?.ai_formality_score != null) {
-        // Derive from formality score if direct field not present
-        // Threshold: 0.5 → formal; <0.5 → informal (adjust if needed)
-        assistantType = resp.ai_formality_score >= 0.5 ? "formal" : "informal";
+        assistantType = (resp.ai_formality_score as number) >= 0.5 ? "formal" : "informal";
       }
 
-      const row = {
-        call_id,
-        assistant_type: assistantType,
-        ...metrics,
-        created_at: new Date().toISOString(),
-      };
-
-      if (DRY_RUN) {
-        console.log("\n  ", JSON.stringify(row, null, 2));
-        succeeded++;
-        continue;
-      }
-
-      const { error: uErr } = await supabase.from("call_qualitative_metrics").upsert(row, { onConflict: "call_id" });
+      const { error: uErr } = await supabaseAdmin
+        .from("call_qualitative_metrics")
+        .upsert(
+          { call_id: callId, assistant_type: assistantType, ...metrics, created_at: new Date().toISOString() },
+          { onConflict: "call_id" },
+        );
 
       if (uErr) {
-        console.log(`FAIL — ${uErr.message}`);
-        failed++;
+        console.error(`[compute-qualitative-metrics] DB error ${callId}:`, uErr.message);
+        errors++;
       } else {
-        const sentStr = metrics.user_sentiment_mean != null ? metrics.user_sentiment_mean.toFixed(3) : "n/a";
-        console.log(`ok (sentiment_mean=${sentStr}, turns=${metrics.user_turn_count})`);
-        succeeded++;
+        console.info(
+          `[compute-qualitative-metrics] ${callId}: ok (sentiment_mean=${metrics.user_sentiment_mean?.toFixed(3)}, turns=${metrics.user_turn_count})`,
+        );
+        computed++;
       }
     } catch (err) {
-      console.log(`ERROR — ${err.message}`);
-      failed++;
+      console.error(`[compute-qualitative-metrics] Error ${callId}:`, err instanceof Error ? err.message : err);
+      errors++;
     }
   }
 
-  console.log("\n================================");
-  console.log(`Done: ${succeeded} computed, ${failed} failed.`);
-}
+  console.info(`[compute-qualitative-metrics] Done: computed=${computed} errors=${errors}`);
 
-main().catch((err) => {
-  console.error("Fatal:", err);
-  process.exit(1);
+  return new Response(JSON.stringify({ computed, errors, total: toProcess.length }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 });
