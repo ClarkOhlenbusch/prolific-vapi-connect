@@ -37,7 +37,12 @@ import {
   StickyNote,
   BarChart3,
   RefreshCw,
-  Monitor
+  Monitor,
+  FileAudio,
+  Mic,
+  ThumbsUp,
+  ThumbsDown,
+  Minus,
 } from 'lucide-react';
 import { Tables } from '@/integrations/supabase/types';
 import ffmpegCoreURL from '@ffmpeg/core?url';
@@ -1027,6 +1032,7 @@ const SECTIONS = [
   { id: 'tipi', label: 'TIPI', icon: User },
   { id: 'intention', label: 'Intention', icon: Target },
   { id: 'feedback', label: 'Feedback', icon: MessageSquare },
+  { id: 'transcription', label: 'Transcription', icon: FileAudio },
   { id: 'diagnostics', label: 'Diagnostics', icon: Monitor },
 ];
 
@@ -1088,6 +1094,14 @@ const ResponseDetails = () => {
   const [checkResultsLoading, setCheckResultsLoading] = useState(false);
   const [sessionDeviceInfo, setSessionDeviceInfo] = useState<Record<string, unknown> | null>(null);
   const [feedbackPageContext, setFeedbackPageContext] = useState<Record<string, unknown> | null>(null);
+  const [assemblyaiTranscription, setAssemblyaiTranscription] = useState<{
+    status: string;
+    transcript_text: string | null;
+    utterances: Array<{ speaker: string; text: string; start: number; end: number; confidence: number }> | null;
+    sentiment_results: Array<{ text: string; start: number; end: number; sentiment: string; confidence: number }> | null;
+    audio_duration_ms: number | null;
+    error_message: string | null;
+  } | null>(null);
   const sectionRefs = useRef<{ [key: string]: HTMLElement | null }>({});
 
   const setMergedFieldState = useCallback((field: FeedbackFieldKey, next: MergedDictationAudioState) => {
@@ -2042,6 +2056,19 @@ const ResponseDetails = () => {
 
     fetchData();
   }, [id, resetMergedFieldState, isGuestMode]);
+
+  // Fetch AssemblyAI transcription for the call
+  useEffect(() => {
+    if (!data?.call_id) return;
+    supabase
+      .from('call_transcriptions_assemblyai')
+      .select('status, transcript_text, utterances, sentiment_results, audio_duration_ms, error_message')
+      .eq('call_id', data.call_id)
+      .maybeSingle()
+      .then(({ data: row }) => {
+        if (row) setAssemblyaiTranscription(row as typeof assemblyaiTranscription);
+      });
+  }, [data?.call_id]);
 
   // Build replay markers once both replayEvents and navigation events are ready.
   // Markers are placed on the replay timeline relative to the first rrweb event.
@@ -4447,6 +4474,138 @@ const ResponseDetails = () => {
         </section>
 
         {/* Session Diagnostics Section */}
+        <section ref={el => sectionRefs.current['transcription'] = el} id="transcription" className="scroll-mt-32">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileAudio className="h-5 w-5 text-slate-500" />
+                Transcription (AssemblyAI)
+                {assemblyaiTranscription && (
+                  <Badge variant={
+                    assemblyaiTranscription.status === 'completed' ? 'default' :
+                    assemblyaiTranscription.status === 'error' ? 'destructive' :
+                    'secondary'
+                  } className="ml-2 text-xs">
+                    {assemblyaiTranscription.status}
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                High-quality re-transcription with speaker diarization and per-sentence sentiment analysis.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!assemblyaiTranscription && (
+                <p className="text-sm text-muted-foreground">No transcription available. Use the "Transcribe calls" button in the dashboard to submit this call.</p>
+              )}
+              {assemblyaiTranscription?.status === 'submitted' && (
+                <p className="text-sm text-muted-foreground">Transcription submitted — processing by AssemblyAI. Refresh in a moment.</p>
+              )}
+              {assemblyaiTranscription?.status === 'error' && (
+                <p className="text-sm text-destructive">Error: {assemblyaiTranscription.error_message ?? 'Unknown error'}</p>
+              )}
+              {assemblyaiTranscription?.status === 'completed' && (
+                <div className="space-y-6">
+                  {/* Stats bar */}
+                  {assemblyaiTranscription.audio_duration_ms != null && (
+                    <div className="flex gap-4 text-xs text-muted-foreground">
+                      <span>Duration: {Math.round(assemblyaiTranscription.audio_duration_ms / 1000)}s</span>
+                      {assemblyaiTranscription.utterances && <span>Utterances: {assemblyaiTranscription.utterances.length}</span>}
+                      {assemblyaiTranscription.sentiment_results && <span>Sentiment segments: {assemblyaiTranscription.sentiment_results.length}</span>}
+                    </div>
+                  )}
+
+                  {/* Utterances with speaker labels */}
+                  {assemblyaiTranscription.utterances && assemblyaiTranscription.utterances.length > 0 ? (
+                    <div>
+                      <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Conversation</h3>
+                      <div className="space-y-2">
+                        {assemblyaiTranscription.utterances.map((utt, i) => {
+                          const isA = utt.speaker === 'A';
+                          const sentimentForUtt = assemblyaiTranscription.sentiment_results?.find(
+                            s => Math.abs(s.start - utt.start) < 500
+                          );
+                          const sentimentColor =
+                            sentimentForUtt?.sentiment === 'POSITIVE' ? 'text-green-600' :
+                            sentimentForUtt?.sentiment === 'NEGATIVE' ? 'text-red-500' :
+                            'text-muted-foreground';
+                          const SentimentIcon =
+                            sentimentForUtt?.sentiment === 'POSITIVE' ? ThumbsUp :
+                            sentimentForUtt?.sentiment === 'NEGATIVE' ? ThumbsDown :
+                            Minus;
+                          return (
+                            <div key={i} className={`flex gap-3 ${isA ? '' : 'flex-row-reverse'}`}>
+                              <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white ${isA ? 'bg-blue-500' : 'bg-violet-500'}`}>
+                                {utt.speaker}
+                              </div>
+                              <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${isA ? 'bg-muted' : 'bg-violet-50 dark:bg-violet-950'}`}>
+                                <p>{utt.text}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-xs text-muted-foreground">{(utt.start / 1000).toFixed(1)}s</span>
+                                  {sentimentForUtt && (
+                                    <span className={`flex items-center gap-0.5 text-xs ${sentimentColor}`}>
+                                      <SentimentIcon className="h-3 w-3" />
+                                      {(sentimentForUtt.confidence * 100).toFixed(0)}%
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : assemblyaiTranscription.transcript_text ? (
+                    <div>
+                      <h3 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Full Transcript</h3>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{assemblyaiTranscription.transcript_text}</p>
+                    </div>
+                  ) : null}
+
+                  {/* Sentiment summary */}
+                  {assemblyaiTranscription.sentiment_results && assemblyaiTranscription.sentiment_results.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Sentiment Summary</h3>
+                      {(() => {
+                        const results = assemblyaiTranscription.sentiment_results!;
+                        const counts = results.reduce((acc, s) => {
+                          acc[s.sentiment] = (acc[s.sentiment] ?? 0) + 1;
+                          return acc;
+                        }, {} as Record<string, number>);
+                        const total = results.length;
+                        return (
+                          <div className="flex gap-4">
+                            {[
+                              { key: 'POSITIVE', label: 'Positive', color: 'bg-green-500', text: 'text-green-700' },
+                              { key: 'NEUTRAL', label: 'Neutral', color: 'bg-slate-400', text: 'text-slate-600' },
+                              { key: 'NEGATIVE', label: 'Negative', color: 'bg-red-500', text: 'text-red-700' },
+                            ].map(({ key, label, color, text }) => {
+                              const count = counts[key] ?? 0;
+                              const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                              return (
+                                <div key={key} className="flex-1">
+                                  <div className="flex justify-between text-xs mb-1">
+                                    <span className={`font-medium ${text}`}>{label}</span>
+                                    <span className="text-muted-foreground">{pct}%</span>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                    <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-0.5">{count} segments</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
         <section ref={el => sectionRefs.current['diagnostics'] = el} id="diagnostics" className="scroll-mt-32">
           <Card>
             <CardHeader>
