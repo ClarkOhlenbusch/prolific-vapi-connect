@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.assemblyai-webhook]
 verify_jwt = false
+
+[functions.run-thematic-coding]
+verify_jwt = false

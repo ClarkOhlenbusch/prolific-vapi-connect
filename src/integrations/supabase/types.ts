@@ -177,6 +177,108 @@ export type Database = {
           },
         ]
       }
+      call_qualitative_metrics: {
+        Row: {
+          ai_turn_count: number | null
+          ai_word_count: number | null
+          assistant_type: string | null
+          call_id: string
+          created_at: string
+          sentiment_arc_early: number | null
+          sentiment_arc_late: number | null
+          sentiment_arc_mid: number | null
+          sentiment_negative_pct: number | null
+          sentiment_neutral_pct: number | null
+          sentiment_positive_pct: number | null
+          speaking_time_ratio: number | null
+          total_duration_ms: number | null
+          user_sentiment_mean: number | null
+          user_sentiment_std: number | null
+          user_speaking_time_ms: number | null
+          user_turn_count: number | null
+          user_word_count: number | null
+          user_words_per_turn: number | null
+        }
+        Insert: {
+          ai_turn_count?: number | null
+          ai_word_count?: number | null
+          assistant_type?: string | null
+          call_id: string
+          created_at?: string
+          sentiment_arc_early?: number | null
+          sentiment_arc_late?: number | null
+          sentiment_arc_mid?: number | null
+          sentiment_negative_pct?: number | null
+          sentiment_neutral_pct?: number | null
+          sentiment_positive_pct?: number | null
+          speaking_time_ratio?: number | null
+          total_duration_ms?: number | null
+          user_sentiment_mean?: number | null
+          user_sentiment_std?: number | null
+          user_speaking_time_ms?: number | null
+          user_turn_count?: number | null
+          user_word_count?: number | null
+          user_words_per_turn?: number | null
+        }
+        Update: {
+          ai_turn_count?: number | null
+          ai_word_count?: number | null
+          assistant_type?: string | null
+          call_id?: string
+          created_at?: string
+          sentiment_arc_early?: number | null
+          sentiment_arc_late?: number | null
+          sentiment_arc_mid?: number | null
+          sentiment_negative_pct?: number | null
+          sentiment_neutral_pct?: number | null
+          sentiment_positive_pct?: number | null
+          speaking_time_ratio?: number | null
+          total_duration_ms?: number | null
+          user_sentiment_mean?: number | null
+          user_sentiment_std?: number | null
+          user_speaking_time_ms?: number | null
+          user_turn_count?: number | null
+          user_word_count?: number | null
+          user_words_per_turn?: number | null
+        }
+        Relationships: []
+      }
+      call_thematic_codes: {
+        Row: {
+          call_id: string
+          comfort_score: number | null
+          created_at: string
+          model_used: string | null
+          notable_moments: Json | null
+          overall_conversation_quality: number | null
+          rapport_level: string | null
+          self_disclosure: boolean | null
+          user_initiated_topics: Json | null
+        }
+        Insert: {
+          call_id: string
+          comfort_score?: number | null
+          created_at?: string
+          model_used?: string | null
+          notable_moments?: Json | null
+          overall_conversation_quality?: number | null
+          rapport_level?: string | null
+          self_disclosure?: boolean | null
+          user_initiated_topics?: Json | null
+        }
+        Update: {
+          call_id?: string
+          comfort_score?: number | null
+          created_at?: string
+          model_used?: string | null
+          notable_moments?: Json | null
+          overall_conversation_quality?: number | null
+          rapport_level?: string | null
+          self_disclosure?: boolean | null
+          user_initiated_topics?: Json | null
+        }
+        Relationships: []
+      }
       call_transcriptions_assemblyai: {
         Row: {
           assemblyai_id: string | null
@@ -570,6 +672,10 @@ export type Database = {
           early_access_notes: string | null
           early_access_notify: boolean | null
           experiment_feedback: string | null
+          feedback_condition_perception: string | null
+          feedback_satisfaction_inferred: number | null
+          feedback_sentiment: string | null
+          feedback_themes: Json | null
           flagged: boolean
           formality: number | null
           godspeed_anthro_1: number | null
@@ -721,6 +827,10 @@ export type Database = {
           early_access_notes?: string | null
           early_access_notify?: boolean | null
           experiment_feedback?: string | null
+          feedback_condition_perception?: string | null
+          feedback_satisfaction_inferred?: number | null
+          feedback_sentiment?: string | null
+          feedback_themes?: Json | null
           flagged?: boolean
           formality?: number | null
           godspeed_anthro_1?: number | null
@@ -872,6 +982,10 @@ export type Database = {
           early_access_notes?: string | null
           early_access_notify?: boolean | null
           experiment_feedback?: string | null
+          feedback_condition_perception?: string | null
+          feedback_satisfaction_inferred?: number | null
+          feedback_sentiment?: string | null
+          feedback_themes?: Json | null
           flagged?: boolean
           formality?: number | null
           godspeed_anthro_1?: number | null
