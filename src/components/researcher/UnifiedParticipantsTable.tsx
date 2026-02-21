@@ -332,6 +332,12 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const [runEvaluationLoading, setRunEvaluationLoading] = useState(false);
   const [checkResultsLoading, setCheckResultsLoading] = useState(false);
   const [transcribeLoading, setTranscribeLoading] = useState(false);
+  const [thematicCodingLoading, setThematicCodingLoading] = useState(false);
+  const [thematicProgress, setThematicProgress] = useState<{ done: number; total: number | null } | null>(null);
+  const [uncodedThematicCount, setUncodedThematicCount] = useState<number | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsProgress, setMetricsProgress] = useState<number | null>(null);
+  const [uncomputedMetricsCount, setUncomputedMetricsCount] = useState<number | null>(null);
 
   // Evaluation metric context (for stale detection + button-driven worker)
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
@@ -416,6 +422,125 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     };
     fetchActiveMetric();
   }, [isGuestMode]);
+
+  // Fetch count of completed transcriptions not yet thematically coded
+  const fetchUncodedThematicCount = async () => {
+    if (isGuestMode) return;
+    try {
+      const { data: coded } = await supabase.from("call_thematic_codes").select("call_id");
+      const { data: transcribed } = await supabase
+        .from("call_transcriptions_assemblyai")
+        .select("call_id")
+        .eq("status", "completed");
+      const codedSet = new Set((coded ?? []).map((r) => r.call_id));
+      const uncoded = (transcribed ?? []).filter((r) => !codedSet.has(r.call_id)).length;
+      setUncodedThematicCount(uncoded);
+    } catch (e) {
+      console.warn("Failed to fetch uncoded thematic count:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchUncodedThematicCount();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGuestMode]);
+
+  const fetchUncomputedMetricsCount = async () => {
+    if (isGuestMode) return;
+    try {
+      const { data: computed } = await supabase.from("call_qualitative_metrics").select("call_id");
+      const { data: transcribed } = await supabase
+        .from("call_transcriptions_assemblyai")
+        .select("call_id")
+        .eq("status", "completed");
+      const computedSet = new Set((computed ?? []).map((r) => r.call_id));
+      setUncomputedMetricsCount((transcribed ?? []).filter((r) => !computedSet.has(r.call_id)).length);
+    } catch (e) {
+      console.warn("Failed to fetch uncomputed metrics count:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchUncomputedMetricsCount();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGuestMode]);
+
+  const handleComputeMetrics = async (recompute = false) => {
+    if (isGuestMode) return;
+    if (recompute) {
+      const ok = window.confirm("Hard recompute will overwrite all existing qualitative metrics. Continue?");
+      if (!ok) return;
+    }
+    setMetricsLoading(true);
+    setMetricsProgress(0);
+    const toastId = "compute-metrics";
+    const BATCH = 25;
+    let totalDone = 0;
+    toast.loading("Computing qualitative metrics…", { id: toastId });
+    try {
+      while (true) {
+        toast.loading(`Computing metrics… (${totalDone} done so far)`, { id: toastId });
+        const invokeBody = { limit: BATCH, recompute: totalDone === 0 ? recompute : false };
+        console.log(`[compute-metrics] invoking edge function with`, invokeBody);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("TIMEOUT_45S")), 45_000),
+        );
+        let invokeResult: { data: Record<string, unknown> | null; error: Error | null };
+        try {
+          invokeResult = await Promise.race([
+            supabase.functions.invoke("compute-qualitative-metrics", { body: invokeBody }),
+            timeoutPromise,
+          ]) as typeof invokeResult;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg === "TIMEOUT_45S") {
+            toast.error(
+              "Edge function timed out (45s). Is 'compute-qualitative-metrics' deployed in Lovable?",
+              { id: toastId, duration: 10_000 },
+            );
+            console.error(`[compute-metrics] timed out after 45s`);
+          } else {
+            toast.error(`Edge function fetch failed: ${msg}`, { id: toastId, duration: 10_000 });
+            console.error(`[compute-metrics] fetch error:`, e);
+          }
+          break;
+        }
+        const data = invokeResult.data;
+        const error = invokeResult.error;
+        if (error) {
+          console.error(`[compute-metrics] invoke error:`, error);
+          toast.error(`Metrics computation failed: ${error.message}`, { id: toastId });
+          break;
+        }
+        const batchComputed: number = data?.computed ?? 0;
+        const batchErrors: number = data?.errors ?? 0;
+        const remaining: number = data?.total ?? 0;
+        totalDone += batchComputed;
+        setMetricsProgress(totalDone);
+        console.log(
+          `[compute-metrics] raw response:`, data,
+          `| parsed: batch.computed=${batchComputed} batch.errors=${batchErrors} batch.total=${remaining} totalDone=${totalDone}`,
+        );
+        if (remaining === 0 || batchComputed === 0) {
+          const errorNote = batchErrors > 0 ? ` (${batchErrors} errors — check browser console)` : "";
+          toast.success(
+            totalDone === 0
+              ? `Nothing computed — ${batchErrors > 0 ? `${batchErrors} errors, check console` : "no pending transcriptions found"}${data?.message ? `: ${data.message}` : ""}`
+              : `Metrics computed for ${totalDone} calls.${errorNote}`,
+            { id: toastId, duration: 8000 },
+          );
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to compute metrics", { id: toastId });
+    } finally {
+      setMetricsLoading(false);
+      setMetricsProgress(null);
+      fetchUncomputedMetricsCount();
+    }
+  };
 
   const enqueueEvaluations = async (callIds: string[], mode: "missing" | "stale" | "all") => {
     if (callIds.length === 0 || isGuestMode) return;
@@ -535,6 +660,85 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
       toast.error(e instanceof Error ? e.message : "Failed to trigger transcription");
     } finally {
       setTranscribeLoading(false);
+    }
+  };
+
+  const handleRunThematicCoding = async (recompute = false) => {
+    if (isGuestMode) return;
+    if (recompute) {
+      const ok = window.confirm("Hard recode will re-run OpenAI on all calls that already have codes, overwriting existing results. Continue?");
+      if (!ok) return;
+    }
+    setThematicCodingLoading(true);
+    setThematicProgress({ done: 0, total: null });
+
+    const BATCH = 5;
+    const toastId = "thematic-coding";
+    let totalDone = 0;
+    let totalErrors = 0;
+
+    toast.loading("Thematic coding — sending request…", { id: toastId });
+    console.log("[thematic-coding] Starting. recompute=", recompute);
+
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        console.log(`[thematic-coding] Batch request — totalDone=${totalDone}`);
+        toast.loading(`Thematic coding — waiting for server… (${totalDone} coded so far)`, { id: toastId });
+
+        const { data, error } = await supabase.functions.invoke("run-thematic-coding", {
+          body: { limit: BATCH, recompute: totalDone === 0 ? recompute : false },
+        });
+
+        if (error) {
+          console.error("[thematic-coding] Function error:", error);
+          toast.error(`Thematic coding failed: ${error.message}`, { id: toastId });
+          break;
+        }
+
+        const batchProcessed: number = data?.processed ?? 0;
+        const batchErrors: number = data?.errors ?? 0;
+        const remaining: number = data?.total ?? 0;
+        totalDone += batchProcessed;
+        totalErrors += batchErrors;
+
+        console.log(
+          `[thematic-coding] Batch done — processed=${batchProcessed}, errors=${batchErrors}, remaining=${remaining}, totalDone=${totalDone}`,
+        );
+
+        // Log individual call results if available
+        if (Array.isArray(data?.results)) {
+          for (const r of data.results) {
+            console.log(`  [thematic-coding] ${r.callId} — passA=${r.passA ?? "skip"} passB=${r.passB ?? "skip"}`);
+          }
+        }
+
+        setThematicProgress({ done: totalDone, total: null });
+        toast.loading(`Thematic coding — ${totalDone} coded${batchErrors ? `, ${totalErrors} errors` : ""}…`, { id: toastId });
+
+        // Stop if no more calls to process or nothing was coded this batch
+        if (remaining === 0 || (batchProcessed === 0 && batchErrors === 0)) {
+          if (totalDone === 0) {
+            toast.success("All calls already coded — nothing to do.", { id: toastId });
+            console.log("[thematic-coding] Nothing to process.");
+          } else {
+            const errNote = totalErrors > 0 ? ` (${totalErrors} errors)` : "";
+            toast.success(`Thematic coding complete — ${totalDone} calls coded${errNote}.`, { id: toastId });
+            console.log(`[thematic-coding] Done. totalDone=${totalDone}, totalErrors=${totalErrors}`);
+          }
+          break;
+        }
+
+        // Brief pause between batches to be polite to OpenAI rate limits
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    } catch (e) {
+      console.error("[thematic-coding] Unexpected error:", e);
+      toast.error(e instanceof Error ? e.message : "Failed to run thematic coding", { id: toastId });
+    } finally {
+      setThematicCodingLoading(false);
+      setThematicProgress(null);
+      fetchUncodedThematicCount();
     }
   };
 
@@ -1828,6 +2032,52 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
                     >
                       <FileAudio className={`h-4 w-4 mr-2 ${transcribeLoading ? "animate-pulse" : ""}`} />
                       Retry errors (AssemblyAI)
+                    </Button>
+                    <Button
+                      onClick={() => handleRunThematicCoding(false)}
+                      disabled={thematicCodingLoading || isGuestMode || uncodedThematicCount === 0}
+                      variant="outline"
+                      size="sm"
+                      title="Runs OpenAI thematic coding only on transcriptions not yet coded. Safe to click repeatedly."
+                    >
+                      <FileAudio className={`h-4 w-4 mr-2 ${thematicCodingLoading && !thematicProgress ? "animate-spin" : ""}`} />
+                      {thematicCodingLoading && thematicProgress
+                        ? `Coding… (${thematicProgress.done} done)`
+                        : thematicCodingLoading
+                        ? "Sending request…"
+                        : `Code missing themes${uncodedThematicCount !== null ? ` (${uncodedThematicCount})` : ""}`}
+                    </Button>
+                    <Button
+                      onClick={() => handleRunThematicCoding(true)}
+                      disabled={thematicCodingLoading || isGuestMode}
+                      variant="outline"
+                      size="sm"
+                      title="Force re-runs OpenAI coding on all calls, overwriting existing codes. Use after changing the prompt."
+                    >
+                      <FileAudio className={`h-4 w-4 mr-2 ${thematicCodingLoading && !!thematicProgress ? "animate-spin" : ""}`} />
+                      Hard recode all
+                    </Button>
+                    <Button
+                      onClick={() => handleComputeMetrics(false)}
+                      disabled={metricsLoading || isGuestMode || uncomputedMetricsCount === 0}
+                      variant="outline"
+                      size="sm"
+                      title="Computes sentiment arc, word count, and engagement metrics from existing AssemblyAI utterances. No API cost."
+                    >
+                      <FileAudio className={`h-4 w-4 mr-2 ${metricsLoading && metricsProgress === 0 ? "animate-spin" : metricsLoading ? "animate-pulse" : ""}`} />
+                      {metricsLoading
+                        ? `Computing… (${metricsProgress ?? 0} done)`
+                        : `Compute metrics${uncomputedMetricsCount !== null ? ` (${uncomputedMetricsCount})` : ""}`}
+                    </Button>
+                    <Button
+                      onClick={() => handleComputeMetrics(true)}
+                      disabled={metricsLoading || isGuestMode}
+                      variant="outline"
+                      size="sm"
+                      title="Force recomputes metrics for all calls, overwriting existing values."
+                    >
+                      <FileAudio className="h-4 w-4 mr-2" />
+                      Hard recompute all
                     </Button>
                   </div>
                 </CollapsibleContent>
