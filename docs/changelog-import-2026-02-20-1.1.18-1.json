@@ -1,0 +1,31 @@
+{
+  "version": "1.1.18",
+  "release_date": "2026-02-20",
+  "description": "AssemblyAI transcription pipeline: fix API field, retry UI, and conversation viewer with sentiment analysis",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "added",
+      "scope": "researcher",
+      "description": "Researchers can now submit Vapi call recordings to AssemblyAI for high-quality transcription with speaker diarization and sentiment analysis directly from the dashboard. Implemented via two new Supabase Edge Functions (trigger-assemblyai-transcription and assemblyai-webhook) and a local Node.js pipeline script.",
+      "commit_hash": "99dee01",
+      "pushed_at": "2026-02-20"
+    },
+    {
+      "type": "fixed",
+      "scope": "researcher",
+      "description": "AssemblyAI transcription submissions now succeed instead of returning a 400 error for every call. Fixed by correcting the API field from speech_model (singular string) to speech_models (plural array) as required by AssemblyAI's updated API. A new 'Retry errors' button (up to 25 calls) was also added alongside the existing Transcribe button.",
+      "commit_hash": "8fe16dd",
+      "pushed_at": "2026-02-20",
+      "details": "AssemblyAI's API now requires speech_models as a non-empty array (e.g. [\"universal-3-pro\"]) rather than a plain string. Both the Edge Function and local script were updated."
+    },
+    {
+      "type": "added",
+      "scope": "researcher",
+      "description": "Researchers can now view a full conversation transcript with speaker-labeled chat bubbles and per-sentence sentiment analysis directly in the response details page. A new 'Transcription' section shows Speaker A and B utterances color-coded, thumbs-up/down sentiment icons per utterance, and a positive/neutral/negative sentiment breakdown bar.",
+      "commit_hash": "957e4d2",
+      "pushed_at": "2026-02-20"
+    }
+  ]
+}
