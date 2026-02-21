@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.run-thematic-coding]
 verify_jwt = false
+
+[functions.compute-qualitative-metrics]
+verify_jwt = false
