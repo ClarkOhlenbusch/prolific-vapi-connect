@@ -1,0 +1,39 @@
+{
+  "version": "1.1.19",
+  "release_date": "2026-02-21",
+  "description": "Progression charts: Benjamini–Hochberg correction, predictor×outcome section, sort/toggle controls, direction labels, effect size",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "added",
+      "description": "Researchers can now see three p-value lines on each progression chart — raw, Holm–Bonferroni, and Benjamini–Hochberg — with toggle buttons to show or hide each, sortable by any correction method. Implemented by adding a benjaminiHochberg() function to statistics.ts, computing corrected p-values per batch within each measure's progression, and rendering conditional Line components with shared toggle state.",
+      "scope": "researcher",
+      "commit_hash": "5a6b005",
+      "pushed_at": "2026-02-21",
+      "details": "Hover tooltips on the toggle buttons explain each correction in plain language. The alert box explains both methods."
+    },
+    {
+      "type": "added",
+      "description": "Researchers can now see a collapsible Predictor × Outcome progression section that shows how p-values evolved batch-by-batch for every demographic predictor × outcome pair that is currently significant (raw p < .05 at latest batch). Implemented by adding a full predictor×outcome progression computation inside the main useMemo, applying Holm and BH corrections per pair, filtering to significant pairs, and rendering charts with the same line toggles as the measure charts.",
+      "scope": "researcher",
+      "commit_hash": "5a6b005",
+      "pushed_at": "2026-02-21",
+      "details": "The section is collapsed by default and shows a count of significant pairs in the header badge."
+    },
+    {
+      "type": "added",
+      "description": "Each progression chart now clearly shows the direction and effect size of the latest result — a coloured pill (blue = Formal higher, amber = Informal higher) in the card title, a plain-English sentence in the description, and a Cohen's d badge with verbal interpretation below the chart. Implemented by deriving direction from the sign of Cohen's d stored per ProgressionPoint and surfacing it in the card header, description, hover tooltip, and badge row.",
+      "scope": "researcher",
+      "commit_hash": "5a6b005",
+      "pushed_at": "2026-02-21"
+    },
+    {
+      "type": "fixed",
+      "description": "Clicking a row on the Responses table now reliably opens the response details in a new tab on the first click. Fixed by removing unnecessary stopPropagation from five table cells (demo, reviewed, flag, eval, early-access) whose inner buttons already handled propagation correctly, and changed row navigation to window.open(_blank).",
+      "scope": "researcher",
+      "commit_hash": "5a6b005",
+      "pushed_at": "2026-02-21"
+    }
+  ]
+}
