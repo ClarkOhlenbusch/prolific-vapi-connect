@@ -1,0 +1,32 @@
+{
+  "version": "1.1.19",
+  "release_date": "2026-02-21",
+  "description": "Compute Hub: dedicated page for AI compute jobs with staleness tracking, Run All dialog with cost/time estimates",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "added",
+      "description": "Researchers can now visit a dedicated Compute Hub page (/researcher/compute) to manage all AI compute jobs in one place — qualitative metrics, thematic coding Pass A (transcripts), and Pass B (feedback) — with traffic-light freshness indicators (green = fresh, yellow = missing, red = stale), per-card cost and time estimates, and a Run All dialog with checkboxes and a pre-run cost/time summary. Implemented by creating src/pages/ComputeHub.tsx with Supabase queries for counts, edge function invocations, and a Dialog-based Run All flow.",
+      "scope": "researcher",
+      "commit_hash": "pending",
+      "pushed_at": "2026-02-21",
+      "details": "The Compute Hub is accessible via the new 'Compute Hub' button in the dashboard header (super-admin only) and via 'Open Compute Hub →' in the Advanced section of the Responses table."
+    },
+    {
+      "type": "added",
+      "description": "Researchers can now bump the thematic coding rules version in Compute Hub → Advanced to mark all existing coded calls as stale, so the next run re-codes them with updated prompts. Implemented by adding a 'Bump to vN+1' button that updates experiment_settings.thematic_coding_rules_version, and updating the run-thematic-coding edge function to read this version, filter stale rows (rules_version < current), and write rules_version to each upserted row.",
+      "scope": "researcher",
+      "commit_hash": "pending",
+      "pushed_at": "2026-02-21",
+      "details": "Also requires SQL migration: ALTER TABLE call_thematic_codes ADD COLUMN IF NOT EXISTS rules_version integer NOT NULL DEFAULT 1; ALTER TABLE experiment_responses ADD COLUMN IF NOT EXISTS feedback_rules_version integer NOT NULL DEFAULT 1; INSERT INTO experiment_settings (setting_key, setting_value) VALUES ('thematic_coding_rules_version', '1') ON CONFLICT (setting_key) DO NOTHING;"
+    },
+    {
+      "type": "changed",
+      "description": "The Advanced section in the Responses table no longer shows four separate compute buttons for thematic coding and qualitative metrics — it now shows a single 'Open Compute Hub →' link instead. Implemented by removing handleRunThematicCoding, handleComputeMetrics, and their associated state from UnifiedParticipantsTable and replacing the four buttons with a single navigate link.",
+      "scope": "researcher",
+      "commit_hash": "pending",
+      "pushed_at": "2026-02-21"
+    }
+  ]
+}
