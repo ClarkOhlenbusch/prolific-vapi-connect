@@ -610,6 +610,35 @@ const ComputeHub = () => {
     }
   };
 
+  const clearVapiQueue = () => {
+    if (!isSuperAdmin || isGuestMode) return;
+    const count = vapiEvalStatus.pending + vapiEvalStatus.running;
+    const confirmId = 'vapi-eval-clear-confirm';
+    toast.warning(`Clear ${count} queued job${count !== 1 ? 's' : ''}?`, {
+      id: confirmId,
+      description: "Removes pending/running jobs from the queue. Scores already saved are not affected.",
+      duration: 8000,
+      action: {
+        label: 'Clear queue',
+        onClick: async () => {
+          const toastId = 'vapi-eval-clear';
+          toast.loading('Clearing queue…', { id: toastId });
+          try {
+            const { error } = await supabase.functions.invoke('clear-vapi-queue', {
+              body: { metricId: vapiEvalStatus.activeMetricId },
+            });
+            if (error) throw new Error(error.message);
+            toast.success('Queue cleared.', { id: toastId });
+            fetchStatus();
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Failed to clear queue', { id: toastId });
+          }
+        },
+      },
+      cancel: { label: 'Cancel', onClick: () => {} },
+    });
+  };
+
   // ─── Run All ─────────────────────────────────────────────────────────────
 
   const runAllNeedCount =
@@ -981,16 +1010,21 @@ const ComputeHub = () => {
               {renderVapiEvalBadge(vapiEvalStatus)}
             </div>
             <CardDescription>
-              Runs VAPI structured output evaluation on each call and stores a total score.
+              Scores each participant call using VAPI's structured output evaluation. No extra LLM cost — uses VAPI API.
               {!vapiEvalStatus.activeMetricId && (
                 <span className="text-yellow-600"> No active metric configured — set one in Experiment Settings.</span>
               )}
               {vapiEvalStatus.total > 0 && vapiEvalStatus.activeMetricId && (
                 <span>
-                  {' '}{vapiEvalStatus.fresh}/{vapiEvalStatus.total} participant calls scored with current metric.
-                  {vapiEvalStatus.pending > 0 && ` ${vapiEvalStatus.pending} queued.`}
-                  {vapiEvalStatus.running > 0 && ` ${vapiEvalStatus.running} running.`}
-                  {vapiEvalStatus.failed > 0 && ` ${vapiEvalStatus.failed} failed.`}
+                  {' '}{vapiEvalStatus.fresh}/{vapiEvalStatus.total} calls scored with current metric.
+                  {(vapiEvalStatus.pending + vapiEvalStatus.running) > 0 && (
+                    <span className="text-blue-600">
+                      {vapiEvalStatus.pending > 0 && ` ${vapiEvalStatus.pending} queued`}
+                      {vapiEvalStatus.running > 0 && `, ${vapiEvalStatus.running} running`}
+                      {' '}— hit Refresh in ~1 min to see results.
+                    </span>
+                  )}
+                  {vapiEvalStatus.failed > 0 && <span className="text-red-600"> {vapiEvalStatus.failed} failed.</span>}
                 </span>
               )}
               {!isSuperAdmin && (
@@ -998,35 +1032,72 @@ const ComputeHub = () => {
               )}
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex gap-2 flex-wrap items-center">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => runVapiEvalEnqueue(false)}
-              disabled={vapiEvalRunning || !isSuperAdmin || isGuestMode || vapiEvalStatus.missing === 0 || !vapiEvalStatus.activeMetricId}
-            >
-              <Play className={`h-4 w-4 mr-2 ${vapiEvalRunning ? 'animate-spin' : ''}`} />
-              {vapiEvalStatus.missing > 0 ? `Enqueue missing (${vapiEvalStatus.missing})` : 'Enqueue missing'}
-            </Button>
-            {vapiEvalStatus.stale > 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => runVapiEvalEnqueue(true)}
-                disabled={vapiEvalRunning || !isSuperAdmin || isGuestMode}
-              >
-                Enqueue stale ({vapiEvalStatus.stale})
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={runVapiEvalWorker}
-              disabled={vapiEvalRunning || !isSuperAdmin || isGuestMode || (vapiEvalStatus.pending + vapiEvalStatus.running) === 0}
-            >
-              {vapiEvalRunning ? 'Processing…' : `Process queue${vapiEvalStatus.pending + vapiEvalStatus.running > 0 ? ` (${vapiEvalStatus.pending + vapiEvalStatus.running})` : ''}`}
-            </Button>
-            <span className="text-xs text-muted-foreground">Uses VAPI API · no extra LLM cost</span>
+          <CardContent className="space-y-3">
+            {/* Step 1: Add to queue */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Step 1 — Add to queue</span>
+              <div className="flex gap-2 flex-wrap items-center">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => runVapiEvalEnqueue(false)}
+                  disabled={vapiEvalRunning || !isSuperAdmin || isGuestMode || vapiEvalStatus.missing === 0 || !vapiEvalStatus.activeMetricId}
+                  title="Enqueue calls that have never been scored with any metric"
+                >
+                  <Play className={`h-4 w-4 mr-2 ${vapiEvalRunning ? 'animate-spin' : ''}`} />
+                  {vapiEvalStatus.missing > 0 ? `Enqueue missing (${vapiEvalStatus.missing})` : 'Enqueue missing'}
+                </Button>
+                {vapiEvalStatus.stale > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => runVapiEvalEnqueue(true)}
+                    disabled={vapiEvalRunning || !isSuperAdmin || isGuestMode}
+                    title="Re-enqueue calls scored with an older metric version"
+                  >
+                    Re-enqueue stale ({vapiEvalStatus.stale})
+                  </Button>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  {vapiEvalStatus.missing > 0 && <span><strong>Missing</strong> = never scored. </span>}
+                  {vapiEvalStatus.stale > 0 && <span><strong>Stale</strong> = scored with an old metric — needs re-scoring.</span>}
+                </span>
+              </div>
+            </div>
+            {/* Step 2: Process queue */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Step 2 — Run evaluations</span>
+              <div className="flex gap-2 flex-wrap items-center">
+                <Button
+                  size="sm"
+                  variant={vapiEvalStatus.pending > 0 ? 'default' : 'outline'}
+                  onClick={runVapiEvalWorker}
+                  disabled={vapiEvalRunning || !isSuperAdmin || isGuestMode || (vapiEvalStatus.pending + vapiEvalStatus.running) === 0}
+                  title="Send queued calls to VAPI for evaluation. Results arrive asynchronously."
+                >
+                  {vapiEvalRunning ? 'Processing…' : (
+                    vapiEvalStatus.pending + vapiEvalStatus.running > 0
+                      ? `Process queue (${vapiEvalStatus.pending + vapiEvalStatus.running})`
+                      : 'Process queue'
+                  )}
+                </Button>
+                {(vapiEvalStatus.pending + vapiEvalStatus.running) > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={clearVapiQueue}
+                    disabled={vapiEvalRunning || !isSuperAdmin || isGuestMode}
+                    className="text-muted-foreground hover:text-destructive"
+                    title="Remove all pending/running jobs from the queue without deleting any scores"
+                  >
+                    Clear queue
+                  </Button>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  Sends queued calls to VAPI. Results arrive in ~1–2 min — hit Refresh to check.
+                </span>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
