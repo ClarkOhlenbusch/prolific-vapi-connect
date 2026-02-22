@@ -38,13 +38,10 @@ import {
   Check,
   Flag,
   AlertTriangle,
-  BarChart3,
   RefreshCw,
   GripVertical,
-  FileAudio,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
 import { useActivityLog } from '@/hooks/useActivityLog';
 import { ParticipantJourneyModal } from './ParticipantJourneyModal';
@@ -80,19 +77,6 @@ import { fetchArchivedFilters } from '@/lib/archived-responses';
 type ParticipantCall = Tables<'participant_calls'>;
 type ExperimentResponse = Tables<'experiment_responses'>;
 type Demographics = Tables<'demographics'>;
-type VapiEvaluationQueueRow = Tables<'vapi_evaluation_queue'>;
-
-type EvalQueueStatus = 'pending' | 'running' | 'completed' | 'failed';
-
-type EvalQueueCounts = {
-  total: number;
-  pending: number;
-  running: number;
-  completed: number;
-  failed: number;
-  unknown: number;
-};
-
 type ColumnId =
   | 'select'
   | 'prolific_id'
@@ -136,17 +120,6 @@ const DEFAULT_MOVABLE_COLUMN_ORDER: ColumnId[] = [
 const isSubmissionStatus = (v: unknown): v is 'pending' | 'submitted' | 'abandoned' => {
   return v === 'pending' || v === 'submitted' || v === 'abandoned';
 };
-
-const uniqStrings = (xs: string[]) => Array.from(new Set(xs.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim())));
-
-const chunkArray = <T,>(xs: T[], size: number): T[][] => {
-  if (size <= 0) return [xs];
-  const out: T[][] = [];
-  for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size));
-  return out;
-};
-
-const sleepMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 interface UnifiedParticipant {
   // From participant_calls
@@ -328,20 +301,8 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     condition: string | null;
   }>({ open: false, prolificId: '', status: 'Pending', condition: null });
   const [createBatchDialog, setCreateBatchDialog] = useState<{ open: boolean; batchLabel: string | null }>({ open: false, batchLabel: null });
-  const [lastStructuredOutputRunId, setLastStructuredOutputRunId] = useState<string | null>(null);
-  const [runEvaluationLoading, setRunEvaluationLoading] = useState(false);
-  const [checkResultsLoading, setCheckResultsLoading] = useState(false);
-  const [transcribeLoading, setTranscribeLoading] = useState(false);
-
-  // Evaluation metric context (for stale detection + button-driven worker)
+  // Evaluation metric context (for stale detection in table cells)
   const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
-  const [enqueueLoading, setEnqueueLoading] = useState(false);
-  const [processQueueLoading, setProcessQueueLoading] = useState(false);
-  const [evalRefreshInFlight, setEvalRefreshInFlight] = useState(false);
-  const [evalRefreshLabel, setEvalRefreshLabel] = useState<string>('');
-  const [evalRefreshCounts, setEvalRefreshCounts] = useState<EvalQueueCounts | null>(null);
-  const [evalRefreshNote, setEvalRefreshNote] = useState<string>('');
-  const [showEvalAdvanced, setShowEvalAdvanced] = useState(false);
   const [reorderColumnsEnabled, setReorderColumnsEnabled] = useState(false);
   const [movableColumnOrder, setMovableColumnOrder] = useState<ColumnId[]>(() => {
     try {
@@ -364,11 +325,6 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
   const { isSuperAdmin, user, isGuestMode } = useResearcherAuth();
   const { logActivity } = useActivityLog();
   const mountedRef = useRef(true);
-
-  const openEvalMetricSettings = () => {
-    // ResearcherDashboard listens to `location.state.openTab`.
-    navigate('/researcher/dashboard', { state: { openTab: 'settings' } });
-  };
 
   // Fetch from experiment_batches so newly created batches appear in filter UI
   // even if they don't show up in the currently loaded response rows.
@@ -417,204 +373,6 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     fetchActiveMetric();
   }, [isGuestMode]);
 
-
-  const enqueueEvaluations = async (callIds: string[], mode: "missing" | "stale" | "all") => {
-    if (callIds.length === 0 || isGuestMode) return;
-    if (!activeMetricId) {
-      toast.error("No active evaluation metric configured. Create one in Experiment Settings.", {
-        action: { label: "Open settings", onClick: openEvalMetricSettings },
-      });
-      return;
-    }
-    setEnqueueLoading(true);
-    try {
-      const callIdsClean = uniqStrings(callIds);
-      // Edge function enforces a hard limit (currently 500). Batch to be safe.
-      const batches = chunkArray(callIdsClean, 500);
-      let enqueued = 0;
-      for (const b of batches) {
-        const { data, error } = await supabase.functions.invoke("enqueue-vapi-evaluations", {
-          body: { callIds: b, mode },
-        });
-        if (error) throw error;
-        enqueued += b.length;
-        if (mountedRef.current) {
-          setEvalRefreshNote(data?.message ?? `Enqueued ${enqueued}/${callIdsClean.length} call(s).`);
-        }
-      }
-      toast.success(`Enqueued ${enqueued} call(s).`);
-    } catch (e) {
-      console.error(e);
-      toast.error(e instanceof Error ? e.message : "Failed to enqueue evaluations", {
-        action: { label: "Open settings", onClick: openEvalMetricSettings },
-      });
-    } finally {
-      setEnqueueLoading(false);
-    }
-  };
-
-  const fetchEvalQueueCounts = async (callIds: string[]): Promise<EvalQueueCounts> => {
-    const ids = uniqStrings(callIds);
-    const total = ids.length;
-    const base: EvalQueueCounts = { total, pending: 0, running: 0, completed: 0, failed: 0, unknown: total };
-    if (total === 0 || isGuestMode || !activeMetricId) return base;
-
-    const chunks = chunkArray(ids, 500);
-    const seen = new Map<string, EvalQueueStatus>();
-    for (const c of chunks) {
-      const { data, error } = await supabase
-        .from('vapi_evaluation_queue')
-        .select('call_id,status')
-        .eq('metric_id', activeMetricId)
-        .in('call_id', c);
-      if (error) throw error;
-      for (const row of data ?? []) {
-        const r = row as Pick<VapiEvaluationQueueRow, 'call_id' | 'status'>;
-        const callId: unknown = r?.call_id;
-        const status: unknown = r?.status;
-        if (typeof callId === 'string' && (status === 'pending' || status === 'running' || status === 'completed' || status === 'failed')) {
-          seen.set(callId, status as EvalQueueStatus);
-        }
-      }
-    }
-
-    const counts: EvalQueueCounts = { total, pending: 0, running: 0, completed: 0, failed: 0, unknown: 0 };
-    for (const id of ids) {
-      const st = seen.get(id);
-      if (!st) counts.unknown += 1;
-      else if (st === 'pending') counts.pending += 1;
-      else if (st === 'running') counts.running += 1;
-      else if (st === 'completed') counts.completed += 1;
-      else if (st === 'failed') counts.failed += 1;
-    }
-    return counts;
-  };
-
-  const processQueueNow = async (opts?: { refreshTable?: boolean }) => {
-    if (isGuestMode) return;
-    if (!activeMetricId) {
-      toast.error("No active evaluation metric configured. Create one in Experiment Settings.", {
-        action: { label: "Open settings", onClick: openEvalMetricSettings },
-      });
-      return;
-    }
-    setProcessQueueLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("worker-vapi-evaluations", {
-        body: {},
-      });
-      if (error) throw error;
-      toast.success(data?.message ?? "Processed evaluation queue.");
-      if (opts?.refreshTable !== false) fetchData();
-    } catch (e) {
-      console.error(e);
-      toast.error(e instanceof Error ? e.message : "Failed to process evaluation queue", {
-        action: { label: "Open settings", onClick: openEvalMetricSettings },
-      });
-    } finally {
-      setProcessQueueLoading(false);
-    }
-  };
-
-  const handleTranscribeCalls = async (retry = false) => {
-    if (isGuestMode) return;
-    setTranscribeLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("trigger-assemblyai-transcription", {
-        body: { limit: 25, retry },
-      });
-      if (error) throw error;
-      const submitted = data?.submitted ?? 0;
-      const total = data?.total ?? 0;
-      if (submitted === 0 && total === 0) {
-        toast.success("All calls already transcribed — nothing to submit.");
-      } else {
-        toast.success(`Submitted ${submitted}/${total} calls to AssemblyAI. Results will appear automatically when transcription completes.`);
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error(e instanceof Error ? e.message : "Failed to trigger transcription");
-    } finally {
-      setTranscribeLoading(false);
-    }
-  };
-
-  const runEvalRefresh = async (opts: { callIds: string[]; label: string; confirmLarge?: boolean }) => {
-    const callIds = uniqStrings(opts.callIds);
-    if (callIds.length === 0 || isGuestMode) return;
-    if (!isSuperAdmin) return;
-    if (!activeMetricId) {
-      toast.error("No active evaluation metric configured. Create one in Experiment Settings.", {
-        action: { label: "Open settings", onClick: openEvalMetricSettings },
-      });
-      return;
-    }
-    if (evalRefreshInFlight) return;
-    if (opts.confirmLarge && callIds.length > 200) {
-      const ok = window.confirm(`This will enqueue ${callIds.length} calls for evaluation refresh. Continue?`);
-      if (!ok) return;
-    }
-
-    setEvalRefreshInFlight(true);
-    setEvalRefreshLabel(opts.label);
-    setEvalRefreshNote('');
-    setEvalRefreshCounts({ total: callIds.length, pending: 0, running: 0, completed: 0, failed: 0, unknown: callIds.length });
-
-    try {
-      // 1) Enqueue in batches.
-      await enqueueEvaluations(callIds, "all");
-
-      // 2) Kick the worker once immediately (starts runs).
-      setEvalRefreshNote('Starting runs…');
-      await processQueueNow({ refreshTable: false });
-
-      // 3) Poll loop (best-effort).
-      const startedAt = Date.now();
-      const maxDurationMs = 180_000;
-      const initialWaitMs = 70_000;
-      const intervalMs = 20_000;
-
-      setEvalRefreshNote('Waiting for results to become pollable…');
-      await sleepMs(initialWaitMs);
-
-      // Update counts before entering the loop.
-      const firstCounts = await fetchEvalQueueCounts(callIds);
-      if (mountedRef.current) setEvalRefreshCounts(firstCounts);
-
-      while (Date.now() - startedAt < maxDurationMs) {
-        const counts = await fetchEvalQueueCounts(callIds);
-        if (mountedRef.current) setEvalRefreshCounts(counts);
-
-        const remaining = counts.pending + counts.running + counts.unknown;
-        if (remaining === 0) {
-          setEvalRefreshNote('Done.');
-          break;
-        }
-
-        setEvalRefreshNote('Polling worker…');
-        await processQueueNow({ refreshTable: false });
-        await sleepMs(intervalMs);
-      }
-
-      const finalCounts = await fetchEvalQueueCounts(callIds);
-      if (mountedRef.current) setEvalRefreshCounts(finalCounts);
-
-      const remaining = finalCounts.pending + finalCounts.running + finalCounts.unknown;
-      if (remaining > 0) {
-        setEvalRefreshNote(`Timed out with ${remaining} still pending/running. Click again to continue.`);
-      } else {
-        setEvalRefreshNote('Completed.');
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error(e instanceof Error ? e.message : 'Failed to refresh evaluations');
-      setEvalRefreshNote('Failed.');
-    } finally {
-      // Always refresh table once at the end.
-      fetchData();
-      if (mountedRef.current) setEvalRefreshInFlight(false);
-    }
-  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -932,43 +690,6 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     return filteredData.slice(start, start + pageSize);
   }, [filteredData, currentPage, pageSize]);
 
-  const visibleCompletedCallIds = useMemo(() => {
-    // "Filtered set" means the visible rows after all filters are applied (paginated subset).
-    // For now we scope to the visible page to keep things safe; if you want "all filtered across pages",
-    // we can switch to a backend query later.
-    return paginatedData
-      .filter((r) => r.is_completed && r.call_id)
-      .map((r) => r.call_id);
-  }, [paginatedData]);
-
-  const filteredCompletedCallIds = useMemo(() => {
-    return uniqStrings(filteredData.filter((r) => r.is_completed && r.call_id).map((r) => r.call_id));
-  }, [filteredData]);
-
-  const missingEvalCallIds = useMemo(() => {
-    return visibleCompletedCallIds.filter((callId) => {
-      const row = paginatedData.find((r) => r.call_id === callId);
-      return row ? row.vapi_total_score == null : false;
-    });
-  }, [visibleCompletedCallIds, paginatedData]);
-
-  const staleEvalCallIds = useMemo(() => {
-    if (!activeMetricId) return [];
-    return visibleCompletedCallIds.filter((callId) => {
-      const row = paginatedData.find((r) => r.call_id === callId);
-      return Boolean(
-        row &&
-          row.vapi_total_score != null &&
-          row.vapi_evaluation_metric_id &&
-          row.vapi_evaluation_metric_id !== activeMetricId
-      );
-    });
-  }, [visibleCompletedCallIds, paginatedData, activeMetricId]);
-
-  const neededEvalCallIdsVisiblePage = useMemo(() => {
-    return uniqStrings([...missingEvalCallIds, ...staleEvalCallIds]);
-  }, [missingEvalCallIds, staleEvalCallIds]);
-
   useEffect(() => {
     setTotalCount(filteredData.length);
   }, [filteredData]);
@@ -1172,52 +893,6 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
   const selectAllExportColumns = () => setExportSelectedColumns(new Set(EXPORT_COLUMNS.map(c => c.id)));
   const deselectAllExportColumns = () => setExportSelectedColumns(new Set());
-
-  const selectedCompletedCallIds = useMemo(() => {
-    return paginatedData
-      // Evaluation runs on calls, so gate on call completion (not questionnaire submission).
-      .filter((r) => selectedIds.has(r.id) && r.is_completed && r.call_id)
-      .map((r) => r.call_id);
-  }, [paginatedData, selectedIds]);
-
-  const handleRunEvaluation = async () => {
-    if (selectedCompletedCallIds.length === 0 || isGuestMode) return;
-    setRunEvaluationLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('run-vapi-structured-output', {
-        body: { callIds: selectedCompletedCallIds },
-      });
-      if (error) throw error;
-      const runId = data?.runId ?? null;
-      if (runId) setLastStructuredOutputRunId(runId);
-      toast.success(
-        data?.message ?? `Evaluation started for ${selectedCompletedCallIds.length} call(s). Check back in 1–2 min.`
-      );
-    } catch (e) {
-      console.error(e);
-      toast.error(e instanceof Error ? e.message : 'Failed to start evaluation');
-    } finally {
-      setRunEvaluationLoading(false);
-    }
-  };
-
-  const handleCheckResults = async () => {
-    if (!lastStructuredOutputRunId || isGuestMode) return;
-    setCheckResultsLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('fetch-vapi-structured-output-results', {
-        body: { runId: lastStructuredOutputRunId },
-      });
-      if (error) throw error;
-      toast.success(data?.message ?? `Updated ${data?.updated ?? 0} of ${data?.total ?? 0} calls.`);
-      fetchData();
-    } catch (e) {
-      console.error(e);
-      toast.error(e instanceof Error ? e.message : 'Failed to fetch results');
-    } finally {
-      setCheckResultsLoading(false);
-    }
-  };
 
   const totalPages = Math.ceil(totalCount / pageSize);
   const allSelected = paginatedData.length > 0 && paginatedData.every(item => selectedIds.has(item.id));
@@ -1752,136 +1427,6 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         </div>
         
         <div className="flex gap-2 flex-wrap">
-          {isSuperAdmin && (
-            <>
-              <Button
-                onClick={() => runEvalRefresh({ callIds: neededEvalCallIdsVisiblePage, label: 'Refresh needed evals (visible page)' })}
-                disabled={evalRefreshInFlight || enqueueLoading || processQueueLoading || isGuestMode || neededEvalCallIdsVisiblePage.length === 0 || !activeMetricId}
-                variant="outline"
-                size="sm"
-                title={
-                  !activeMetricId
-                    ? "Set an active evaluation metric first (Experiment Settings)."
-                    : "Updates only the rows on this page that are missing a score or have an outdated score (after metric changes)."
-                }
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${evalRefreshInFlight ? "animate-spin" : ""}`} />
-                Refresh needed evals ({neededEvalCallIdsVisiblePage.length})
-              </Button>
-              <Button
-                onClick={() => runEvalRefresh({ callIds: filteredCompletedCallIds, label: 'Hard refresh all filtered evals', confirmLarge: true })}
-                disabled={evalRefreshInFlight || enqueueLoading || processQueueLoading || isGuestMode || filteredCompletedCallIds.length === 0 || !activeMetricId}
-                variant="outline"
-                size="sm"
-                title={
-                  !activeMetricId
-                    ? "Set an active evaluation metric first (Experiment Settings)."
-                    : "Force-refreshes scores for all completed rows matching your current filters (across all pages). Use after changing the metric."
-                }
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${evalRefreshInFlight ? "animate-spin" : ""}`} />
-                Hard refresh filtered evals ({filteredCompletedCallIds.length})
-              </Button>
-              <Collapsible open={showEvalAdvanced} onOpenChange={setShowEvalAdvanced}>
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    type="button"
-                    title="Advanced: manual controls for the evaluation queue (useful for debugging)."
-                  >
-                    Advanced
-                    <ChevronDown className={`h-4 w-4 ml-2 transition-transform ${showEvalAdvanced ? "rotate-180" : ""}`} />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="mt-2 flex gap-2 flex-wrap">
-                    <Button
-                      onClick={() => processQueueNow()}
-                      disabled={processQueueLoading || isGuestMode || !activeMetricId}
-                      variant="outline"
-                      size="sm"
-                      title={
-                        !activeMetricId
-                          ? "Set an active evaluation metric first (Experiment Settings)."
-                          : "Runs the evaluation worker once. This starts/polls queued work, but may not finish everything."
-                      }
-                    >
-                      <RefreshCw className={`h-4 w-4 mr-2 ${processQueueLoading ? "animate-spin" : ""}`} />
-                      Process queue now
-                    </Button>
-                    <Button
-                      onClick={() => handleTranscribeCalls(false)}
-                      disabled={transcribeLoading || isGuestMode}
-                      variant="outline"
-                      size="sm"
-                      title="Submits up to 25 pending calls to AssemblyAI for high-quality re-transcription with sentiment analysis. Results arrive automatically via webhook."
-                    >
-                      <FileAudio className={`h-4 w-4 mr-2 ${transcribeLoading ? "animate-pulse" : ""}`} />
-                      Transcribe calls (AssemblyAI)
-                    </Button>
-                    <Button
-                      onClick={() => handleTranscribeCalls(true)}
-                      disabled={transcribeLoading || isGuestMode}
-                      variant="outline"
-                      size="sm"
-                      title="Re-submits up to 25 calls that previously errored during AssemblyAI transcription."
-                    >
-                      <FileAudio className={`h-4 w-4 mr-2 ${transcribeLoading ? "animate-pulse" : ""}`} />
-                      Retry errors (AssemblyAI)
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigate('/researcher/compute')}
-                    >
-                      <FileAudio className="h-4 w-4 mr-2" />
-                      Open Compute Hub →
-                    </Button>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            </>
-          )}
-          {isSuperAdmin && evalRefreshCounts && (
-            <div className="basis-full text-xs text-muted-foreground">
-              <span className="font-medium">{evalRefreshLabel}</span>: {evalRefreshCounts.completed}/{evalRefreshCounts.total} completed, {evalRefreshCounts.running} running, {evalRefreshCounts.pending} pending, {evalRefreshCounts.failed} failed
-              {evalRefreshCounts.unknown ? `, ${evalRefreshCounts.unknown} unknown` : ''}
-              {evalRefreshNote ? ` · ${evalRefreshNote}` : ''}
-            </div>
-          )}
-          {isSuperAdmin && selectedCompletedCallIds.length > 0 && (
-            <Button
-              onClick={handleRunEvaluation}
-              disabled={runEvaluationLoading || isGuestMode}
-              variant="outline"
-              size="sm"
-              title="Run evaluation for the selected rows (starts a new Vapi run). Then use “Check for results” after 1–2 minutes."
-            >
-              {runEvaluationLoading ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <BarChart3 className="h-4 w-4 mr-2" />
-              )}
-              Run evaluation ({selectedCompletedCallIds.length})
-            </Button>
-          )}
-          {isSuperAdmin && lastStructuredOutputRunId && (
-            <Button
-              onClick={handleCheckResults}
-              disabled={checkResultsLoading || isGuestMode}
-              variant="outline"
-              size="sm"
-              title="Fetch results for the last “Run evaluation” run and save them into responses."
-            >
-              {checkResultsLoading ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
-              )}
-              Check for results
-            </Button>
-          )}
           {isSuperAdmin && selectedIds.size > 0 && (
             <Button onClick={handleArchiveBulk} variant="destructive" size="sm">
               <Archive className="h-4 w-4 mr-2" />
