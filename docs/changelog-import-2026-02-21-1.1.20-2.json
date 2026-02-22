@@ -1,0 +1,23 @@
+{
+  "version": "1.1.20",
+  "release_date": "2026-02-21",
+  "description": "VAPI eval queue clear button: Edge Function fix and improved confirmation UX.",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "added",
+      "description": "Researchers can now clear the VAPI evaluation queue from ComputeHub using a new 'Clear queue' button that actually works. Previously the button silently failed because the RLS policy on the queue table had no DELETE permission for users; the fix routes the delete through a new Edge Function that uses the service role key.",
+      "scope": "researcher",
+      "commit_hash": "5991eb5",
+      "pushed_at": "2026-02-21T00:00:00Z"
+    },
+    {
+      "type": "changed",
+      "description": "The 'Clear queue' confirmation now appears as a sonner toast with Cancel and 'Clear queue' action buttons instead of a browser window.confirm dialog. Implemented by replacing the window.confirm call with a toast.warning() call using sonner's action/cancel API.",
+      "scope": "researcher",
+      "commit_hash": "f07bbf3",
+      "pushed_at": "2026-02-21T00:00:00Z"
+    }
+  ]
+}
