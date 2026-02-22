@@ -228,16 +228,28 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Fetch feedback text for all calls
+  // Fetch feedback text for ALL calls (not filtered to transcribed)
   const { data: responses } = await supabaseAdmin
     .from("experiment_responses")
-    .select("call_id, voice_assistant_feedback, communication_style_feedback, experiment_feedback");
+    .select("call_id, voice_assistant_feedback, communication_style_feedback, experiment_feedback")
+    .not("call_id", "is", null);
   const responseMap = new Map<string, PlainObj>((responses ?? []).map((r: PlainObj) => [r.call_id, r]));
 
-  const toProcess = allCallIds
+  // Pass A requires a transcript; Pass B only requires an experiment_response.
+  // Build the candidate set as the union of transcribed calls (Pass A eligible)
+  // and all response call_ids (Pass B eligible).
+  const transcribedSet = new Set<string>(allCallIds);
+  const allPassBIds: string[] = (responses ?? [])
+    .map((r: PlainObj) => r.call_id as string)
+    .filter(Boolean);
+  const candidateIds = [...new Set([...allCallIds, ...allPassBIds])];
+
+  const toProcess = candidateIds
     .filter((id) => {
-      const needsA = !passBOnly && (recompute || !alreadyCodedA.has(id));
-      const needsB = !passAOnly && (recompute || !alreadyCodedB.has(id));
+      // Pass A: only runnable on transcribed calls
+      const needsA = !passBOnly && transcribedSet.has(id) && (recompute || !alreadyCodedA.has(id));
+      // Pass B: runnable on any call that has an experiment_response
+      const needsB = !passAOnly && responseMap.has(id) && (recompute || !alreadyCodedB.has(id));
       return needsA || needsB;
     })
     .slice(0, limit);
@@ -262,7 +274,7 @@ Deno.serve(async (req: Request) => {
     const result: PlainObj = { callId, passA: null, passB: null };
 
     // ── Pass A: transcript → call_thematic_codes ──────────────────────────
-    const runA = !passBOnly && (recompute || !alreadyCodedA.has(callId));
+    const runA = !passBOnly && transcribedSet.has(callId) && (recompute || !alreadyCodedA.has(callId));
     if (runA && trans) {
       try {
         // Build readable transcript from utterances
