@@ -239,9 +239,7 @@ Deno.serve(async (req: Request) => {
   // Build the candidate set as the union of transcribed calls (Pass A eligible)
   // and all response call_ids (Pass B eligible).
   const transcribedSet = new Set<string>(allCallIds);
-  const allPassBIds: string[] = (responses ?? [])
-    .map((r: PlainObj) => r.call_id as string)
-    .filter(Boolean);
+  const allPassBIds: string[] = (responses ?? []).map((r: PlainObj) => r.call_id as string).filter(Boolean);
   const candidateIds = [...new Set([...allCallIds, ...allPassBIds])];
 
   const toProcess = candidateIds
