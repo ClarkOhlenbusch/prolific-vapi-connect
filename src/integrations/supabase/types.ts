@@ -252,6 +252,7 @@ export type Database = {
           notable_moments: Json | null
           overall_conversation_quality: number | null
           rapport_level: string | null
+          rules_version: number
           self_disclosure: boolean | null
           user_initiated_topics: Json | null
         }
@@ -263,6 +264,7 @@ export type Database = {
           notable_moments?: Json | null
           overall_conversation_quality?: number | null
           rapport_level?: string | null
+          rules_version?: number
           self_disclosure?: boolean | null
           user_initiated_topics?: Json | null
         }
@@ -274,6 +276,7 @@ export type Database = {
           notable_moments?: Json | null
           overall_conversation_quality?: number | null
           rapport_level?: string | null
+          rules_version?: number
           self_disclosure?: boolean | null
           user_initiated_topics?: Json | null
         }
@@ -673,6 +676,7 @@ export type Database = {
           early_access_notify: boolean | null
           experiment_feedback: string | null
           feedback_condition_perception: string | null
+          feedback_rules_version: number
           feedback_satisfaction_inferred: number | null
           feedback_sentiment: string | null
           feedback_themes: Json | null
@@ -828,6 +832,7 @@ export type Database = {
           early_access_notify?: boolean | null
           experiment_feedback?: string | null
           feedback_condition_perception?: string | null
+          feedback_rules_version?: number
           feedback_satisfaction_inferred?: number | null
           feedback_sentiment?: string | null
           feedback_themes?: Json | null
@@ -983,6 +988,7 @@ export type Database = {
           early_access_notify?: boolean | null
           experiment_feedback?: string | null
           feedback_condition_perception?: string | null
+          feedback_rules_version?: number
           feedback_satisfaction_inferred?: number | null
           feedback_sentiment?: string | null
           feedback_themes?: Json | null
