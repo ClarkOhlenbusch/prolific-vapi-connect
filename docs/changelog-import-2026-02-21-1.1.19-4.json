@@ -1,0 +1,16 @@
+{
+  "version": "1.1.19",
+  "release_date": "2026-02-21",
+  "description": "Remove unused Playwright CI workflow",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "removed",
+      "scope": "researcher",
+      "description": "Removed the Playwright CI workflow that was causing failing GitHub Actions runs on every push. The workflow file was auto-generated but there is no test suite to run, so it was deleted to stop the noise.",
+      "commit_hash": "ed223a5",
+      "pushed_at": "2026-02-21T00:00:00Z"
+    }
+  ]
+}
