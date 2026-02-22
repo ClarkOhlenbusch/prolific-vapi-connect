@@ -1254,7 +1254,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
 
   const handleViewDetails = (participant: UnifiedParticipant) => {
     if (participant.response_id) {
-      navigate(`/researcher/response/${participant.response_id}`);
+      window.open(`/researcher/response/${participant.response_id}`, '_blank');
     }
   };
 
@@ -1265,7 +1265,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
     }
     // Pending rows don't have experiment_responses records yet.
     // Open response details using participant_calls.id as a fallback identifier.
-    navigate(`/researcher/response/${participant.id}`);
+    window.open(`/researcher/response/${participant.id}`, '_blank');
   };
 
   const handleViewJourney = (participant: UnifiedParticipant) => {
@@ -1731,7 +1731,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         );
       case 'demo':
         return (
-          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+          <TableCell key={id} className="text-center">
             {row.demographics_mismatch ? (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1762,7 +1762,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         );
       case 'reviewed':
         return (
-          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+          <TableCell key={id} className="text-center">
             {row.response_id ? (
               <button
                 type="button"
@@ -1781,7 +1781,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         );
       case 'flag':
         return (
-          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+          <TableCell key={id} className="text-center">
             <div className="inline-flex items-center justify-center gap-1">
               {row.auto_flagged && (
                 <Tooltip>
@@ -1829,7 +1829,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         );
       case 'eval':
         return (
-          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+          <TableCell key={id} className="text-center">
             {row.vapi_total_score != null ? (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1870,7 +1870,7 @@ export const UnifiedParticipantsTable = ({ sourceFilter: globalSourceFilter }: U
         const opted = row.early_access_notify;
         const hasNotes = !!row.early_access_notes?.trim();
         return (
-          <TableCell key={id} className="text-center" onClick={(e) => e.stopPropagation()}>
+          <TableCell key={id} className="text-center">
             {opted === null || opted === undefined ? (
               <span className="text-muted-foreground text-xs">–</span>
             ) : opted ? (

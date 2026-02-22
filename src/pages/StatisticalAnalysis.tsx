@@ -28,6 +28,7 @@ import {
   leveneTest,
   shapiroWilk,
   holmCorrection,
+  benjaminiHochberg,
   descriptiveStats,
   mean,
   interpretCohensD,
@@ -312,6 +313,8 @@ interface ProgressionPoint {
   formalN: number;
   informalN: number;
   pValue: number | null;
+  adjustedP: number | null;
+  bhP: number | null;
   significant: boolean | null;
   cohensD: number | null;
 }
@@ -319,6 +322,25 @@ interface ProgressionPoint {
 interface MeasureProgression {
   dv: DependentVariable;
   points: ProgressionPoint[];
+}
+
+interface PredOutcomePoint {
+  batchLabel: string;
+  batchStep: number;
+  cumulativeN: number;
+  pValue: number | null;
+  adjustedP: number | null;
+  bhP: number | null;
+}
+
+interface PredOutcomeProgression {
+  predictorKey: string;
+  predictorLabel: string;
+  outcomeKey: string;
+  outcomeLabel: string;
+  type: PredictorType;
+  points: PredOutcomePoint[];
+  finalPValue: number | null;
 }
 
 type PredictorType = 'continuous' | 'categorical';
@@ -562,6 +584,10 @@ const StatisticalAnalysis = () => {
   const [activeTab, setActiveTab] = useState('hypotheses');
   const [expandedDemographicCellKey, setExpandedDemographicCellKey] = useState<string | null>(null);
   const [demographicsSortBy, setDemographicsSortBy] = useState<'pValue' | 'adjustedP' | 'effectSize'>('adjustedP');
+  const [progressionLines, setProgressionLines] = useState<{ raw: boolean; holm: boolean; bh: boolean }>({ raw: true, holm: true, bh: true });
+  const [progressionSort, setProgressionSort] = useState<'raw' | 'holm' | 'bh'>('raw');
+  const [predOutcomeExpanded, setPredOutcomeExpanded] = useState(false);
+  const [predOutcomeSort, setPredOutcomeSort] = useState<'raw' | 'holm' | 'bh'>('raw');
   const { isGuestMode } = useResearcherAuth();
   const [sourceFilter, setSourceFilter] = useState<SourceFilterValue>(() => {
     const saved = sessionStorage.getItem(SOURCE_FILTER_STORAGE_KEY);
@@ -645,6 +671,7 @@ const StatisticalAnalysis = () => {
     earlyAccessResults,
     earlyAccessSummary,
     progressionResults,
+    predOutcomeProgressionResults,
   } = useMemo(() => {
     const formal = responses.filter(r => r.assistant_type === 'formal');
     const informal = responses.filter(r => r.assistant_type === 'informal');
@@ -1006,13 +1033,100 @@ const StatisticalAnalysis = () => {
           formalN: cumulativeFormalValues.length,
           informalN: cumulativeInformalValues.length,
           pValue,
+          adjustedP: null, // filled in below
+          bhP: null,       // filled in below
           significant,
           cohensD,
         });
       }
 
+      // Apply multiple-comparison corrections across all batch-point tests for this measure.
+      const testableIndices = points.reduce<number[]>((acc, pt, i) => {
+        if (pt.pValue !== null) acc.push(i);
+        return acc;
+      }, []);
+      const rawPs = testableIndices.map((i) => points[i].pValue as number);
+      const holmCorrected = holmCorrection(rawPs);
+      const bhCorrected = benjaminiHochberg(rawPs);
+      testableIndices.forEach((pointIdx, corrIdx) => {
+        points[pointIdx].adjustedP = holmCorrected[corrIdx];
+        points[pointIdx].bhP = bhCorrected[corrIdx];
+      });
+
       return { dv, points };
     });
+
+    // Predictor × outcome progression
+    const demoMapForProg = new Map<string, ProlificDemographicRow>();
+    prolificDemographics.forEach((d) => demoMapForProg.set(d.prolific_id, d));
+
+    const predOutcomeProgressionAll: PredOutcomeProgression[] = [];
+    for (const pred of DEMOGRAPHIC_PREDICTORS) {
+      for (const dv of ALL_DVS) {
+        const points: PredOutcomePoint[] = [];
+        const cumulativePairs: { demoVal: string | number; outcomeVal: number }[] = [];
+
+        for (let batchIdx = 0; batchIdx < orderedBatches.length; batchIdx++) {
+          const batchLabel = orderedBatches[batchIdx];
+          const batchRows = responsesByBatch.get(batchLabel) || [];
+
+          for (const r of batchRows) {
+            const demo = demoMapForProg.get(r.prolific_id);
+            if (!demo) continue;
+            const demoVal = getDemographicValue(demo, pred);
+            const outcomeVal = toFiniteNumber(r[dv.key]);
+            if (demoVal != null && demoVal !== '' && outcomeVal != null) {
+              cumulativePairs.push({ demoVal: demoVal as string | number, outcomeVal });
+            }
+          }
+
+          let pValue: number | null = null;
+          if (cumulativePairs.length >= 5) {
+            if (pred.type === 'continuous') {
+              const x = cumulativePairs.map((p) => p.demoVal as number);
+              const y = cumulativePairs.map((p) => p.outcomeVal);
+              if (x.length >= 3) pValue = spearmanCorrelation(x, y).pValue;
+            } else {
+              const byCat = new Map<string, number[]>();
+              for (const { demoVal, outcomeVal } of cumulativePairs) {
+                const cat = String(demoVal).trim() || 'Unknown';
+                if (!byCat.has(cat)) byCat.set(cat, []);
+                byCat.get(cat)!.push(outcomeVal);
+              }
+              const entries = [...byCat.entries()].filter(([, g]) => g.length >= 2);
+              if (entries.length >= 2) {
+                const groupArrays = entries.map(([, g]) => g);
+                pValue = groupArrays.length === 2
+                  ? welchTTest(groupArrays[0], groupArrays[1]).pValue
+                  : oneWayAnova(groupArrays).pValue;
+              }
+            }
+          }
+
+          points.push({ batchLabel, batchStep: batchIdx + 1, cumulativeN: cumulativePairs.length, pValue, adjustedP: null, bhP: null });
+        }
+
+        // Corrections within this pair's progression
+        const testableIdxs = points.reduce<number[]>((acc, pt, i) => { if (pt.pValue !== null) acc.push(i); return acc; }, []);
+        const rawPs = testableIdxs.map((i) => points[i].pValue as number);
+        if (rawPs.length > 0) {
+          const holmCorr = holmCorrection(rawPs);
+          const bhCorr = benjaminiHochberg(rawPs);
+          testableIdxs.forEach((ptIdx, corrIdx) => {
+            points[ptIdx].adjustedP = holmCorr[corrIdx];
+            points[ptIdx].bhP = bhCorr[corrIdx];
+          });
+        }
+
+        const finalPValue = points[points.length - 1]?.pValue ?? null;
+        predOutcomeProgressionAll.push({ predictorKey: pred.key, predictorLabel: pred.label, outcomeKey: dv.key, outcomeLabel: dv.label, type: pred.type, points, finalPValue });
+      }
+    }
+
+    // Filter: only pairs where the latest cumulative batch has raw p < 0.05
+    const predOutcomeProgressionResults = predOutcomeProgressionAll.filter(
+      (pair) => pair.finalPValue !== null && pair.finalPValue < 0.05
+    );
 
     return {
       formalResponses: formal,
@@ -1026,6 +1140,7 @@ const StatisticalAnalysis = () => {
       earlyAccessResults,
       earlyAccessSummary,
       progressionResults: progressionByMeasure,
+      predOutcomeProgressionResults,
     };
   }, [responses, prolificDemographics]);
 
@@ -1141,6 +1256,30 @@ const StatisticalAnalysis = () => {
     const adjusted = holmCorrection(cells.map((c) => c.pValue));
     return cells.map((c, i) => ({ ...c, adjustedP: adjusted[i] ?? c.pValue }));
   }, [responses, prolificDemographics]);
+
+  const getProgressionFinalP = (points: ProgressionPoint[], sort: 'raw' | 'holm' | 'bh'): number => {
+    const last = points[points.length - 1];
+    if (!last) return 1;
+    if (sort === 'holm') return last.adjustedP ?? last.pValue ?? 1;
+    if (sort === 'bh') return last.bhP ?? last.pValue ?? 1;
+    return last.pValue ?? 1;
+  };
+
+  const sortedProgressionResults = useMemo(() => {
+    return [...progressionResults].sort((a, b) => getProgressionFinalP(a.points, progressionSort) - getProgressionFinalP(b.points, progressionSort));
+  }, [progressionResults, progressionSort]);
+
+  const getPredOutcomeFinalP = (points: PredOutcomePoint[], sort: 'raw' | 'holm' | 'bh'): number => {
+    const last = points[points.length - 1];
+    if (!last) return 1;
+    if (sort === 'holm') return last.adjustedP ?? last.pValue ?? 1;
+    if (sort === 'bh') return last.bhP ?? last.pValue ?? 1;
+    return last.pValue ?? 1;
+  };
+
+  const sortedPredOutcomeResults = useMemo(() => {
+    return [...predOutcomeProgressionResults].sort((a, b) => getPredOutcomeFinalP(a.points, predOutcomeSort) - getPredOutcomeFinalP(b.points, predOutcomeSort));
+  }, [predOutcomeProgressionResults, predOutcomeSort]);
 
   const sortedDemographicExploratoryResults = useMemo(() => {
     const copy = [...demographicExploratoryResults];
@@ -2604,27 +2743,121 @@ run_moderation_analysis <- function(df) {
             <Alert>
               <Info className="h-4 w-4" />
               <AlertTitle>Significance Progression by Batch</AlertTitle>
-              <AlertDescription>
-                Each chart shows p-value (y-axis) as cumulative sample size N (x-axis) increases. Vertical lines mark the end of each batch. The dashed line marks α = .05 (below line indicates significance).
+              <AlertDescription className="space-y-2">
+                <p>Each chart shows p-values (y-axis) as cumulative sample size N (x-axis) increases. Vertical lines mark the end of each batch. The dashed red line marks α = .05.</p>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p><strong className="text-foreground">Holm–Bonferroni (step-down):</strong> Sort the k raw p-values for a measure ascending. Multiply the j-th smallest by (k − j + 1), cap at 1, and enforce monotone increase. Controls family-wise error rate (FWER); more powerful than plain Bonferroni.</p>
+                  <p><strong className="text-foreground">Benjamini–Hochberg (BH):</strong> Sort ascending; multiply the j-th smallest by k/j, cap at 1, and enforce monotone decrease from largest rank. Controls false discovery rate (FDR) rather than FWER — less conservative, more power when many tests are run.</p>
+                </div>
               </AlertDescription>
             </Alert>
 
+            {/* Controls row */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              {/* Line visibility toggles */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-muted-foreground font-medium">Show:</span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant={progressionLines.raw ? 'default' : 'outline'}
+                      className="gap-2 h-7 px-3 text-xs"
+                      onClick={() => setProgressionLines((prev) => ({ ...prev, raw: !prev.raw }))}
+                    >
+                      <span className="inline-block w-4 h-0.5 bg-blue-600 rounded" />
+                      p (raw)
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[220px] text-xs">
+                    The plain p-value straight from the test — no correction. Think of it as "what are the odds this result is just luck?" Lower = less likely to be coincidence.
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant={progressionLines.holm ? 'default' : 'outline'}
+                      className="gap-2 h-7 px-3 text-xs"
+                      onClick={() => setProgressionLines((prev) => ({ ...prev, holm: !prev.holm }))}
+                    >
+                      <span className="inline-block w-4 h-0.5 bg-amber-500 rounded border-dashed" style={{ borderTop: '2px dashed #f59e0b', background: 'none' }} />
+                      p (Holm)
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[220px] text-xs">
+                    Holm correction: when you run multiple tests, some will look significant just by chance. Holm raises the bar for each test to account for this — stricter than raw p, less punishing than plain Bonferroni.
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant={progressionLines.bh ? 'default' : 'outline'}
+                      className="gap-2 h-7 px-3 text-xs"
+                      onClick={() => setProgressionLines((prev) => ({ ...prev, bh: !prev.bh }))}
+                    >
+                      <span className="inline-block w-4 h-0.5 bg-emerald-500 rounded border-dashed" style={{ borderTop: '2px dashed #10b981', background: 'none' }} />
+                      p (BH)
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[220px] text-xs">
+                    Benjamini–Hochberg: a more lenient correction that accepts a small proportion of false positives in exchange for catching more true effects. Good when you have many tests and don't want to miss real findings.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+
+              {/* Sort control */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground font-medium">Sort by:</span>
+                {(['raw', 'holm', 'bh'] as const).map((key) => (
+                  <Button
+                    key={key}
+                    size="sm"
+                    variant={progressionSort === key ? 'default' : 'outline'}
+                    className="h-7 px-3 text-xs"
+                    onClick={() => setProgressionSort(key)}
+                  >
+                    {key === 'raw' ? 'p (raw)' : key === 'holm' ? 'p (Holm)' : 'p (BH)'}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid gap-6">
-              {progressionResults.map((measureProgression) => {
+              {sortedProgressionResults.map((measureProgression) => {
                 const lastPoint = measureProgression.points[measureProgression.points.length - 1];
-                const firstSignificant = measureProgression.points.find((point) => point.significant === true);
+                const firstSignificant = measureProgression.points.find((pt) => pt.pValue !== null && pt.pValue < 0.05);
+                const firstHolmSig = measureProgression.points.find((pt) => pt.adjustedP !== null && pt.adjustedP < 0.05);
+                const firstBhSig = measureProgression.points.find((pt) => pt.bhP !== null && pt.bhP < 0.05);
+                const d = lastPoint?.cohensD ?? null;
+                const formalHigher = d !== null ? d > 0 : null;
+                const directionLabel = formalHigher === null ? null : formalHigher ? 'Formal scored higher' : 'Informal scored higher';
+                const directionEffect = d !== null ? `d = ${Math.abs(d).toFixed(2)} (${interpretCohensD(d)})` : null;
+                const isSig = lastPoint?.pValue !== null && (lastPoint?.pValue ?? 1) < 0.05;
                 return (
                   <Card key={measureProgression.dv.key}>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         {measureProgression.dv.label}
                         <Badge variant="outline" className="text-xs">{measureProgression.dv.scale}</Badge>
+                        {isSig && directionLabel && (
+                          <Badge className={`text-xs ${formalHigher ? 'bg-blue-600' : 'bg-amber-500'} text-white border-0`}>
+                            {formalHigher ? '▲ Formal' : '▲ Informal'}
+                          </Badge>
+                        )}
                       </CardTitle>
                       <CardDescription>
                         {measureProgression.dv.description}
-                        {firstSignificant
-                          ? ` First reached significance at ${firstSignificant.batchLabel} (N=${firstSignificant.cumulativeParticipants}).`
-                          : ' No significant cumulative batch point yet.'}
+                        {directionLabel && directionEffect && (
+                          <span className="block mt-1">
+                            <strong>At N={lastPoint?.cumulativeParticipants}:</strong>{' '}
+                            {directionLabel} ({directionEffect}).{' '}
+                            First sig. — Raw: {firstSignificant ? `${firstSignificant.batchLabel} (N=${firstSignificant.cumulativeParticipants})` : 'never'},{' '}
+                            Holm: {firstHolmSig ? `${firstHolmSig.batchLabel} (N=${firstHolmSig.cumulativeParticipants})` : 'never'},{' '}
+                            BH: {firstBhSig ? `${firstBhSig.batchLabel} (N=${firstBhSig.cumulativeParticipants})` : 'never'}.
+                          </span>
+                        )}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -2656,11 +2889,13 @@ run_moderation_analysis <- function(df) {
                               <RechartsTooltip
                                 labelFormatter={(n, payload) => {
                                   const point = payload?.[0]?.payload as ProgressionPoint | undefined;
-                                  return point ? `${point.batchLabel} (N=${n})` : `N = ${n}`;
+                                  if (!point) return `N = ${n}`;
+                                  const dStr = point.cohensD !== null ? ` · d = ${Math.abs(point.cohensD).toFixed(2)} (${interpretCohensD(point.cohensD)}, ${point.cohensD > 0 ? 'formal higher' : 'informal higher'})` : '';
+                                  return `${point.batchLabel} (N=${n})${dStr}`;
                                 }}
                                 formatter={(value, name) => {
-                                  if (name === 'p-value' && typeof value === 'number') {
-                                    return [formatP(value), 'p-value'];
+                                  if (typeof value === 'number') {
+                                    return [formatP(value), String(name)];
                                   }
                                   return [String(value), String(name)];
                                 }}
@@ -2682,15 +2917,41 @@ run_moderation_analysis <- function(df) {
                                   label={{ value: point.batchLabel, position: 'top', fontSize: 10 }}
                                 />
                               ))}
-                              <Line
-                                type="monotone"
-                                dataKey="pValue"
-                                name="p-value"
-                                stroke="#2563eb"
-                                strokeWidth={2}
-                                connectNulls={false}
-                                dot={{ r: 3 }}
-                              />
+                              {progressionLines.raw && (
+                                <Line
+                                  type="monotone"
+                                  dataKey="pValue"
+                                  name="p (raw)"
+                                  stroke="#2563eb"
+                                  strokeWidth={2}
+                                  connectNulls={false}
+                                  dot={{ r: 3 }}
+                                />
+                              )}
+                              {progressionLines.holm && (
+                                <Line
+                                  type="monotone"
+                                  dataKey="adjustedP"
+                                  name="p (Holm)"
+                                  stroke="#f59e0b"
+                                  strokeWidth={2}
+                                  strokeDasharray="6 3"
+                                  connectNulls={false}
+                                  dot={{ r: 3 }}
+                                />
+                              )}
+                              {progressionLines.bh && (
+                                <Line
+                                  type="monotone"
+                                  dataKey="bhP"
+                                  name="p (BH)"
+                                  stroke="#10b981"
+                                  strokeWidth={2}
+                                  strokeDasharray="2 3"
+                                  connectNulls={false}
+                                  dot={{ r: 3 }}
+                                />
+                              )}
                             </LineChart>
                           </ResponsiveContainer>
                         </div>
@@ -2698,12 +2959,27 @@ run_moderation_analysis <- function(df) {
 
                       {lastPoint && (
                         <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <Badge variant="secondary">Latest batch: {lastPoint.batchLabel}</Badge>
                           <Badge variant="secondary">N={lastPoint.cumulativeParticipants}</Badge>
-                          <Badge variant={lastPoint.significant ? 'default' : 'outline'}>
-                            {lastPoint.significant ? 'Significant' : 'Not significant'}
-                          </Badge>
-                          {lastPoint.pValue !== null && <Badge variant="outline">p={formatP(lastPoint.pValue)}</Badge>}
+                          {lastPoint.pValue !== null && (
+                            <Badge variant={lastPoint.pValue < 0.05 ? 'default' : 'outline'} className="border-blue-400">
+                              p={formatP(lastPoint.pValue)}
+                            </Badge>
+                          )}
+                          {lastPoint.adjustedP !== null && (
+                            <Badge variant={lastPoint.adjustedP < 0.05 ? 'default' : 'outline'} className="border-amber-400">
+                              p<sub>Holm</sub>={formatP(lastPoint.adjustedP)}
+                            </Badge>
+                          )}
+                          {lastPoint.bhP !== null && (
+                            <Badge variant={lastPoint.bhP < 0.05 ? 'default' : 'outline'} className="border-emerald-400">
+                              p<sub>BH</sub>={formatP(lastPoint.bhP)}
+                            </Badge>
+                          )}
+                          {d !== null && (
+                            <Badge variant="outline" className={formalHigher ? 'border-blue-400 text-blue-700' : 'border-amber-400 text-amber-700'}>
+                              {formalHigher ? '▲ Formal' : '▲ Informal'} · d={Math.abs(d).toFixed(2)} ({interpretCohensD(d)})
+                            </Badge>
+                          )}
                         </div>
                       )}
                     </CardContent>
@@ -2711,6 +2987,114 @@ run_moderation_analysis <- function(df) {
                 );
               })}
             </div>
+
+            {/* Predictor × Outcome progression section */}
+            <Card>
+              <CardHeader className="cursor-pointer select-none" onClick={() => setPredOutcomeExpanded((v) => !v)}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      Predictor × Outcome Progression
+                      <Badge variant="secondary" className="text-xs">{predOutcomeProgressionResults.length} significant pairs</Badge>
+                    </CardTitle>
+                    <CardDescription>
+                      For each demographic predictor × outcome pair where the latest cumulative batch has raw p &lt; .05, shows how p-values evolved across batches.
+                    </CardDescription>
+                  </div>
+                  <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${predOutcomeExpanded ? 'rotate-180' : ''}`} />
+                </div>
+              </CardHeader>
+
+              {predOutcomeExpanded && (
+                <CardContent className="space-y-4">
+                  {predOutcomeProgressionResults.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No predictor × outcome pairs reached significance (raw p &lt; .05) at the latest batch.</p>
+                  ) : (
+                    <>
+                      {/* Sort control */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground font-medium">Sort by:</span>
+                        {(['raw', 'holm', 'bh'] as const).map((key) => (
+                          <Button
+                            key={key}
+                            size="sm"
+                            variant={predOutcomeSort === key ? 'default' : 'outline'}
+                            className="h-7 px-3 text-xs"
+                            onClick={() => setPredOutcomeSort(key)}
+                          >
+                            {key === 'raw' ? 'p (raw)' : key === 'holm' ? 'p (Holm)' : 'p (BH)'}
+                          </Button>
+                        ))}
+                      </div>
+
+                      <div className="grid gap-6">
+                        {sortedPredOutcomeResults.map((pair) => {
+                          const lastPoint = pair.points[pair.points.length - 1];
+                          return (
+                            <Card key={`${pair.predictorKey}-${pair.outcomeKey}`} className="border-dashed">
+                              <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium">
+                                  {pair.predictorLabel} → {pair.outcomeLabel}
+                                  <Badge variant="outline" className="ml-2 text-xs">{pair.type}</Badge>
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-3">
+                                <div className="h-56 w-full">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={pair.points} margin={{ top: 16, right: 16, left: 8, bottom: 20 }}>
+                                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                                      <XAxis
+                                        dataKey="cumulativeN"
+                                        type="number"
+                                        allowDecimals={false}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        label={{ value: 'N (cumulative)', position: 'insideBottom', offset: -8 }}
+                                      />
+                                      <YAxis
+                                        domain={[0, 1]}
+                                        tickFormatter={(v) => Number(v).toFixed(2)}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        label={{ value: 'p-value', angle: -90, position: 'insideLeft' }}
+                                      />
+                                      <RechartsTooltip
+                                        labelFormatter={(n, payload) => {
+                                          const pt = payload?.[0]?.payload as PredOutcomePoint | undefined;
+                                          return pt ? `${pt.batchLabel} (N=${n})` : `N = ${n}`;
+                                        }}
+                                        formatter={(value, name) => typeof value === 'number' ? [formatP(value), String(name)] : [String(value), String(name)]}
+                                        contentStyle={{ borderRadius: 8 }}
+                                      />
+                                      <Legend />
+                                      <ReferenceLine y={0.05} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'α=.05', position: 'insideTopRight' }} />
+                                      {pair.points.map((pt) => (
+                                        <ReferenceLine key={pt.batchStep} x={pt.cumulativeN} stroke="hsl(var(--muted-foreground))" strokeDasharray="2 2" label={{ value: pt.batchLabel, position: 'top', fontSize: 9 }} />
+                                      ))}
+                                      {progressionLines.raw && <Line type="monotone" dataKey="pValue" name="p (raw)" stroke="#2563eb" strokeWidth={2} connectNulls={false} dot={{ r: 3 }} />}
+                                      {progressionLines.holm && <Line type="monotone" dataKey="adjustedP" name="p (Holm)" stroke="#f59e0b" strokeWidth={2} strokeDasharray="6 3" connectNulls={false} dot={{ r: 3 }} />}
+                                      {progressionLines.bh && <Line type="monotone" dataKey="bhP" name="p (BH)" stroke="#10b981" strokeWidth={2} strokeDasharray="2 3" connectNulls={false} dot={{ r: 3 }} />}
+                                    </LineChart>
+                                  </ResponsiveContainer>
+                                </div>
+                                {lastPoint && (
+                                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    <Badge variant="secondary">N={lastPoint.cumulativeN}</Badge>
+                                    {lastPoint.pValue !== null && <Badge variant={lastPoint.pValue < 0.05 ? 'default' : 'outline'} className="border-blue-400">p={formatP(lastPoint.pValue)}</Badge>}
+                                    {lastPoint.adjustedP !== null && <Badge variant={lastPoint.adjustedP < 0.05 ? 'default' : 'outline'} className="border-amber-400">p<sub>Holm</sub>={formatP(lastPoint.adjustedP)}</Badge>}
+                                    {lastPoint.bhP !== null && <Badge variant={lastPoint.bhP < 0.05 ? 'default' : 'outline'} className="border-emerald-400">p<sub>BH</sub>={formatP(lastPoint.bhP)}</Badge>}
+                                  </div>
+                                )}
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              )}
+            </Card>
           </TabsContent>
 
           {/* Descriptive Tab */}

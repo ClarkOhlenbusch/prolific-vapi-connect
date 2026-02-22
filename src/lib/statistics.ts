@@ -351,6 +351,26 @@ export const holmCorrection = (pValues: number[]): number[] => {
   return adjusted;
 };
 
+/** Benjamini–Hochberg FDR correction. Returns adjusted p-values (q-values) in original order. */
+export const benjaminiHochberg = (pValues: number[]): number[] => {
+  const n = pValues.length;
+  if (n === 0) return [];
+  const indexed = pValues.map((p, i) => ({ p, i }));
+  indexed.sort((a, b) => a.p - b.p);
+
+  const adjusted = new Array(n).fill(1);
+  let runningMin = 1;
+
+  for (let j = n - 1; j >= 0; j--) {
+    const rank = j + 1;
+    const q = Math.min((indexed[j].p * n) / rank, 1);
+    runningMin = Math.min(runningMin, q);
+    adjusted[indexed[j].i] = runningMin;
+  }
+
+  return adjusted;
+};
+
 // Partial eta squared
 export const partialEtaSquared = (ssEffect: number, ssError: number): number => {
   return ssEffect / (ssEffect + ssError);
