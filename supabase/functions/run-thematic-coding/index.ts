@@ -208,9 +208,7 @@ Deno.serve(async (req: Request) => {
   let alreadyCodedB = new Set<string>();
 
   if (!recompute) {
-    const { data: existingA } = await supabaseAdmin
-      .from("call_thematic_codes")
-      .select("call_id, rules_version");
+    const { data: existingA } = await supabaseAdmin.from("call_thematic_codes").select("call_id, rules_version");
     // Only count as "already coded" if rules_version is current (not stale)
     alreadyCodedA = new Set(
       (existingA ?? [])
@@ -353,8 +351,11 @@ Deno.serve(async (req: Request) => {
 
   console.info(`[run-thematic-coding] Done: ${processed} processed, ${errors} errors`);
 
-  return new Response(JSON.stringify({ processed, errors, total: toProcess.length, results, rulesVersion: currentRulesVersion }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ processed, errors, total: toProcess.length, results, rulesVersion: currentRulesVersion }),
+    {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
+  );
 });
