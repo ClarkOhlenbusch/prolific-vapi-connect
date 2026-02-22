@@ -94,7 +94,7 @@ Deno.serve(async (req: Request) => {
       (responses ?? [])
         .filter((r: PlainObj) => typeof r.prolific_id === "string" && r.prolific_id.length === 24)
         .map((r: PlainObj) => r.call_id as string)
-        .filter(Boolean),
+        .filter((id: string) => typeof id === "string" && id.length > 10), // exclude null/empty/junk call_ids
     ),
   ];
 
