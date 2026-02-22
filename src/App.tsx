@@ -46,6 +46,7 @@ const ResearcherChangelog = lazy(() => import("./pages/ResearcherChangelog"));
 const ResearcherErrorLog = lazy(() => import("./pages/ResearcherErrorLog"));
 const ResearcherBackups = lazy(() => import("./pages/ResearcherBackups"));
 const ResearcherVideoRunDebug = lazy(() => import("./pages/ResearcherVideoRunDebug"));
+const ComputeHub = lazy(() => import("./pages/ComputeHub"));
 
 const queryClient = new QueryClient();
 
@@ -115,6 +116,14 @@ const App = () => (
                   element={
                     <ResearcherProtectedRoute>
                       <ResearcherVideoRunDebug />
+                    </ResearcherProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/researcher/compute"
+                  element={
+                    <ResearcherProtectedRoute>
+                      <ComputeHub />
                     </ResearcherProtectedRoute>
                   }
                 />

@@ -21,7 +21,8 @@ import {
   Bug,
   Map,
   Cloud,
-  Clapperboard
+  Clapperboard,
+  Cpu
 } from 'lucide-react';
 import { UnifiedParticipantsTable } from '@/components/researcher/UnifiedParticipantsTable';
 import { ArchivedResponsesTable } from '@/components/researcher/ArchivedResponsesTable';
@@ -151,6 +152,15 @@ const ResearcherDashboard = () => {
               >
                 <Clapperboard className="h-4 w-4 mr-2" />
                 Video Debug
+              </Button>
+            )}
+            {!isGuestMode && isSuperAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => navigate('/researcher/compute')}
+              >
+                <Cpu className="h-4 w-4 mr-2" />
+                Compute Hub
               </Button>
             )}
             <Button
