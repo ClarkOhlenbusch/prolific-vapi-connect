@@ -185,6 +185,14 @@ Deno.serve(async (req: Request) => {
   const passAOnly: boolean = body.passAOnly === true;
   const passBOnly: boolean = body.passBOnly === true;
 
+  // ── Fetch current thematic coding rules version ────────────────────────────
+  const { data: settingRow } = await supabaseAdmin
+    .from("experiment_settings")
+    .select("setting_value")
+    .eq("setting_key", "thematic_coding_rules_version")
+    .maybeSingle();
+  const currentRulesVersion: number = settingRow ? parseInt(String(settingRow.setting_value)) || 1 : 1;
+
   // ── Find completed transcriptions ─────────────────────────────────────────
   const { data: transcriptions } = await supabaseAdmin
     .from("call_transcriptions_assemblyai")
@@ -200,14 +208,26 @@ Deno.serve(async (req: Request) => {
   let alreadyCodedB = new Set<string>();
 
   if (!recompute) {
-    const { data: existingA } = await supabaseAdmin.from("call_thematic_codes").select("call_id");
-    alreadyCodedA = new Set((existingA ?? []).map((r: PlainObj) => r.call_id as string));
+    const { data: existingA } = await supabaseAdmin
+      .from("call_thematic_codes")
+      .select("call_id, rules_version");
+    // Only count as "already coded" if rules_version is current (not stale)
+    alreadyCodedA = new Set(
+      (existingA ?? [])
+        .filter((r: PlainObj) => ((r.rules_version as number) ?? 0) >= currentRulesVersion)
+        .map((r: PlainObj) => r.call_id as string),
+    );
 
     const { data: existingB } = await supabaseAdmin
       .from("experiment_responses")
-      .select("call_id")
+      .select("call_id, feedback_rules_version")
       .not("feedback_sentiment", "is", null);
-    alreadyCodedB = new Set((existingB ?? []).map((r: PlainObj) => r.call_id as string));
+    // Only count as "already coded" if feedback_rules_version is current
+    alreadyCodedB = new Set(
+      (existingB ?? [])
+        .filter((r: PlainObj) => ((r.feedback_rules_version as number) ?? 0) >= currentRulesVersion)
+        .map((r: PlainObj) => r.call_id as string),
+    );
   }
 
   // Fetch feedback text for all calls
@@ -267,6 +287,7 @@ Deno.serve(async (req: Request) => {
           notable_moments: Array.isArray(raw.notable_moments) ? raw.notable_moments.slice(0, 10) : [],
           overall_conversation_quality: clampInt(raw.overall_conversation_quality, 1, 5, 3),
           model_used: OPENAI_MODEL,
+          rules_version: currentRulesVersion,
           created_at: new Date().toISOString(),
         };
 
@@ -298,6 +319,7 @@ Deno.serve(async (req: Request) => {
             feedback_themes: [],
             feedback_satisfaction_inferred: 3,
             feedback_condition_perception: "insufficient feedback",
+            feedback_rules_version: currentRulesVersion,
           };
         } else {
           const raw = await callOpenAI(openaiApiKey, PASS_B_SYSTEM, `Participant feedback:\n\n${feedbackText}`);
@@ -309,6 +331,7 @@ Deno.serve(async (req: Request) => {
               typeof raw.feedback_condition_perception === "string"
                 ? raw.feedback_condition_perception.slice(0, 500)
                 : null,
+            feedback_rules_version: currentRulesVersion,
           };
         }
 
@@ -330,7 +353,7 @@ Deno.serve(async (req: Request) => {
 
   console.info(`[run-thematic-coding] Done: ${processed} processed, ${errors} errors`);
 
-  return new Response(JSON.stringify({ processed, errors, total: toProcess.length, results }), {
+  return new Response(JSON.stringify({ processed, errors, total: toProcess.length, results, rulesVersion: currentRulesVersion }), {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
