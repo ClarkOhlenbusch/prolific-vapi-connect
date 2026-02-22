@@ -82,14 +82,20 @@ Deno.serve(async (req: Request) => {
   const limit: number = typeof body.limit === "number" ? Math.min(body.limit, 25) : 10;
   const retryErrors: boolean = body.retry === true;
 
-  // ── Find pending call_ids ─────────────────────────────────────────────────
+  // ── Find pending call_ids (participants only — skip researcher test calls) ──
   const { data: responses } = await supabaseAdmin
     .from("experiment_responses")
-    .select("call_id")
+    .select("call_id, prolific_id")
     .not("call_id", "is", null);
 
+  // Participants have exactly 24-char Prolific IDs; researcher calls start with "researcher-"
   const allCallIds: string[] = [
-    ...new Set((responses ?? []).map((r: PlainObj) => r.call_id as string).filter(Boolean)),
+    ...new Set(
+      (responses ?? [])
+        .filter((r: PlainObj) => typeof r.prolific_id === "string" && r.prolific_id.length === 24)
+        .map((r: PlainObj) => r.call_id as string)
+        .filter(Boolean),
+    ),
   ];
 
   const { data: existing } = await supabaseAdmin.from("call_transcriptions_assemblyai").select("call_id, status");
