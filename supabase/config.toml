@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.compute-qualitative-metrics]
 verify_jwt = false
+
+[functions.clear-vapi-queue]
+verify_jwt = false
