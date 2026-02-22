@@ -1,0 +1,30 @@
+{
+  "version": "1.1.20",
+  "release_date": "2026-02-21",
+  "description": "ComputeHub pipeline diagram, VAPI eval UX consolidation, thematic coding scope fix, transcription participant filter.",
+  "release_status": "pushed",
+  "auto_mark_release_on_push": false,
+  "changes": [
+    {
+      "type": "changed",
+      "description": "Researchers now see all pipeline steps (transcription, thematic coding, VAPI evaluation, etc.) as visual nodes with status lights in a dedicated pipeline diagram on the ComputeHub page. Implemented by extracting VAPI eval queue controls from UnifiedParticipantsTable and adding PipelineNode/pipeline diagram components to ComputeHub.tsx.",
+      "scope": "researcher",
+      "commit_hash": "1ad6a2e",
+      "pushed_at": "2026-02-21T00:00:00Z"
+    },
+    {
+      "type": "fixed",
+      "description": "Thematic coding Pass B (feedback → experiment_responses) now correctly runs on any call that has an experiment_response, not just transcribed calls. Implemented by building a union candidate set of transcribed call IDs and all response call IDs, with Pass A gated on transcription and Pass B gated on response presence.",
+      "scope": "researcher",
+      "commit_hash": "9f10945",
+      "pushed_at": "2026-02-21T00:00:00Z"
+    },
+    {
+      "type": "fixed",
+      "description": "AssemblyAI transcription trigger no longer queues researcher test calls (IDs starting with 'researcher-'), focusing only on real participant calls with 24-character Prolific IDs. Implemented by adding a prolific_id length filter before building the candidate call_id set.",
+      "scope": "researcher",
+      "commit_hash": "e5476c3",
+      "pushed_at": "2026-02-21T00:00:00Z"
+    }
+  ]
+}
